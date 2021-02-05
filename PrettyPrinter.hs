@@ -50,8 +50,9 @@ prettyToken (Semi) = text ";"
 prettyToken (EOF) = text "EOF"
 
 prettyBody :: Body -> Doc
-prettyBody (Bind n ps bs e) = keyword "let" <+> prettyExpr (unpeelAps (var' n) (map var' ps)) <+> nest 3 (keyword "="  </>
-                           (prettyBody bs <> keyword ";")) P.<$> prettyBody e
+prettyBody (Bind n p ps bs e) 
+  = keyword "let" <+> prettyExpr (unpeelAps (var' n) (map var' $ map fst ps)) <+> nest 3 (keyword "="  </>
+                     (prettyBody bs <> keyword ";")) P.<$> prettyBody e
   where var' = Var undefined
 prettyBody (Done e) = prettyExpr e
 
