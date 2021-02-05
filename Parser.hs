@@ -21,9 +21,9 @@ holey t =
   case Text.uncons t of
     Nothing -> []
     Just ('_', xs) -> Nothing : holey xs
-    Just (x, xs) -> Just i : holey rest
+    Just _ -> Just i : holey rest
       where
-        (i, rest) = Text.span (/= '_') xs
+        (i, rest) = Text.span (/= '_') t
 
 data Lit = IntLit Int | FloatLit Double | StringLit Text | CharLit Char | SelectorLit Text deriving (Show, Eq)
 
@@ -40,8 +40,6 @@ exprPos (App e1 e2) = exprPos e1
 exprPos (Literal p _) = p
 
 type Name = Text
-
-type Name = String
 
 type Pattern = (Name, Position)
 
@@ -171,7 +169,7 @@ grammar table = mdo
     makeAp hol as = case (unholey hol, as) of
       (Var p "freeze_=_in_", [a1, a2, a3]) -> Freeze p a1 a2 a3
       _ -> unpeelAps (unholey hol) as
-    unholey ls = Var (getPosition ls) (concatMap (fromMaybe "_") (map (fmap (unident . snd)) ls))
+    unholey ls = Var (getPosition ls) (foldMap (fromMaybe "_") (map (fmap (unident . snd)) ls))
       where
         unident (Ident s) = s
         unident _ = "="

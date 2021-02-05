@@ -21,6 +21,11 @@ executable specstrom
   main-is:             Main.hs
   other-modules: Parser Lexer Evaluator PrettyPrinter
   -- other-extensions:
-  build-depends:       base >=4.13 && <4.14, containers, Earley, ansi-wl-pprint, text
+  build-depends:       base >=4.13 && <4.14
+                     , containers
+                     , Earley
+                     , prettyprinter
+                     , prettyprinter-ansi-terminal
+                     , text
   -- hs-source-dirs:
   default-language:    Haskell2010

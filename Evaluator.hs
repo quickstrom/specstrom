@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Evaluator where
 
 import qualified Data.Map as M
