@@ -11,7 +11,7 @@ import Parser
 import PrettyPrinter
 import Prettyprinter.Render.Terminal (renderIO)
 import System.Environment
-import System.IO (hPutStr, hPutStrLn, stderr)
+import System.IO (hPutStrLn, stderr)
 
 run :: FilePath -> Text -> IO ()
 run f s = do
@@ -22,6 +22,7 @@ run f s = do
       Right (_, b) -> print $ evaluate initialEnv b
   putStrLn ""
 
+main :: IO ()
 main =
   getArgs >>= \case
     [f] -> Text.readFile f >>= run f

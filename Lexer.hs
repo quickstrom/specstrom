@@ -9,7 +9,6 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Read as Text
 import Text.Read (readMaybe)
-import qualified Text.Read as Text0
 
 data Kwd = Define | Syntax | Let deriving (Show, Eq)
 
@@ -30,7 +29,7 @@ data Token
 type Position = (FilePath, Int, Int)
 
 addRow :: Int -> Position -> Position
-addRow i (f, l, c) = (f, l + i, 0)
+addRow i (f, l, _c) = (f, l + i, 0)
 
 nextRow :: Position -> Position
 nextRow = addRow 1
@@ -45,7 +44,7 @@ advance :: Text -> Position -> Position
 advance t = case Text.uncons t of
   Nothing -> id
   Just ('\n', cs) -> advance cs . addRow 1
-  Just (c, cs) -> advance cs . addCol 1
+  Just (_c, cs) -> advance cs . addCol 1
 
 data LexerError
   = InvalidIntLit Position Text
@@ -76,13 +75,13 @@ reserved c = isSpace c || c `elem` ("();" :: [Char])
 
 lexer :: Position -> Text -> Either LexerError [(Position, Token)]
 lexer p t
-  | Text.null t = Right [(p, EOF)]
   | Text.take 2 t == "//" =
     lexer (nextRow p) (Text.drop 1 (Text.dropWhile (/= '\n') (Text.drop 2 t)))
   | otherwise = case Text.uncons t of
+    Nothing -> Right [(p, EOF)]
     Just ('\n', cs) -> lexer (nextRow p) cs
     Just (c, cs) | isSpace c -> lexer (nextCol p) cs
-    Just (i, cs) | isDigit i -> case Text.span isDigit t of
+    Just (i, _cs) | isDigit i -> case Text.span isDigit t of
       (digits, Text.uncons -> Just ('.', rest)) ->
         let (decimals, rest') = Text.span (\x -> isDigit x || x `elem` ("eE+-" :: [Char])) rest
             candidate = digits <> "." <> decimals

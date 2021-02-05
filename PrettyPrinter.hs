@@ -59,7 +59,7 @@ prettyToken (Semi) = ";"
 prettyToken (EOF) = "EOF"
 
 prettyBody :: Body -> Doc AnsiStyle
-prettyBody (Bind n p ps bs e) =
+prettyBody (Bind n _p ps bs e) =
   keyword ("let" :: Text) <+> prettyExpr (unpeelAps (var' n) (map var' $ map fst ps))
     <+> nest
       3
@@ -85,7 +85,7 @@ prettyExpr trm = renderTerm True trm
     renderTerm outer t
       | (x, []) <- peelAps t [] = case x of
         Var _ s -> ident s
-        Literal p l -> prettyLit l
+        Literal _p l -> prettyLit l
       | (Var _ n, args) <- peelAps t [],
         Text.length (Text.filter (== '_') n) == length args =
         (if outer then id else parens) $ hsep $ infixTerms n args

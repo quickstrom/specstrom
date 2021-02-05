@@ -12,7 +12,6 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Debug.Trace
 import Lexer
-import System.Environment
 import Text.Earley
 import Text.Earley.Mixfix
 
@@ -36,8 +35,9 @@ data Expr
 
 exprPos :: Expr -> Position
 exprPos (Var p _) = p
-exprPos (App e1 e2) = exprPos e1
+exprPos (App e1 _e2) = exprPos e1
 exprPos (Literal p _) = p
+exprPos (Freeze p _ _ _) = p
 
 type Name = Text
 
@@ -59,6 +59,7 @@ data ParseError
 
 type Table = [[(Holey Text, Associativity)]]
 
+builtIns :: [[(Holey Text, Associativity)]]
 builtIns =
   (map . map)
     (first holey)
@@ -80,8 +81,8 @@ parseBindingBody t ((p, Reserved Let) : ts) = do
       (rest, body) <- parseBindingBody t ts''
       case rest of
         ((_, Semi) : rest') -> fmap (Bind n p ps body) <$> parseBindingBody t rest'
-        ((p, _) : _) -> Left $ ExpectedSemicolon p
-    ((p, _) : _) -> Left $ ExpectedEquals p
+        ((p', _) : _) -> Left $ ExpectedSemicolon p'
+    ((p', _) : _) -> Left $ ExpectedEquals p'
 parseBindingBody t ts = fmap Done <$> parseExpressionTo Semi t ts
 
 insertSyntax :: Position -> Name -> Int -> Associativity -> Table -> Either ParseError Table
@@ -90,8 +91,8 @@ insertSyntax p n i a t
   | otherwise = Right $ go i t
   where
     go 0 (r : rs) = ((holey n, a) : r) : rs
-    go n (r : rs) = r : (go (n -1) rs)
-    go n [] = go n [[]]
+    go n' (r : rs) = r : (go (n' -1) rs)
+    go n' [] = go n' [[]]
 
 parsePatterns :: Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Name, [Pattern])
 parsePatterns t ts = do
@@ -104,7 +105,7 @@ parsePatterns t ts = do
       if nub (map fst es') /= map fst es'
         then Left (DuplicatePatternBinding p dupes)
         else pure (ts', n, es')
-    (e, es) -> Left $ ExpectedPattern e
+    (e', _es) -> Left $ ExpectedPattern e'
   where
     fromExpr (Var p n) = Right (n, p)
     fromExpr e = Left $ ExpectedPattern e
@@ -123,8 +124,8 @@ parseExpressionTo terminator t ts =
    in case fullParses (parser $ grammar t) candidate of
         ([one], _) -> Right (ts', one)
         ([], r) -> case unconsumed r of
-          blah@((p, t) : _) | traceShow blah True -> Left (ExpectedGot p (expected r) t)
-        (es, r) -> Left (ExpressionAmbiguous es)
+          blah@((p, t') : _) | traceShow blah True -> Left (ExpectedGot p (expected r) t')
+        (es, _r) -> Left (ExpressionAmbiguous es)
 
 grammar :: Table -> Grammar r (Prod r Text (Position, Token) Expr)
 grammar table = mdo
@@ -175,5 +176,5 @@ grammar table = mdo
         unident _ = "="
     getPosition ls = case filter isJust ls of
       [] -> error "No concrete token: the impossible happened"
-      (Just (p, _) : xs) -> p
+      (Just (p, _) : _xs) -> p
       (_ : xs) -> getPosition xs
