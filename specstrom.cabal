@@ -3,7 +3,7 @@ cabal-version:       >=1.10
 --  init'.  For further documentation, see
 -- http://haskell.org/cabal/users-guide/
 
-name:                quickstrom-proto
+name:                specstrom
 version:             0.1.0.0
 -- synopsis:
 -- description:
@@ -11,7 +11,7 @@ version:             0.1.0.0
 -- license:
 license-file:        LICENSE
 author:              Liam O’Connor
-maintainer:          liamoc@cse.unsw.edu.au
+maintainer:          l.oconnor@ed.ac.uk
 -- copyright:
 -- category:
 build-type:          Simple
