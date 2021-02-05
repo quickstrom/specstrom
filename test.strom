@@ -12,7 +12,7 @@ syntax next_ 6 right;
 syntax eventually_ 6 right;
 syntax _until_ 5 right;
 
-let unchanged x  = true; // TODO: can't implement yet
+let unchanged x  = freeze a = x in next (x == a); 
 
 let buttonText = access `.play-pause`;
 let timeDisplayText = access `.time-display`;
@@ -43,7 +43,6 @@ paused && always (play || pause || tick) // always always == always, I am just d
 
 //TODO:
 // Currently no lambda syntax. All functions are named. So far I haven't needed lambdas.
-// Because freeze introduces variables it must be baked in more deeply into the language syntax, not just as a built-in mixfix.
 // No evaluator yet..
 // Bespoke syntax and features for accessors and declaring actions. 
 //    Perhaps an accessor could be surrounded by backticks? That's nice and lightweight.

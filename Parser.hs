@@ -22,6 +22,7 @@ data Lit = IntLit Int | FloatLit Double | StringLit String | CharLit Char | Sele
 data Expr = Var Position String
           | App Expr Expr
           | Literal Position Lit
+          | Freeze Position Expr Expr Expr
           deriving Show
 exprPos :: Expr -> Position
 exprPos (Var p _) = p
@@ -119,23 +120,30 @@ grammar table = mdo
   atom      <- rule $  ident 
                    <|> lparen *> expr <* rparen
   normalApp <- rule $  atom
-                   <|> App <$> normalApp <*> atom
   expr      <- mixfixExpression tbl normalApp makeAp
   return expr
   where
-    tbl = map (map $ first $ map $ fmap identToken) table
+    tbl = [[( [Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (identToken "in"), Nothing], RightAssoc ) ]] ++
+          map (map $ first $ map $ fmap identToken) table
+    
     mixfixParts = [s | xs <- table, (ys, _) <- xs
                      , Just s <- ys]
     lparen = satisfy ((== LParen) . snd) <?> "left parenthesis"
     rparen = satisfy ((== RParen) . snd) <?> "right parenthesis"
-    identToken s = satisfy ((== Ident s) . snd) <?> s
+    identToken s = isToken (Ident s) s
+    isToken s t = satisfy ((== s) . snd) <?> t
 
     variable = terminal $ \(p,t) -> 
        case t of 
           Ident s -> guard (s `notElem` mixfixParts) >> pure (Var p s)
           _       -> Nothing
-    makeAp hol = unpeelAps (unholey hol)
-    unholey ls = Var (getPosition ls) (concatMap (fromMaybe "_") (map (fmap (\(_,Ident s) -> s)) ls))
+    makeAp hol as = case (unholey hol,as) of 
+        (Var p "freeze_=_in_",[a1,a2,a3]) -> Freeze p a1 a2 a3 
+        _ -> unpeelAps (unholey hol) as 
+    unholey ls = Var (getPosition ls) (concatMap (fromMaybe "_") (map (fmap (unident . snd)) ls))
+      where 
+        unident (Ident s) = s
+        unident _ = "="
     getPosition ls = case filter isJust ls of 
        [] -> error "No concrete token: the impossible happened"
        (Just (p,_):xs) -> p

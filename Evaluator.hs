@@ -25,7 +25,11 @@ data Op = Equals
         deriving (Show, Eq)
 
 
-data FormulaExpr a = LocExpr Name Position (FormulaExpr a) |  Accessor a | Op Op [FormulaExpr a] | Constant IValue
+data FormulaExpr a = LocExpr Name Position (FormulaExpr a) 
+                   | Accessor a 
+                   | Op Op [FormulaExpr a] 
+                   | Constant IValue
+                   | FreezeVar Name Position
                    deriving (Show)
 
 data Formula a = Atomic (FormulaExpr a)
@@ -39,6 +43,7 @@ data Formula a = Atomic (FormulaExpr a)
                | Next (Formula a) 
                | Trivial | Absurd
                | LocFormula Name Position (Formula a)
+               | FreezeIn Position Name (FormulaExpr a) (Formula a)
                deriving (Show)
 
 type Accessor = String
@@ -48,7 +53,7 @@ type Env = [(Name, Value)]
 data Value = Independent IValue 
            | StateDependent [Accessor] (FormulaExpr Accessor)
            | Formula [Accessor] (Formula Accessor)
-           | Closure Env [Name] Body
+           | Closure (Maybe (Name,Position)) Env [Name] Body
            | PartialOp Op [Value]
            deriving (Show)
 
@@ -62,6 +67,7 @@ data EvalError = ScopeError Position String
                | NotAFunction Value
                | BinaryOpOnInvalidTypes Op Value Value
                | UnaryOpOnInvalidTypes Op Value
+               | FreezeLHSNotVar Position
                deriving (Show)
 
 
@@ -99,15 +105,26 @@ evaluate g (Bind f ps b1 b2) = do
 evaluate g (Done e) = evalExpr g e
 
 evalBind g [] b = evaluate g b
-evalBind g xs b = Right $ Closure g xs b
+evalBind g xs b = Right $ Closure Nothing g xs b
 
 evalExpr :: Env -> Expr -> Either EvalError Value
 evalExpr g (Var p s) = case lookup s g of 
     Just (StateDependent as e) ->  Right $ StateDependent as (LocExpr s p e)
     Just (Formula as f) -> Right $ Formula as (LocFormula s p f)
+    Just (Closure Nothing env as b) -> Right $ Closure (Just (s,p)) env as b
     Just v  -> Right $ v
     Nothing -> Left $ ScopeError p s
 evalExpr g (App e1 e2) = do v1 <- evalExpr g e1; v2 <- evalExpr g e2; app v1 v2
+evalExpr g (Freeze p (Var _ n) e2 e3) = do 
+      v1 <- evalExpr g e2
+      v2 <- evalExpr ((n, StateDependent [] (FreezeVar n p)):g) e3
+      makeFreeze v1 v2 
+  where 
+    makeFreeze (StateDependent as t) (Formula as' f) = Right $ Formula (as ++ as') $ FreezeIn p n t f
+    makeFreeze (Independent t) (Formula as' f) = makeFreeze (StateDependent [] (Constant t)) (Formula as' f)
+    makeFreeze t (StateDependent as f) = makeFreeze t (Formula as (Atomic f))
+    makeFreeze t (Independent f) = makeFreeze t (StateDependent [] (Constant f))
+evalExpr g (Freeze p _ _ _) = Left $ FreezeLHSNotVar p
 evalExpr g (Literal p l) = Right $ Independent $ LitVal l
 
 app :: Value -> Value -> Either EvalError Value
@@ -123,8 +140,17 @@ app (PartialOp o []) v
  | o `elem` [MkAccessor] = unarySelectorOp o v
 
 app (PartialOp o vs) v2 = Right $ PartialOp o (vs ++ [v2]) 
-app (Closure g [n] b) v2 = evaluate  ((n,v2):g) b
-app (Closure g (n:ns) b) v2 = Right $ Closure ((n,v2):g) ns b
+app (Closure pos g [n] b) v2 = do 
+   r <- evaluate  ((n,v2):g) b
+   case pos of 
+     Nothing -> pure r
+     Just (n,p) -> do 
+       case r of 
+         Formula as f -> Right $ Formula as (LocFormula n p f)
+         StateDependent as t -> Right $ StateDependent as (LocExpr n p t) 
+         t -> Right $ t
+    
+app (Closure p g (n:ns) b) v2 = Right $ Closure p ((n,v2):g) ns b
 app v1 v2 = Left $ NotAFunction v1
 
 binaryEqOp o (Independent (LitVal (IntLit i))) (Independent (LitVal (FloatLit j)))
