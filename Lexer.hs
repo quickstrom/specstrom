@@ -1,13 +1,17 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Lexer where
+
 import Data.Char
 import Text.Read (readMaybe)
 import Control.Arrow (first)
+import Data.Text (Text)
 data Kwd = Define | Syntax | Let deriving (Show, Eq)
-data Token = Ident String | Reserved Kwd 
-           | StringLitTok String | CharLitTok Char | IntLitTok Int | FloatLitTok Double | SelectorLitTok String
+data Token = Ident Text | Reserved Kwd 
+           | StringLitTok Text | CharLitTok Char | IntLitTok Int | FloatLitTok Double | SelectorLitTok Text
            | LParen | RParen | Semi | EOF deriving (Show, Eq)
 
-type Position = (String, Int, Int)
+type Position = (Text, Int, Int)
 
 addRow :: Int -> Position -> Position
 addRow i (f, l,c) = (f, l+i,0)
@@ -18,24 +22,24 @@ addCol i (f, l,c) = (f,l,c+i)
 nextCol :: Position -> Position
 nextCol = addCol 1
 
-advance :: String -> Position -> Position
+advance :: Text -> Position -> Position
 advance [] = id
 advance ('\n':cs) = advance cs . addRow 1
 advance (c:cs) = advance cs . addCol 1
 
-data LexerError = InvalidIntLit Position String
-                | InvalidCharLit Position String
-                | InvalidStringLit Position String
-                | InvalidFloatLit Position String 
+data LexerError = InvalidIntLit Position Text
+                | InvalidCharLit Position Text
+                | InvalidStringLit Position Text
+                | InvalidFloatLit Position Text 
                 | UnterminatedCharLit Position
                 | UnterminatedStringLit Position 
                 | UnterminatedSelectorLit Position 
                 deriving (Show)
 
-readLiteral :: Char -> String -> Maybe (String, String)
+readLiteral :: Char -> Text -> Maybe (Text, Text)
 readLiteral d = fmap (first ((++[d]) . (d:))) . readLiteral' d
 
-readLiteral' :: Char -> String -> Maybe (String, String)
+readLiteral' :: Char -> Text -> Maybe (Text, Text)
 readLiteral' delimiter rest = let (chunk, rest') = break (`elem` [delimiter, '\\']) rest
                               in case rest' of 
                                   ('\\':x:xs) -> first ((chunk++) . ('\\':). (x:)) <$> readLiteral' delimiter xs
@@ -45,7 +49,7 @@ readLiteral' delimiter rest = let (chunk, rest') = break (`elem` [delimiter, '\\
 reservedInitial c = isSpace c || c `elem` "()123456789'\";"
 reserved c = isSpace c || c `elem` "();"
 
-lexer :: Position -> String -> Either LexerError [(Position, Token)]
+lexer :: Position -> Text -> Either LexerError [(Position, Token)]
 lexer p [] = Right [(p,EOF)]
 lexer p ('\n':cs) = lexer (nextRow p) cs
 lexer p (c:cs) | isSpace c = lexer (nextCol p) cs
@@ -79,7 +83,7 @@ lexer p (';':cs) = ((p,Semi):) <$> lexer (nextCol p) cs
 lexer p (c:cs) = let (candidate, rest) = break reserved (c:cs)
                   in ((p,fromCandidate candidate):) <$> lexer p rest
 
-fromCandidate :: String -> Token
+fromCandidate :: Text -> Token
 fromCandidate "=" = Reserved Define
 fromCandidate "syntax" = Reserved Syntax 
 fromCandidate "let" = Reserved Let

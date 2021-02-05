@@ -2,6 +2,7 @@ module Evaluator where
 import Parser
 import Lexer (Position)
 import qualified Data.Set as S
+import Data.Text (Text)
 
 data Op = Equals
         | NotEquals
@@ -47,7 +48,7 @@ data Formula a = Atomic (FormulaExpr a)
                | FreezeIn Position Name (FormulaExpr a) (Formula a)
                deriving (Show)
 
-type Accessor = String
+type Accessor = Text
 
 type Env = [(Name, Value)]
 
@@ -63,7 +64,7 @@ data IValue = LitVal Lit
             | Null
             deriving (Show, Eq)
 
-data EvalError = ScopeError Position String
+data EvalError = ScopeError Position Text
                | ModuloOnFloats Double Double
                | NotAFunction Value
                | BinaryOpOnInvalidTypes Op Value Value

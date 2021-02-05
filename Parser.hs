@@ -1,4 +1,5 @@
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Parser where
 import Control.Applicative
 import Control.Arrow(first)
@@ -10,16 +11,20 @@ import Text.Earley.Mixfix
 import Lexer 
 import Data.List(nub, (\\))
 import Debug.Trace
+import Data.Text (Text)
+import qualified Data.Text as Text
 
-holey :: String -> Holey String
-holey ""       = []
-holey ('_':xs) = Nothing : holey xs
-holey xs       = Just i : holey rest
-  where (i, rest) = span (/= '_') xs
+holey :: Text -> Holey Text
+holey t = 
+  case Text.uncons t of 
+    Nothing -> []
+    Just ('_', xs) -> Nothing : holey xs
+    Just (x, xs)   -> Just i : holey rest
+      where (i, rest) = Text.span (/= '_') xs
 
-data Lit = IntLit Int | FloatLit Double | StringLit String | CharLit Char | SelectorLit String deriving (Show, Eq)
+data Lit = IntLit Int | FloatLit Double | StringLit Text | CharLit Char | SelectorLit Text deriving (Show, Eq)
 
-data Expr = Var Position String
+data Expr = Var Position Text
           | App Expr Expr
           | Literal Position Lit
           | Freeze Position Expr Expr Expr
@@ -28,7 +33,7 @@ exprPos :: Expr -> Position
 exprPos (Var p _) = p
 exprPos (App e1 e2) = exprPos e1
 exprPos (Literal p _) = p
-type Name = String
+type Name = Text
 type Pattern = Name
 data Body = Bind Name [Pattern] Body Body | Done Expr
            deriving Show
@@ -38,11 +43,11 @@ data ParseError = MalformedSyntaxDeclaration Position
                 | ExpectedPattern Expr
                 | ExpectedSemicolon Position
                 | ExpectedEquals Position
-                | ExpectedGot Position [String] Token
+                | ExpectedGot Position [Text] Token
                 | ExpressionAmbiguous [Expr]
-                | DuplicatePatternBinding Position [String]
+                | DuplicatePatternBinding Position [Text]
                 deriving Show
-type Table = [[(Holey String, Associativity)]]
+type Table = [[(Holey Text, Associativity)]]
 
 builtIns = (map . map) (first holey)
   [ [("_@@@_",           LeftAssoc)]]
@@ -108,7 +113,7 @@ parseExpressionTo terminator t ts = let (candidate,ts') = break ((\x -> x == ter
     (es, r)  -> Left (ExpressionAmbiguous es) 
 
 
-grammar :: Table -> Grammar r (Prod r String (Position, Token) Expr)
+grammar :: Table -> Grammar r (Prod r Text (Position, Token) Expr)
 grammar table = mdo
   literal   <- rule $  terminal (\t -> case t of (p,StringLitTok s)   -> Just $ Literal p (StringLit s)    ; _ -> Nothing) 
                    <|> terminal (\t -> case t of (p,IntLitTok s)      -> Just $ Literal p (IntLit s)       ; _ -> Nothing) 
