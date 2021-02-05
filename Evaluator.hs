@@ -68,6 +68,8 @@ data EvalError = ScopeError Position String
                | BinaryOpOnInvalidTypes Op Value Value
                | UnaryOpOnInvalidTypes Op Value
                | FreezeLHSNotVar Position
+               | FreezeRHSNotValue Position
+               | FreezeInNotFormula Position
                deriving (Show)
 
 
@@ -124,6 +126,10 @@ evalExpr g (Freeze p (Var _ n) e2 e3) = do
     makeFreeze (Independent t) (Formula as' f) = makeFreeze (StateDependent [] (Constant t)) (Formula as' f)
     makeFreeze t (StateDependent as f) = makeFreeze t (Formula as (Atomic f))
     makeFreeze t (Independent f) = makeFreeze t (StateDependent [] (Constant f))
+    makeFreeze t (Closure {}) = Left $ FreezeInNotFormula p
+    makeFreeze t (PartialOp {}) = Left $ FreezeInNotFormula p
+    makeFreeze t u = Left $ FreezeRHSNotValue p
+    
 evalExpr g (Freeze p _ _ _) = Left $ FreezeLHSNotVar p
 evalExpr g (Literal p l) = Right $ Independent $ LitVal l
 

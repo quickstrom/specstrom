@@ -120,6 +120,7 @@ grammar table = mdo
   atom      <- rule $  ident 
                    <|> lparen *> expr <* rparen
   normalApp <- rule $  atom
+                   <|> App <$> normalApp <*> atom  
   expr      <- mixfixExpression tbl normalApp makeAp
   return expr
   where
