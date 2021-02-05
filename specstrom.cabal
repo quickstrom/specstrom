@@ -17,7 +17,7 @@ maintainer:          l.oconnor@ed.ac.uk
 build-type:          Simple
 extra-source-files:  CHANGELOG.md
 
-executable quickstrom-proto
+executable specstrom
   main-is:             Main.hs
   other-modules: Parser Lexer Evaluator PrettyPrinter
   -- other-extensions:
