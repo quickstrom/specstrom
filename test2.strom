@@ -1,0 +1,10 @@
+syntax _||_ 3 right;
+syntax _&&_ 4 right;
+syntax not_ 6 right;
+syntax _==_ 7; 
+syntax always_ 6 right;
+syntax next_ 6 right;
+syntax eventually_ 6 right;
+syntax _until_ 5 right;
+let test = access `accessor` until access `funky`;
+not access `blah` && next test until test;

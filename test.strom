@@ -1,0 +1,52 @@
+// Proposed syntax for Quickstrom specs.
+// Reserved syntax is the word "syntax", "let", // for comments, semicolons, parentheses and the equals sign.
+// You also can't begin a symbol with ' or " or a number, as they are used for literals.
+// All other syntax is user-definable using syntax-keywords using mix-fix operators.
+// Note that this means spaces between symbols and words is important. a&&b is not a && b!
+syntax _||_ 3 right;
+syntax _&&_ 4 right;
+syntax not_ 6 right;
+syntax _==_ 7; 
+syntax always_ 6 right;
+syntax next_ 6 right;
+syntax eventually_ 6 right;
+syntax _until_ 5 right;
+
+let unchanged x  = true; // TODO: can't implement yet
+
+let buttonText = access `.play-pause`;
+let timeDisplayText = access `.time-display`;
+
+let playing = 
+   let pauseString = "pause";  // just demonstrating local bindings
+   buttonText == pauseString;  // No more maybe, we just have null for that
+
+let paused = 
+   syntax _isPlay 7; //Also demonstrating local syntax
+   let x isPlay = x == "play";
+   buttonText isPlay;
+
+// bindings can take arguments.
+let transition a b = a && next b;
+
+syntax _~>_ 5;
+let a ~> b = transition a b;
+
+
+let play = paused ~> playing && unchanged timeDisplayText;
+
+let pause = playing ~> paused && unchanged timeDisplayText;
+
+let tick = playing ~> playing && not unchanged timeDisplayText;
+
+paused && always (play || pause || tick) // always always == always, I am just demonstrating the prefix syntax.
+
+//TODO:
+// Currently no lambda syntax. All functions are named. So far I haven't needed lambdas.
+// Because freeze introduces variables it must be baked in more deeply into the language syntax, not just as a built-in mixfix.
+// No evaluator yet..
+// Bespoke syntax and features for accessors and declaring actions. 
+//    Perhaps an accessor could be surrounded by backticks? That's nice and lightweight.
+//    Perhaps queryOne/All could be determined based on context? Or generalised to all automatically jquery style?
+//                   ... Or maybe that's too magical.
+// pattern matching? it'd be nice if we had something a bit more lightweight.

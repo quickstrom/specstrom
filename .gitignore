@@ -1,0 +1,3 @@
+*.swp
+cabal.project.local
+dist-newstyle
