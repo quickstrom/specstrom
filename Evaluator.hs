@@ -1,6 +1,7 @@
 module Evaluator where
 import Parser
 import Lexer (Position)
+import qualified Data.Set as S
 
 data Op = Equals
         | NotEquals
@@ -51,8 +52,8 @@ type Accessor = String
 type Env = [(Name, Value)]
 
 data Value = Independent IValue 
-           | StateDependent [Accessor] (FormulaExpr Accessor)
-           | Formula [Accessor] (Formula Accessor)
+           | StateDependent (S.Set Accessor) (FormulaExpr Accessor)
+           | Formula (S.Set Accessor) (Formula Accessor)
            | Closure (Maybe (Name,Position)) Env [Name] Body
            | PartialOp Op [Value]
            deriving (Show)
@@ -119,13 +120,13 @@ evalExpr g (Var p s) = case lookup s g of
 evalExpr g (App e1 e2) = do v1 <- evalExpr g e1; v2 <- evalExpr g e2; app v1 v2
 evalExpr g (Freeze p (Var _ n) e2 e3) = do 
       v1 <- evalExpr g e2
-      v2 <- evalExpr ((n, StateDependent [] (FreezeVar n p)):g) e3
+      v2 <- evalExpr ((n, StateDependent S.empty (FreezeVar n p)):g) e3
       makeFreeze v1 v2 
   where 
-    makeFreeze (StateDependent as t) (Formula as' f) = Right $ Formula (as ++ as') $ FreezeIn p n t f
-    makeFreeze (Independent t) (Formula as' f) = makeFreeze (StateDependent [] (Constant t)) (Formula as' f)
+    makeFreeze (StateDependent as t) (Formula as' f) = Right $ Formula (as `S.union` as') $ FreezeIn p n t f
+    makeFreeze (Independent t) (Formula as' f) = makeFreeze (StateDependent S.empty (Constant t)) (Formula as' f)
     makeFreeze t (StateDependent as f) = makeFreeze t (Formula as (Atomic f))
-    makeFreeze t (Independent f) = makeFreeze t (StateDependent [] (Constant f))
+    makeFreeze t (Independent f) = makeFreeze t (StateDependent S.empty (Constant f))
     makeFreeze t (Closure {}) = Left $ FreezeInNotFormula p
     makeFreeze t (PartialOp {}) = Left $ FreezeInNotFormula p
     makeFreeze t u = Left $ FreezeRHSNotValue p
@@ -166,7 +167,7 @@ binaryEqOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (IntLit j)
 binaryEqOp o (Independent v1) (Independent v2) = Right $ Independent (BoolVal (funFor o v1 v2))
   where funFor Equals    = (==)
         funFor NotEquals = (/=)
-binaryEqOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 ++ a2) $ Op o [e1,e2]
+binaryEqOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `S.union` a2) $ Op o [e1,e2]
 binaryEqOp o (StateDependent a1 e1) (Independent v2)       = Right $ StateDependent a1 $ Op o [e1, Constant v2]
 binaryEqOp o (Independent v1) (StateDependent a2 e2)       = Right $ StateDependent a2 $ Op o [Constant v1, e2]
 binaryEqOp o v1 v2 = Left $ BinaryOpOnInvalidTypes o v1 v2
@@ -188,7 +189,7 @@ binaryArithOp o (Independent (LitVal (IntLit i))) (Independent (LitVal (FloatLit
   = binaryArithOp o (Independent (LitVal (FloatLit (fromIntegral i)))) (Independent (LitVal (FloatLit j)))
 binaryArithOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (IntLit j)))
   = binaryArithOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (FloatLit (fromIntegral j))))
-binaryArithOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 ++ a2) $ Op o [e1,e2]
+binaryArithOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `S.union` a2) $ Op o [e1,e2]
 binaryArithOp o (StateDependent a1 e1) (Independent v2)       = Right $ StateDependent a1 $ Op o [e1, Constant v2]
 binaryArithOp o (Independent v1) (StateDependent a2 e2)       = Right $ StateDependent a2 $ Op o [Constant v1, e2]
 binaryArithOp o v1 v2 = Left $ BinaryOpOnInvalidTypes o v1 v2
@@ -206,7 +207,7 @@ binaryComparisonOp o (Independent (LitVal (IntLit i))) (Independent (LitVal (Flo
   = binaryComparisonOp o (Independent (LitVal (FloatLit (fromIntegral i)))) (Independent (LitVal (FloatLit j)))
 binaryComparisonOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (IntLit j)))
   = binaryComparisonOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (FloatLit (fromIntegral j))))
-binaryComparisonOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 ++ a2) $ Op o [e1,e2]
+binaryComparisonOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `S.union` a2) $ Op o [e1,e2]
 binaryComparisonOp o (StateDependent a1 e1) (Independent v2)       = Right $ StateDependent a1 $ Op o [e1, Constant v2]
 binaryComparisonOp o (Independent v1) (StateDependent a2 e2)       = Right $ StateDependent a2 $ Op o [Constant v1, e2]
 binaryComparisonOp o v1 v2 = Left $ BinaryOpOnInvalidTypes o v1 v2
@@ -220,26 +221,26 @@ binaryBooleanOp o (Independent (BoolVal v1)) (Independent (BoolVal v2))
   where boolFunFor AndOp = (&&)
         boolFunFor OrOp  = (||)
         boolFunFor ImpliesOp = (\x y -> not x || y)
-binaryBooleanOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 ++ a2) $ Op o [e1,e2]
+binaryBooleanOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `S.union` a2) $ Op o [e1,e2]
 binaryBooleanOp o (StateDependent a1 e1) (Independent v2)       = Right $ StateDependent a1 $ Op o [e1, Constant v2]
 binaryBooleanOp o (Independent v1) (StateDependent a2 e2)       = Right $ StateDependent a2 $ Op o [Constant v1, e2]
-binaryBooleanOp o (Formula a1 f1) (Formula a2 f2) = Right $ Formula (a1 ++ a2) (formulaFunFor o f1 f2)
+binaryBooleanOp o (Formula a1 f1) (Formula a2 f2) = Right $ Formula (a1 `S.union` a2) (formulaFunFor o f1 f2)
   where formulaFunFor AndOp = And
         formulaFunFor OrOp  = Or
         formulaFunFor ImpliesOp = Implies
 binaryBooleanOp o (Formula a1 f1) (StateDependent a2 f2) = binaryBooleanOp o (Formula a1 f1) (Formula a2 (Atomic f2))
 binaryBooleanOp o (StateDependent a1 f1) (Formula a2 f2) = binaryBooleanOp o (Formula a1 (Atomic f1)) (Formula a2 f2)
-binaryBooleanOp o (Independent (BoolVal v1)) (Formula a2 f2) = binaryBooleanOp o (Formula [] (formulaFor v1)) (Formula a2 f2)
-binaryBooleanOp o (Formula a1 f1) (Independent (BoolVal v2)) = binaryBooleanOp o (Formula a1 f1) (Formula [] (formulaFor v2))
+binaryBooleanOp o (Independent (BoolVal v1)) (Formula a2 f2) = binaryBooleanOp o (Formula S.empty (formulaFor v1)) (Formula a2 f2)
+binaryBooleanOp o (Formula a1 f1) (Independent (BoolVal v2)) = binaryBooleanOp o (Formula a1 f1) (Formula S.empty (formulaFor v2))
 binaryBooleanOp o v1 v2 = Left $ BinaryOpOnInvalidTypes o v1 v2
 
 binaryTemporalOp o v1 (Independent (BoolVal v2))
-  = binaryTemporalOp o v1 (Formula [] (formulaFor v2))
+  = binaryTemporalOp o v1 (Formula S.empty (formulaFor v2))
 binaryTemporalOp o (Independent (BoolVal v1)) v2
-  = binaryTemporalOp o (Formula [] (formulaFor v1)) v2
+  = binaryTemporalOp o (Formula S.empty (formulaFor v1)) v2
 binaryTemporalOp o (StateDependent a1 e1) (StateDependent a2 e2) 
   = binaryTemporalOp o (Formula a1 (Atomic e1)) (Formula a2 (Atomic e2))
-binaryTemporalOp o (Formula a1 f1) (Formula a2 f2) = Right $ Formula (a1 ++ a2) (formulaFunFor o f1 f2)
+binaryTemporalOp o (Formula a1 f1) (Formula a2 f2) = Right $ Formula (a1 `S.union` a2) (formulaFunFor o f1 f2)
   where formulaFunFor UntilOp = Until
 binaryTemporalOp o (Formula a1 f1) (StateDependent a2 f2) = binaryTemporalOp o (Formula a1 f1) (Formula a2 (Atomic f2))
 binaryTemporalOp o (StateDependent a1 f1) (Formula a2 f2) = binaryTemporalOp o (Formula a1 (Atomic f1)) (Formula a2 f2)
@@ -251,7 +252,7 @@ unaryBooleanOp o (StateDependent a1 e1) = Right $ StateDependent a1 $ Op o [e1]
 unaryBooleanOp o (Formula a1 f1)  = Right $ Formula a1 (Not f1)
 unaryBooleanOp o v = Left $ UnaryOpOnInvalidTypes o v
 
-unaryTemporalOp o (Independent (BoolVal v)) = unaryTemporalOp o (Formula [] (formulaFor v))
+unaryTemporalOp o (Independent (BoolVal v)) = unaryTemporalOp o (Formula S.empty (formulaFor v))
 unaryTemporalOp o (StateDependent a v) = unaryTemporalOp o (Formula a (Atomic v))
 unaryTemporalOp o (Formula a f) = Right $ Formula a (funFor o f)
   where funFor NextOp = Next
@@ -259,6 +260,6 @@ unaryTemporalOp o (Formula a f) = Right $ Formula a (funFor o f)
         funFor EventuallyOp = Eventually
 unaryTemporalOp o v = Left $ UnaryOpOnInvalidTypes o v
 
-unarySelectorOp o (Independent (LitVal (SelectorLit a))) = Right $ StateDependent [a] (Accessor a) 
+unarySelectorOp o (Independent (LitVal (SelectorLit a))) = Right $ StateDependent (S.singleton a) (Accessor a) 
 unarySelectorOp o v = Left $ UnaryOpOnInvalidTypes o v
 
