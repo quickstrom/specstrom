@@ -29,8 +29,8 @@ exprPos (Var p _) = p
 exprPos (App e1 e2) = exprPos e1
 exprPos (Literal p _) = p
 type Name = String
-type Pattern = Name
-data Body = Bind Name [Pattern] Body Body | Done Expr
+type Pattern = (Name,Position)
+data Body = Bind Name Position [Pattern] Body Body | Done Expr
            deriving Show
 
 data ParseError = MalformedSyntaxDeclaration Position 
@@ -61,7 +61,7 @@ parseBindingBody t ((p,Reserved Let):ts) = do
             ((_,Reserved Define):ts'') -> do 
               (rest, body) <- parseBindingBody t ts''
               case rest of 
-                ((_,Semi):rest') -> fmap (Bind n ps body) <$> parseBindingBody t rest'
+                ((_,Semi):rest') -> fmap (Bind n p ps body) <$> parseBindingBody t rest'
                 ((p,_):_) -> Left $ ExpectedSemicolon p
             ((p,_):_) -> Left $ ExpectedEquals p
 parseBindingBody t ts = fmap Done <$> parseExpressionTo Semi t ts
@@ -82,13 +82,13 @@ parsePatterns t ts = do
   case peelAps e [] of 
     (Var p n, es) -> do 
       es' <-  mapM fromExpr es
-      let es'' = nub es'
-          dupes = es' \\ es''
-      if nub es' /= es' then Left (DuplicatePatternBinding p dupes)
-                        else pure (ts', n, es')
+      let es'' = nub $ map fst es'
+          dupes = map fst es' \\ es''
+      if nub (map fst es') /= map fst es' then Left (DuplicatePatternBinding p dupes)
+                                          else pure (ts', n, es')
     (e,es) -> Left $ ExpectedPattern e
  where
-  fromExpr (Var _ n) = Right n
+  fromExpr (Var p n) = Right (n, p)
   fromExpr e = Left $ ExpectedPattern e
 
 peelAps :: Expr -> [Expr] -> (Expr, [Expr])

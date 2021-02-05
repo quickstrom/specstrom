@@ -2,7 +2,7 @@ module Evaluator where
 import Parser
 import Lexer (Position)
 import qualified Data.Set as S
-
+import qualified Data.Map as M
 data Op = Equals
         | NotEquals
         | Plus
@@ -49,12 +49,12 @@ data Formula a = Atomic (FormulaExpr a)
 
 type Accessor = String
 
-type Env = [(Name, Value)]
+type Env = M.Map Name Value
 
 data Value = Independent IValue 
            | StateDependent (S.Set Accessor) (FormulaExpr Accessor)
            | Formula (S.Set Accessor) (Formula Accessor)
-           | Closure (Maybe (Name,Position)) Env [Name] Body
+           | Closure (Maybe (Name,Position)) Env [(Name,Position)] Body
            | PartialOp Op [Value]
            deriving (Show)
 
@@ -71,11 +71,12 @@ data EvalError = ScopeError Position String
                | FreezeLHSNotVar Position
                | FreezeRHSNotValue Position
                | FreezeInNotFormula Position
+               | VariableAlreadyDefined Name Position
                deriving (Show)
 
 
 initialEnv :: Env
-initialEnv = 
+initialEnv = M.fromList
   [ ("true" , Independent $ BoolVal True )
   , ("false", Independent $ BoolVal False )
   , ("null", Independent $ Null)
@@ -100,10 +101,14 @@ initialEnv =
   , ("access", PartialOp MkAccessor [])
   ]
 
+extend :: Env -> (Name, Position) -> Value -> Either EvalError Env 
+extend env (n,p) v | n `elem` M.keys env = Left $ VariableAlreadyDefined n p 
+                   | otherwise = Right $ M.insert n v env
+
 evaluate :: Env -> Body -> Either EvalError Value
-evaluate g (Bind f ps b1 b2) = do 
+evaluate g (Bind f p ps b1 b2) = do 
    v1 <- evalBind g ps b1 
-   let g' = (f,v1):g
+   g' <- extend g (f,p) v1
    evaluate g' b2
 evaluate g (Done e) = evalExpr g e
 
@@ -111,16 +116,17 @@ evalBind g [] b = evaluate g b
 evalBind g xs b = Right $ Closure Nothing g xs b
 
 evalExpr :: Env -> Expr -> Either EvalError Value
-evalExpr g (Var p s) = case lookup s g of 
+evalExpr g (Var p s) = case M.lookup s g of 
     Just (StateDependent as e) ->  Right $ StateDependent as (LocExpr s p e)
     Just (Formula as f) -> Right $ Formula as (LocFormula s p f)
     Just (Closure Nothing env as b) -> Right $ Closure (Just (s,p)) env as b
     Just v  -> Right $ v
     Nothing -> Left $ ScopeError p s
 evalExpr g (App e1 e2) = do v1 <- evalExpr g e1; v2 <- evalExpr g e2; app v1 v2
-evalExpr g (Freeze p (Var _ n) e2 e3) = do 
+evalExpr g (Freeze p (Var p' n) e2 e3) = do 
       v1 <- evalExpr g e2
-      v2 <- evalExpr ((n, StateDependent S.empty (FreezeVar n p)):g) e3
+      g' <- extend g (n,p') (StateDependent S.empty (FreezeVar n p))
+      v2 <- evalExpr g' e3
       makeFreeze v1 v2 
   where 
     makeFreeze (StateDependent as t) (Formula as' f) = Right $ Formula (as `S.union` as') $ FreezeIn p n t f
@@ -148,7 +154,8 @@ app (PartialOp o []) v
 
 app (PartialOp o vs) v2 = Right $ PartialOp o (vs ++ [v2]) 
 app (Closure pos g [n] b) v2 = do 
-   r <- evaluate  ((n,v2):g) b
+   g' <- extend g n v2 
+   r <- evaluate g' b
    case pos of 
      Nothing -> pure r
      Just (n,p) -> do 
@@ -157,7 +164,9 @@ app (Closure pos g [n] b) v2 = do
          StateDependent as t -> Right $ StateDependent as (LocExpr n p t) 
          t -> Right $ t
     
-app (Closure p g (n:ns) b) v2 = Right $ Closure p ((n,v2):g) ns b
+app (Closure p g (n:ns) b) v2 = do 
+    g' <- extend g n v2 
+    Right $ Closure p g' ns b
 app v1 v2 = Left $ NotAFunction v1
 
 binaryEqOp o (Independent (LitVal (IntLit i))) (Independent (LitVal (FloatLit j)))
