@@ -9,6 +9,7 @@ import Data.Text.Prettyprint.Doc
 import Lexer
 import Parser
 import Prettyprinter.Render.Terminal
+import Data.List.NonEmpty (NonEmpty((:|)))
 
 prettyPos :: Position -> Doc AnsiStyle
 prettyPos (f, l, c) = pretty f <> ":" <> pretty l <> ":" <> pretty c
@@ -24,6 +25,7 @@ prettyLexerError (InvalidStringLit p s) = errorMessage p "invalid string literal
 prettyLexerError (InvalidFloatLit p s) = errorMessage p "invalid float literal:" [pretty s]
 prettyLexerError (UnterminatedCharLit p) = errorMessage p "no closing quote for char literal" []
 prettyLexerError (UnterminatedStringLit p) = errorMessage p "no closing quote for string literal" []
+prettyLexerError (UnterminatedSelectorLit p) = errorMessage p "no closing backtick for selector literal" []
 
 prettyParseError :: ParseError -> Doc AnsiStyle
 prettyParseError (MalformedSyntaxDeclaration p) = errorMessage p "malformed syntax declaration" []
@@ -36,7 +38,7 @@ prettyParseError (ExpectedGot p s t) =
     p
     "expected one of:"
     [sep (punctuate comma (map pretty s)), annotate (bold <> color Red) "but got:", prettyToken t]
-prettyParseError (ExpressionAmbiguous es@(e : _)) =
+prettyParseError (ExpressionAmbiguous (e :| es)) =
   errorMessage (exprPos e) "ambiguous expression; can be parsed as:" $
     punctuate (line <> annotate (bold <> color Red) "or:") (map prettyExpr es)
 prettyParseError (DuplicatePatternBinding p [b]) = errorMessage p "duplicate bound variable in pattern:" [pretty b]
@@ -53,14 +55,14 @@ prettyToken (CharLitTok str) = literal (show str)
 prettyToken (IntLitTok str) = literal (show str)
 prettyToken (FloatLitTok str) = literal (show str)
 prettyToken (SelectorLitTok str) = literal ("`" <> str <> "`")
-prettyToken (LParen) = "("
-prettyToken (RParen) = ")"
-prettyToken (Semi) = ";"
-prettyToken (EOF) = "EOF"
+prettyToken LParen = "("
+prettyToken RParen = ")"
+prettyToken Semi = ";"
+prettyToken EOF = "EOF"
 
 prettyBody :: Body -> Doc AnsiStyle
 prettyBody (Bind n _p ps bs e) =
-  keyword ("let" :: Text) <+> prettyExpr (unpeelAps (var' n) (map var' $ map fst ps))
+  keyword ("let" :: Text) <+> prettyExpr (unpeelAps (var' n) (map (var' . fst) ps))
     <+> nest
       3
       ( keyword ("=" :: Text) <> softline
@@ -86,6 +88,8 @@ prettyExpr trm = renderTerm True trm
       | (x, []) <- peelAps t [] = case x of
         Var _ s -> ident s
         Literal _p l -> prettyLit l
+        Freeze _ n e b -> "freeze" <+> prettyExpr n <+> "=" <+> prettyExpr e <+> "in" <+> prettyExpr b
+        App{} -> mempty -- Handled by peelAps
       | (Var _ n, args) <- peelAps t [],
         Text.length (Text.filter (== '_') n) == length args =
         (if outer then id else parens) $ hsep $ infixTerms n args

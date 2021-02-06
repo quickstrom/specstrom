@@ -14,6 +14,7 @@ import Debug.Trace
 import Lexer
 import Text.Earley
 import Text.Earley.Mixfix
+import Data.List.NonEmpty (NonEmpty((:|)))
 
 holey :: Text -> Holey Text
 holey t =
@@ -53,7 +54,7 @@ data ParseError
   | ExpectedSemicolon Position
   | ExpectedEquals Position
   | ExpectedGot Position [Text] Token
-  | ExpressionAmbiguous [Expr]
+  | ExpressionAmbiguous (NonEmpty Expr)
   | DuplicatePatternBinding Position [Text]
   deriving (Show)
 
@@ -125,7 +126,7 @@ parseExpressionTo terminator t ts =
         ([one], _) -> Right (ts', one)
         ([], r) -> case unconsumed r of
           blah@((p, t') : _) | traceShow blah True -> Left (ExpectedGot p (expected r) t')
-        (es, _r) -> Left (ExpressionAmbiguous es)
+        (e:es, _r) -> Left (ExpressionAmbiguous (e :| es))
 
 grammar :: Table -> Grammar r (Prod r Text (Position, Token) Expr)
 grammar table = mdo
