@@ -22,6 +22,7 @@ executable specstrom
   other-modules: Parser Lexer Evaluator PrettyPrinter
   -- other-extensions:
   build-depends:       base >=4.13 && <4.14
+                     , aeson
                      , containers
                      , Earley
                      , prettyprinter

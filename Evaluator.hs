@@ -6,6 +6,7 @@ import qualified Data.Set as S
 import Data.Text (Text)
 import Lexer (Position)
 import Parser
+import qualified Data.Aeson as JSON
 
 data Op
   = Equals
@@ -34,7 +35,7 @@ data FormulaExpr a
   = LocExpr Name Position (FormulaExpr a)
   | Accessor a
   | Op Op [FormulaExpr a]
-  | Constant IValue
+  | Constant JSON.Value
   | FreezeVar Name Position
   deriving (Show)
 
@@ -59,18 +60,12 @@ type Accessor = Text
 type Env = M.Map Name Value
 
 data Value
-  = Independent IValue
+  = Independent JSON.Value
   | StateDependent (S.Set Accessor) (FormulaExpr Accessor)
   | Formula (S.Set Accessor) (Formula Accessor)
   | Closure (Maybe (Name, Position)) Env [(Name, Position)] Body
   | PartialOp Op [Value]
   deriving (Show)
-
-data IValue
-  = LitVal Lit
-  | BoolVal Bool
-  | Null
-  deriving (Show, Eq)
 
 data EvalError
   = ScopeError Position Text
@@ -87,9 +82,9 @@ data EvalError
 initialEnv :: Env
 initialEnv =
   M.fromList
-    [ ("true", Independent $ BoolVal True),
-      ("false", Independent $ BoolVal False),
-      ("null", Independent $ Null),
+    [ ("true", Independent $ JSON.Bool True),
+      ("false", Independent $ JSON.Bool False),
+      ("null", Independent JSON.Null),
       ("_==_", PartialOp Equals []),
       ("_!=_", PartialOp NotEquals []),
       ("_+_", PartialOp Plus []),
