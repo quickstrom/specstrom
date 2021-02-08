@@ -2,8 +2,8 @@ name: Format
 on:
   push:
     branches: [main]
-  #pull_request:
-  #  branches: [main]
+  pull_request:
+    branches: [main]
 jobs:
   format:
     runs-on: ubuntu-latest
@@ -16,7 +16,7 @@ jobs:
         nix_path: nixpkgs=channel:nixos-unstable
     - uses: cachix/cachix-action@v8
     - name: Format code
-    - run: nix-shell --run ./tools/format-code.sh
+      run: nix-shell --run ./tools/format-code.sh
     - name: Commit changes
       uses: stefanzweifel/git-auto-commit-action@v4.1.2
       with:
