@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Lexer where
+module Specstrom.Lexer where
 
 import Control.Arrow (first)
 import Data.Char

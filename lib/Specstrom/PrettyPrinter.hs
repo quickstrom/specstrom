@@ -1,15 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module PrettyPrinter where
+module Specstrom.PrettyPrinter where
 
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
-import Lexer
-import Parser
+import Specstrom.Lexer
+import Specstrom.Parser
 import Prettyprinter.Render.Terminal
-import Data.List.NonEmpty (NonEmpty((:|)))
 
 prettyPos :: Position -> Doc AnsiStyle
 prettyPos (f, l, c) = pretty f <> ":" <> pretty l <> ":" <> pretty c
@@ -89,7 +89,7 @@ prettyExpr trm = renderTerm True trm
         Var _ s -> ident s
         Literal _p l -> prettyLit l
         Freeze _ n e b -> "freeze" <+> prettyExpr n <+> "=" <+> prettyExpr e <+> "in" <+> prettyExpr b
-        App{} -> mempty -- Handled by peelAps
+        App {} -> mempty -- Handled by peelAps
       | (Var _ n, args) <- peelAps t [],
         Text.length (Text.filter (== '_') n) == length args =
         (if outer then id else parens) $ hsep $ infixTerms n args

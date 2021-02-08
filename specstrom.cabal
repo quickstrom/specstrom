@@ -17,17 +17,32 @@ maintainer:          l.oconnor@ed.ac.uk
 build-type:          Simple
 extra-source-files:  CHANGELOG.md
 
-executable specstrom
-  main-is:             Main.hs
-  other-modules: Parser Lexer Evaluator PrettyPrinter
-  -- other-extensions:
+library
+  hs-source-dirs:      lib
   build-depends:       base >=4.13 && <4.14
                      , containers
                      , Earley
                      , prettyprinter
                      , prettyprinter-ansi-terminal
                      , text
-  -- hs-source-dirs:
+  exposed-modules:     Specstrom.Evaluator 
+                     , Specstrom.Lexer 
+                     , Specstrom.Parser 
+                     , Specstrom.PrettyPrinter
+  -- TODO: -Werror=incomplete-patterns -Wredundant-constraints
+  ghc-options:         -Wall 
+
+
+executable specstrom
+  main-is:             Main.hs
+  hs-source-dirs:      cli
+  -- other-extensions:
+  build-depends:       base >=4.13 && <4.14
+                     , containers
+                     , prettyprinter
+                     , prettyprinter-ansi-terminal
+                     , specstrom
+                     , text
   default-language:    Haskell2010
   -- TODO: -Werror=incomplete-patterns -Wredundant-constraints
   ghc-options:         -Wall 

@@ -1,20 +1,20 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 
-module Parser where
+module Specstrom.Parser where
 
 import Control.Applicative
 import Control.Arrow (first)
 import Control.Monad (guard)
 import Data.List (nub, (\\))
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Debug.Trace
-import Lexer
+import Specstrom.Lexer
 import Text.Earley
 import Text.Earley.Mixfix
-import Data.List.NonEmpty (NonEmpty((:|)))
 
 holey :: Text -> Holey Text
 holey t =
@@ -126,7 +126,7 @@ parseExpressionTo terminator t ts =
         ([one], _) -> Right (ts', one)
         ([], r) -> case unconsumed r of
           blah@((p, t') : _) | traceShow blah True -> Left (ExpectedGot p (expected r) t')
-        (e:es, _r) -> Left (ExpressionAmbiguous (e :| es))
+        (e : es, _r) -> Left (ExpressionAmbiguous (e :| es))
 
 grammar :: Table -> Grammar r (Prod r Text (Position, Token) Expr)
 grammar table = mdo

@@ -1,11 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Evaluator where
+
+module Specstrom.Evaluator where
 
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Text (Text)
-import Lexer (Position)
-import Parser
+import Specstrom.Lexer (Position)
+import Specstrom.Parser
 
 data Op
   = Equals
