@@ -5,6 +5,7 @@ module Specstrom.Evaluator where
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Text (Text)
+import Specstrom.ElementState
 import Specstrom.Lexer (Position)
 import Specstrom.Parser
 
@@ -28,12 +29,15 @@ data Op
   | EventuallyOp
   | NextOp
   | MkAccessor
+  | MkCssValue
+  | MkProperty
+  | MkAttribute
   -- others?
   deriving (Show, Eq)
 
 data FormulaExpr a
   = LocExpr Name Position (FormulaExpr a)
-  | Accessor a
+  | Accessors a
   | Op Op [FormulaExpr a]
   | Constant IValue
   | FreezeVar Name Position
@@ -55,14 +59,17 @@ data Formula a
   | FreezeIn Position Name (FormulaExpr a) (Formula a)
   deriving (Show)
 
-type Accessor = Text
+type Accessors = M.Map Text (S.Set ElementState)
+
+unionAccessors :: Accessors -> Accessors -> Accessors
+unionAccessors = M.unionWith S.union
 
 type Env = M.Map Name Value
 
 data Value
   = Independent IValue
-  | StateDependent (S.Set Accessor) (FormulaExpr Accessor)
-  | Formula (S.Set Accessor) (Formula Accessor)
+  | StateDependent Accessors (FormulaExpr Accessors)
+  | Formula Accessors (Formula Accessors)
   | Closure (Maybe (Name, Position)) Env [(Name, Position)] Body
   | PartialOp Op [Value]
   deriving (Show)
@@ -109,7 +116,11 @@ initialEnv =
       ("always_", PartialOp AlwaysOp []),
       ("eventually_", PartialOp EventuallyOp []),
       ("next_", PartialOp NextOp []),
-      ("access", PartialOp MkAccessor [])
+      ("access", PartialOp MkAccessor []),
+      ("text", Independent $ LitVal (ElementStateLit Text)),
+      ("cssValue", PartialOp MkCssValue []),
+      ("attribute", PartialOp MkAttribute []),
+      ("property", PartialOp MkProperty [])
     ]
 
 extend :: Env -> (Name, Position) -> Value -> Either EvalError Env
@@ -138,14 +149,14 @@ evalExpr g (Var p s) = case M.lookup s g of
 evalExpr g (App e1 e2) = do v1 <- evalExpr g e1; v2 <- evalExpr g e2; app v1 v2
 evalExpr g (Freeze p (Var p' n) e2 e3) = do
   v1 <- evalExpr g e2
-  g' <- extend g (n, p') (StateDependent S.empty (FreezeVar n p))
+  g' <- extend g (n, p') (StateDependent M.empty (FreezeVar n p))
   v2 <- evalExpr g' e3
   makeFreeze v1 v2
   where
-    makeFreeze (StateDependent as t) (Formula as' f) = Right $ Formula (as `S.union` as') $ FreezeIn p n t f
-    makeFreeze (Independent t) (Formula as' f) = makeFreeze (StateDependent S.empty (Constant t)) (Formula as' f)
+    makeFreeze (StateDependent as t) (Formula as' f) = Right $ Formula (as `unionAccessors` as') $ FreezeIn p n t f
+    makeFreeze (Independent t) (Formula as' f) = makeFreeze (StateDependent mempty (Constant t)) (Formula as' f)
     makeFreeze t (StateDependent as f) = makeFreeze t (Formula as (Atomic f))
-    makeFreeze t (Independent f) = makeFreeze t (StateDependent S.empty (Constant f))
+    makeFreeze t (Independent f) = makeFreeze t (StateDependent mempty (Constant f))
     makeFreeze _t (Closure {}) = Left $ FreezeInNotFormula p
     makeFreeze _t (PartialOp {}) = Left $ FreezeInNotFormula p
     makeFreeze _t _u = Left $ FreezeRHSNotValue p
@@ -159,10 +170,11 @@ app (PartialOp o [v1]) v2
   | o `elem` [Less, LessEq, Greater, GreaterEq] = binaryComparisonOp o v1 v2
   | o `elem` [AndOp, OrOp, ImpliesOp] = binaryBooleanOp o v1 v2
   | o `elem` [UntilOp] = binaryTemporalOp o v1 v2
+  | o `elem` [MkAccessor] = binarySelectorOp o v1 v2
 app (PartialOp o []) v
   | o `elem` [NotOp] = unaryBooleanOp o v
   | o `elem` [AlwaysOp, EventuallyOp, NextOp] = unaryTemporalOp o v
-  | o `elem` [MkAccessor] = unarySelectorOp o v
+  | o `elem` [MkCssValue, MkProperty, MkAttribute] = unaryElementStateOp o v
 app (PartialOp o vs) v2 = Right $ PartialOp o (vs ++ [v2])
 app (Closure pos g [n] b) v2 = do
   g' <- extend g n v2
@@ -188,7 +200,7 @@ binaryEqOp o (Independent v1) (Independent v2) = Right $ Independent (BoolVal (f
   where
     funFor Equals = (==)
     funFor NotEquals = (/=)
-binaryEqOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `S.union` a2) $ Op o [e1, e2]
+binaryEqOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `unionAccessors` a2) $ Op o [e1, e2]
 binaryEqOp o (StateDependent a1 e1) (Independent v2) = Right $ StateDependent a1 $ Op o [e1, Constant v2]
 binaryEqOp o (Independent v1) (StateDependent a2 e2) = Right $ StateDependent a2 $ Op o [Constant v1, e2]
 binaryEqOp o v1 v2 = Left $ BinaryOpOnInvalidTypes o v1 v2
@@ -213,7 +225,7 @@ binaryArithOp o (Independent (LitVal (IntLit i))) (Independent (LitVal (FloatLit
   binaryArithOp o (Independent (LitVal (FloatLit (fromIntegral i)))) (Independent (LitVal (FloatLit j)))
 binaryArithOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (IntLit j))) =
   binaryArithOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (FloatLit (fromIntegral j))))
-binaryArithOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `S.union` a2) $ Op o [e1, e2]
+binaryArithOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `unionAccessors` a2) $ Op o [e1, e2]
 binaryArithOp o (StateDependent a1 e1) (Independent v2) = Right $ StateDependent a1 $ Op o [e1, Constant v2]
 binaryArithOp o (Independent v1) (StateDependent a2 e2) = Right $ StateDependent a2 $ Op o [Constant v1, e2]
 binaryArithOp o v1 v2 = Left $ BinaryOpOnInvalidTypes o v1 v2
@@ -233,7 +245,7 @@ binaryComparisonOp o (Independent (LitVal (IntLit i))) (Independent (LitVal (Flo
   binaryComparisonOp o (Independent (LitVal (FloatLit (fromIntegral i)))) (Independent (LitVal (FloatLit j)))
 binaryComparisonOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (IntLit j))) =
   binaryComparisonOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (FloatLit (fromIntegral j))))
-binaryComparisonOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `S.union` a2) $ Op o [e1, e2]
+binaryComparisonOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `unionAccessors` a2) $ Op o [e1, e2]
 binaryComparisonOp o (StateDependent a1 e1) (Independent v2) = Right $ StateDependent a1 $ Op o [e1, Constant v2]
 binaryComparisonOp o (Independent v1) (StateDependent a2 e2) = Right $ StateDependent a2 $ Op o [Constant v1, e2]
 binaryComparisonOp o v1 v2 = Left $ BinaryOpOnInvalidTypes o v1 v2
@@ -249,28 +261,28 @@ binaryBooleanOp o (Independent (BoolVal v1)) (Independent (BoolVal v2)) =
     boolFunFor AndOp = (&&)
     boolFunFor OrOp = (||)
     boolFunFor ImpliesOp = (\x y -> not x || y)
-binaryBooleanOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `S.union` a2) $ Op o [e1, e2]
+binaryBooleanOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `unionAccessors` a2) $ Op o [e1, e2]
 binaryBooleanOp o (StateDependent a1 e1) (Independent v2) = Right $ StateDependent a1 $ Op o [e1, Constant v2]
 binaryBooleanOp o (Independent v1) (StateDependent a2 e2) = Right $ StateDependent a2 $ Op o [Constant v1, e2]
-binaryBooleanOp o (Formula a1 f1) (Formula a2 f2) = Right $ Formula (a1 `S.union` a2) (formulaFunFor o f1 f2)
+binaryBooleanOp o (Formula a1 f1) (Formula a2 f2) = Right $ Formula (a1 `unionAccessors` a2) (formulaFunFor o f1 f2)
   where
     formulaFunFor AndOp = And
     formulaFunFor OrOp = Or
     formulaFunFor ImpliesOp = Implies
 binaryBooleanOp o (Formula a1 f1) (StateDependent a2 f2) = binaryBooleanOp o (Formula a1 f1) (Formula a2 (Atomic f2))
 binaryBooleanOp o (StateDependent a1 f1) (Formula a2 f2) = binaryBooleanOp o (Formula a1 (Atomic f1)) (Formula a2 f2)
-binaryBooleanOp o (Independent (BoolVal v1)) (Formula a2 f2) = binaryBooleanOp o (Formula S.empty (formulaFor v1)) (Formula a2 f2)
-binaryBooleanOp o (Formula a1 f1) (Independent (BoolVal v2)) = binaryBooleanOp o (Formula a1 f1) (Formula S.empty (formulaFor v2))
+binaryBooleanOp o (Independent (BoolVal v1)) (Formula a2 f2) = binaryBooleanOp o (Formula mempty (formulaFor v1)) (Formula a2 f2)
+binaryBooleanOp o (Formula a1 f1) (Independent (BoolVal v2)) = binaryBooleanOp o (Formula a1 f1) (Formula mempty (formulaFor v2))
 binaryBooleanOp o v1 v2 = Left $ BinaryOpOnInvalidTypes o v1 v2
 
 binaryTemporalOp :: Op -> Value -> Value -> Either EvalError Value
 binaryTemporalOp o v1 (Independent (BoolVal v2)) =
-  binaryTemporalOp o v1 (Formula S.empty (formulaFor v2))
+  binaryTemporalOp o v1 (Formula mempty (formulaFor v2))
 binaryTemporalOp o (Independent (BoolVal v1)) v2 =
-  binaryTemporalOp o (Formula S.empty (formulaFor v1)) v2
+  binaryTemporalOp o (Formula mempty (formulaFor v1)) v2
 binaryTemporalOp o (StateDependent a1 e1) (StateDependent a2 e2) =
   binaryTemporalOp o (Formula a1 (Atomic e1)) (Formula a2 (Atomic e2))
-binaryTemporalOp o (Formula a1 f1) (Formula a2 f2) = Right $ Formula (a1 `S.union` a2) (formulaFunFor o f1 f2)
+binaryTemporalOp o (Formula a1 f1) (Formula a2 f2) = Right $ Formula (a1 `unionAccessors` a2) (formulaFunFor o f1 f2)
   where
     formulaFunFor UntilOp = Until
 binaryTemporalOp o (Formula a1 f1) (StateDependent a2 f2) = binaryTemporalOp o (Formula a1 f1) (Formula a2 (Atomic f2))
@@ -286,7 +298,7 @@ unaryBooleanOp _o (Formula a1 f1) = Right $ Formula a1 (Not f1)
 unaryBooleanOp o v = Left $ UnaryOpOnInvalidTypes o v
 
 unaryTemporalOp :: Op -> Value -> Either EvalError Value
-unaryTemporalOp o (Independent (BoolVal v)) = unaryTemporalOp o (Formula S.empty (formulaFor v))
+unaryTemporalOp o (Independent (BoolVal v)) = unaryTemporalOp o (Formula mempty (formulaFor v))
 unaryTemporalOp o (StateDependent a v) = unaryTemporalOp o (Formula a (Atomic v))
 unaryTemporalOp o (Formula a f) = Right $ Formula a (funFor o f)
   where
@@ -295,6 +307,16 @@ unaryTemporalOp o (Formula a f) = Right $ Formula a (funFor o f)
     funFor EventuallyOp = Eventually
 unaryTemporalOp o v = Left $ UnaryOpOnInvalidTypes o v
 
-unarySelectorOp :: Op -> Value -> Either EvalError Value
-unarySelectorOp _o (Independent (LitVal (SelectorLit a))) = Right $ StateDependent (S.singleton a) (Accessor a)
-unarySelectorOp o v = Left $ UnaryOpOnInvalidTypes o v
+unaryElementStateOp :: Op -> Value -> Either EvalError Value
+unaryElementStateOp o (Independent (LitVal (StringLit name))) =
+  let es = case o of
+        MkCssValue -> CssValue name
+        MkProperty -> Property name
+        MkAttribute -> Attribute name
+   in Right (Independent (LitVal (ElementStateLit es)))
+
+binarySelectorOp :: Op -> Value -> Value -> Either EvalError Value
+binarySelectorOp _o (Independent (LitVal (SelectorLit a))) (Independent (LitVal (ElementStateLit state))) =
+  let accessors = M.singleton a (S.singleton state)
+   in Right $ StateDependent accessors (Accessors accessors)
+binarySelectorOp o v1 v2 = Left $ BinaryOpOnInvalidTypes o v1 v2

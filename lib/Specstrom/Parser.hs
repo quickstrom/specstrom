@@ -12,6 +12,7 @@ import Data.Maybe
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Debug.Trace
+import Specstrom.ElementState
 import Specstrom.Lexer
 import Text.Earley
 import Text.Earley.Mixfix
@@ -25,7 +26,14 @@ holey t =
       where
         (i, rest) = Text.span (/= '_') t
 
-data Lit = IntLit Int | FloatLit Double | StringLit Text | CharLit Char | SelectorLit Text deriving (Show, Eq)
+data Lit
+  = IntLit Int
+  | FloatLit Double
+  | StringLit Text
+  | CharLit Char
+  | SelectorLit Text
+  | ElementStateLit ElementState
+  deriving (Show, Eq)
 
 data Expr
   = Var Position Text

@@ -11,11 +11,14 @@ syntax always_ 6 right;
 syntax next_ 6 right;
 syntax eventually_ 6 right;
 syntax _until_ 5 right;
+syntax css_ 1;
 
 let unchanged x  = freeze a = x in next (x == a); 
 
-let buttonText = access `.play-pause`;
-let timeDisplayText = access `.time-display`;
+let visible = access `.player` (cssValue "display") == "block";
+
+let buttonText = access `.play-pause` text;
+let timeDisplayText = access `.time-display` text;
 
 let playing = 
    let pauseString = "pause";  // just demonstrating local bindings
@@ -39,7 +42,9 @@ let pause = playing ~> paused && unchanged timeDisplayText;
 
 let tick = playing ~> playing && not unchanged timeDisplayText;
 
-paused && always (play || pause || tick) // always always == always, I am just demonstrating the prefix syntax.
+paused 
+   && always visible 
+   && always (play || pause || tick) // always always == always, I am just demonstrating the prefix syntax.
 
 //TODO:
 // Currently no lambda syntax. All functions are named. So far I haven't needed lambdas.

@@ -6,5 +6,5 @@ syntax always_ 6 right;
 syntax next_ 6 right;
 syntax eventually_ 6 right;
 syntax _until_ 5 right;
-let test = access `accessor` until access `funky`;
-not access `blah` && next test until test;
+let test = access `accessor` text until access `funky` text;
+not access `blah` text && next test until test;
