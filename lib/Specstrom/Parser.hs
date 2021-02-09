@@ -64,8 +64,7 @@ builtIns :: [[(Holey Text, Associativity)]]
 builtIns =
   (map . map)
     (first holey)
-    [ [ ("_@@@_", LeftAssoc),
-        ("_||_", RightAssoc),
+    [ [ ("_||_", RightAssoc),
         ("_&&_", RightAssoc),
         ("_==>_", RightAssoc),
         ("not_", RightAssoc),
@@ -137,7 +136,7 @@ parseExpressionTo terminator t ts =
    in case fullParses (parser $ grammar t) candidate of
         ([one], _) -> Right (ts', one)
         ([], r) -> case unconsumed r of
-          blah@((p, t') : _) | traceShow blah True -> Left (ExpectedGot p (expected r) t')
+          ((p, t') : _) -> Left (ExpectedGot p (expected r) t')
         (e : es, _r) -> Left (ExpressionAmbiguous (e :| es))
 
 grammar :: Table -> Grammar r (Prod r Text (Position, Token) Expr)

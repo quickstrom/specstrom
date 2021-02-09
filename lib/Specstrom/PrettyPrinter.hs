@@ -205,8 +205,8 @@ prettyFormula p = \case
   Always f -> parensIf (p > 6) ("always" <+> prettyFormula 6 f)
   Eventually f -> parensIf (p > 6) ("eventually" <+> prettyFormula 6 f)
   Next f -> parensIf (p > 6) ("next" <+> prettyFormula 6 f)
-  Trivial -> "<trivial>"
-  Absurd -> "<absurd>"
+  Trivial -> "true"
+  Absurd -> "false"
   LocFormula _name _pos f -> prettyFormula p f
   FreezeIn _pos name e f -> parensIf (p > 0) (keyword "freeze" <+> pretty name <+> keyword "=" <+> prettyFormulaExpr 0 e <+> keyword "in" <+> prettyFormula 0 f)
 
