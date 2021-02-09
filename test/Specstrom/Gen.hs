@@ -25,8 +25,26 @@ position =
     <$> Gen.integral (Range.linear 1 10)
     <*> Gen.integral (Range.linear 1 10)
 
-unaryOp :: Gen Op
-unaryOp =
+unaryBoolFormulaExprOp :: Gen Op
+unaryBoolFormulaExprOp =
+  Gen.element [ NotOp ]
+
+binaryBoolExprOp :: Gen Op
+binaryBoolExprOp =
+  Gen.element
+    [ Equals,
+      NotEquals,
+      Less,
+      LessEq,
+      Greater,
+      GreaterEq,
+      AndOp,
+      OrOp,
+      ImpliesOp
+    ]
+
+unaryFormulaOp :: Gen Op
+unaryFormulaOp =
   Gen.element
     [ NotOp,
       AlwaysOp,
@@ -34,8 +52,8 @@ unaryOp =
       NextOp
     ]
 
-binaryOp :: Gen Op
-binaryOp =
+binaryFormulaExprOp :: Gen Op
+binaryFormulaExprOp =
   Gen.element
     [ Equals,
       NotEquals,
@@ -48,30 +66,30 @@ binaryOp =
       Greater,
       GreaterEq,
       AndOp,
-      OrOp,
-      ImpliesOp,
-      UntilOp
+      OrOp
+      -- ImpliesOp,
+      -- UntilOp
     ]
 
-formulaExpr :: Gen (FormulaExpr Accessor)
-formulaExpr =
+boolFormulaExpr :: Gen (FormulaExpr Accessor)
+boolFormulaExpr =
   Gen.recursive
     Gen.choice
-    [ Accessor <$> selector,
-      Constant <$> ivalue,
-      Op MkAccessor . pure . Constant . LitVal . SelectorLit <$> selector
+    [ 
+      pure (Constant (BoolVal True)),
+      pure (Constant (BoolVal False))
       -- , FreezeVar <$> name <*> position
     ]
-    [ Gen.subtermM formulaExpr (\e -> Op <$> unaryOp <*> pure [e]),
-      Gen.subtermM2 formulaExpr formulaExpr (\e1 e2 -> Op <$> binaryOp <*> pure [e1, e2]),
-      Gen.subtermM formulaExpr (\e -> LocExpr <$> name <*> position <*> pure e)
+    [ Gen.subtermM boolFormulaExpr (\e -> Op <$> unaryBoolFormulaExprOp <*> pure [e]),
+      Gen.subtermM2 boolFormulaExpr boolFormulaExpr (\e1 e2 -> Op <$> binaryBoolExprOp <*> pure [e1, e2]),
+      Gen.subtermM boolFormulaExpr (\e -> LocExpr <$> name <*> position <*> pure e)
     ]
 
 formula :: Gen (Formula Accessor)
 formula =
   Gen.recursive
     Gen.choice
-    [Atomic <$> formulaExpr]
+    [Atomic <$> boolFormulaExpr]
     [ Gen.subterm formula Not,
       Gen.subterm formula Always,
       Gen.subterm formula Eventually,
