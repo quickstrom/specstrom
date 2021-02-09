@@ -1,2 +1,8 @@
 cradle: 
   cabal: 
+    - path: "./lib"
+      component: "lib:specstrom"
+    - path: "./cli"
+      component: "exe:specstrom"
+    - path: "./test"
+      component: "test:specstrom-test"
