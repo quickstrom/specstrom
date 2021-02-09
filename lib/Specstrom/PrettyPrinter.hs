@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -7,16 +9,21 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
+import Prettyprinter.Render.Terminal
 import Specstrom.Lexer
 import Specstrom.Parser
-import Prettyprinter.Render.Terminal
+import Specstrom.Evaluator
 
 prettyPos :: Position -> Doc AnsiStyle
 prettyPos (f, l, c) = pretty f <> ":" <> pretty l <> ":" <> pretty c
 
-errorMessage :: Position -> Text -> [Doc AnsiStyle] -> Doc AnsiStyle
+errorMessage :: Position -> Doc AnsiStyle -> [Doc AnsiStyle] -> Doc AnsiStyle
 errorMessage p s extra =
-  annotate (bold <> color Red) (prettyPos p <> ":" <+> pretty s) <> line <> indent 2 (vcat extra)
+  annotate (bold <> color Red) (prettyPos p <> ":" <+> s) <> line <> indent 2 (vcat extra)
+
+errorMessageNoPos :: Doc AnsiStyle -> [Doc AnsiStyle] -> Doc AnsiStyle
+errorMessageNoPos s extra =
+  annotate (bold <> color Red) s <> line <> indent 2 (vcat extra)
 
 prettyLexerError :: LexerError -> Doc AnsiStyle
 prettyLexerError (InvalidIntLit p s) = errorMessage p "invalid integer literal:" [pretty s]
@@ -47,14 +54,14 @@ prettyParseError (DuplicatePatternBinding p bs) =
 
 prettyToken :: Token -> Doc AnsiStyle
 prettyToken (Ident s) = ident s
-prettyToken (Reserved Define) = keyword ("=" :: Text)
-prettyToken (Reserved Let) = keyword ("let" :: Text)
-prettyToken (Reserved Syntax) = keyword ("syntax" :: Text)
-prettyToken (StringLitTok str) = literal (show str)
-prettyToken (CharLitTok str) = literal (show str)
-prettyToken (IntLitTok str) = literal (show str)
-prettyToken (FloatLitTok str) = literal (show str)
-prettyToken (SelectorLitTok str) = literal ("`" <> str <> "`")
+prettyToken (Reserved Define) = keyword "="
+prettyToken (Reserved Let) = keyword "let"
+prettyToken (Reserved Syntax) = keyword "syntax"
+prettyToken (StringLitTok str) = literal (pretty (show str))
+prettyToken (CharLitTok str) = literal (pretty (show str))
+prettyToken (IntLitTok str) = literal (pretty (show str))
+prettyToken (FloatLitTok str) = literal (pretty (show str))
+prettyToken (SelectorLitTok str) = literal ("`" <> pretty str <> "`")
 prettyToken LParen = "("
 prettyToken RParen = ")"
 prettyToken Semi = ";"
@@ -62,11 +69,11 @@ prettyToken EOF = "EOF"
 
 prettyBody :: Body -> Doc AnsiStyle
 prettyBody (Bind n _p ps bs e) =
-  keyword ("let" :: Text) <+> prettyExpr (unpeelAps (var' n) (map (var' . fst) ps))
+  keyword "let" <+> prettyExpr (unpeelAps (var' n) (map (var' . fst) ps))
     <+> nest
       3
-      ( keyword ("=" :: Text) <> softline
-          <> (prettyBody bs <> keyword (";" :: Text))
+      ( keyword "=" <> softline
+          <> (prettyBody bs <> keyword ";")
       )
     <> line
     <> prettyBody e
@@ -75,11 +82,11 @@ prettyBody (Bind n _p ps bs e) =
 prettyBody (Done e) = prettyExpr e
 
 prettyLit :: Lit -> Doc AnsiStyle
-prettyLit (CharLit s) = literal (show s)
-prettyLit (StringLit s) = literal (show s)
-prettyLit (SelectorLit s) = literal ("`" <> s <> "`")
-prettyLit (IntLit s) = literal (show s)
-prettyLit (FloatLit s) = literal (show s)
+prettyLit (CharLit s) = literal (pretty (show s))
+prettyLit (StringLit s) = literal (pretty (show s))
+prettyLit (SelectorLit s) = literal ("`" <> pretty s <> "`")
+prettyLit (IntLit s) = literal (pretty (show s))
+prettyLit (FloatLit s) = literal (pretty (show s))
 
 prettyExpr :: Expr -> Doc AnsiStyle
 prettyExpr trm = renderTerm True trm
@@ -103,11 +110,115 @@ prettyExpr trm = renderTerm True trm
     infixTerms (Text.uncons -> Just ('_', str)) (x : xs) = renderTerm False x : infixTerms str xs
     infixTerms str args | (first, rest) <- Text.span (/= '_') str = ident first : infixTerms rest args
 
-keyword :: Pretty p => p -> Doc AnsiStyle
-keyword = annotate bold . pretty
+prettyEvalError :: EvalError -> Doc AnsiStyle
+prettyEvalError = \case
+  ScopeError pos name -> errorMessage pos "name not in scope" [pretty name]
+  ModuloOnFloats d1 d2 -> errorMessageNoPos "invalid modulo on floats" [pretty d1 <+> "%" <+> pretty d2]
+  NotAFunction v -> errorMessageNoPos ("not a function") [prettyValue v]
+  BinaryOpOnInvalidTypes op v1 v2 -> errorMessageNoPos ("binary operation" <+> prettyBinaryOp op <+> "is not valid on parameters:") [prettyValue v1, prettyValue v2]
+  UnaryOpOnInvalidTypes op v -> errorMessageNoPos ("unary operation" <+> prettyUnaryOp op <+> "is not valid on parameters:") [prettyValue v]
+  FreezeLHSNotVar pos -> errorMessage pos "left-hand side of freeze is not a variable name" []
+  FreezeRHSNotValue pos -> errorMessage pos "right-hand side of freeze is not a value" []
+  FreezeInNotFormula pos -> errorMessage pos "body of freeze is not a formula" []
+  VariableAlreadyDefined name pos -> errorMessage pos ("variable already defined:" <+> pretty name) []
 
-literal :: Pretty p => p -> Doc AnsiStyle
-literal = annotate (colorDull Cyan) . pretty
+prettyFormulaExpr :: Int -> FormulaExpr Accessor -> Doc AnsiStyle
+prettyFormulaExpr p = \case
+  LocExpr _name _pos expr -> prettyFormulaExpr p expr
+  Accessor a -> parensIf (p >= 10) ("access" <+> literal (enclose "`" "`" (pretty a)))
+  Op op args ->
+    case args of
+      [e] -> parensIf (p > opPrecedence op) (prettyUnaryOp op <+> prettyFormulaExpr (opPrecedence op) e)
+      [e1, e2] -> parensIf (p > opPrecedence op) (prettyFormulaExpr (opPrecedence op) e1 <+> prettyBinaryOp op <+> prettyFormulaExpr (opPrecedence op) e2)
+      _ -> "invalid"
+  Constant val -> prettyIValue val
+  FreezeVar name _ -> pretty name
+
+opPrecedence :: Op -> Int
+opPrecedence = \case
+  NotOp -> 6
+  AlwaysOp -> 6
+  EventuallyOp -> 6
+  NextOp -> 6
+  MkAccessor -> 1
+  Equals -> 7
+  NotEquals -> 7
+  Plus -> 8
+  Times -> 8
+  Divide -> 8
+  Modulo -> 8
+  Less -> 7
+  LessEq -> 7
+  Greater -> 7
+  GreaterEq -> 7
+  AndOp -> 4
+  OrOp -> 3
+  ImpliesOp -> 4
+  UntilOp -> 5
+
+prettyUnaryOp :: Op -> Doc ann
+prettyUnaryOp NotOp = "not"
+prettyUnaryOp AlwaysOp = "always"
+prettyUnaryOp EventuallyOp = "eventually"
+prettyUnaryOp NextOp = "next"
+prettyUnaryOp MkAccessor = "access"
+
+prettyBinaryOp :: Op -> Doc ann
+prettyBinaryOp Equals = "=="
+prettyBinaryOp NotEquals = "!="
+prettyBinaryOp Plus = "+"
+prettyBinaryOp Times = "*"
+prettyBinaryOp Divide = "/"
+prettyBinaryOp Modulo = "%"
+prettyBinaryOp Less = "<"
+prettyBinaryOp LessEq = "<="
+prettyBinaryOp Greater = ">"
+prettyBinaryOp GreaterEq = ">="
+prettyBinaryOp AndOp = "&&"
+prettyBinaryOp OrOp = "||"
+prettyBinaryOp ImpliesOp = "==>"
+prettyBinaryOp UntilOp = "until"
+
+prettyIValue :: IValue -> Doc AnsiStyle
+prettyIValue = \case
+    LitVal lit -> prettyLit lit
+    BoolVal True -> "true"
+    BoolVal False -> "false"
+    Null -> "null"
+
+prettyValue :: Value -> Doc AnsiStyle
+prettyValue = \case
+  Independent v -> prettyIValue v
+  StateDependent _ expr -> prettyFormulaExpr 10 expr
+  Formula _ f -> prettyFormula 10 f
+  Closure _pos _env _args _body -> ""
+  PartialOp _op _params -> "<partial op>"
+
+prettyFormula :: Int -> Formula Accessor -> Doc AnsiStyle
+prettyFormula p = \case
+  Atomic e -> prettyFormulaExpr p e
+  Until f1 f2 -> parensIf (p > 5) (prettyFormula 5 f1 <+> "until" <+> prettyFormula 5 f2)
+  Not f -> "not" <+> parensIf (p > 6) (prettyFormula 6 f)
+  And f1 f2 -> parensIf (p > 4) (prettyFormula 4 f1 <> line <> "&&" <+> prettyFormula 4 f2)
+  Or f1 f2 -> parensIf (p > 3) (prettyFormula 3 f1 <> line <> "||" <+> prettyFormula 3 f2)
+  Implies f1 f2 -> parensIf (p > 4) (prettyFormula 4 f1 <+> "==>" <+> prettyFormula 4 f2)
+  Always f -> "always" <+> parensIf (p > 6) (prettyFormula 6 f)
+  Eventually f -> "eventually" <+> parensIf (p > 6) (prettyFormula 6 f)
+  Next f -> parensIf (p > 6) ("next" <+> prettyFormula 6 f)
+  Trivial -> "<trivial>"
+  Absurd -> "<absurd>"
+  LocFormula _name _pos f -> prettyFormula p f
+  FreezeIn _pos name e f -> parensIf (p >= 10) (keyword "freeze" <+> pretty name <+> keyword "=" <+> prettyFormulaExpr 0 e <+> keyword "in" <+> prettyFormula 0 f)
+
+parensIf :: Bool -> Doc ann -> Doc ann
+parensIf True = parens . align
+parensIf False = id
+
+keyword :: Doc AnsiStyle -> Doc AnsiStyle
+keyword = annotate bold
+
+literal :: Doc AnsiStyle -> Doc AnsiStyle
+literal = annotate (colorDull Cyan)
 
 ident :: Pretty p => p -> Doc AnsiStyle
 ident = annotate (color Black) . pretty

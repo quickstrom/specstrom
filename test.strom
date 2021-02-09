@@ -5,6 +5,7 @@
 // Note that this means spaces between symbols and words is important. a&&b is not a && b!
 syntax _||_ 3 right;
 syntax _&&_ 4 right;
+syntax _==>_ 4 right;
 syntax not_ 6 right;
 syntax _==_ 7; 
 syntax always_ 6 right;
