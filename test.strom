@@ -3,15 +3,6 @@
 // You also can't begin a symbol with ' or " or a number, as they are used for literals.
 // All other syntax is user-definable using syntax-keywords using mix-fix operators.
 // Note that this means spaces between symbols and words is important. a&&b is not a && b!
-syntax _||_ 3 right;
-syntax _&&_ 4 right;
-syntax _==>_ 4 right;
-syntax not_ 6 right;
-syntax _==_ 7; 
-syntax always_ 6 right;
-syntax next_ 6 right;
-syntax eventually_ 6 right;
-syntax _until_ 5 right;
 
 let unchanged x  = freeze a = x in next (x == a); 
 

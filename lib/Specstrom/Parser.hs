@@ -64,7 +64,19 @@ builtIns :: [[(Holey Text, Associativity)]]
 builtIns =
   (map . map)
     (first holey)
-    [[("_@@@_", LeftAssoc)]]
+    [ [ ("_@@@_", LeftAssoc),
+        ("_||_", RightAssoc),
+        ("_&&_", RightAssoc),
+        ("_==>_", RightAssoc),
+        ("not_", RightAssoc),
+        ("_==_", NonAssoc),
+        ("_!=_", NonAssoc),
+        ("always_", RightAssoc),
+        ("next_", RightAssoc),
+        ("eventually_", RightAssoc),
+        ("_until_", RightAssoc)
+      ]
+    ]
 
 parseBindingBody :: Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Body)
 parseBindingBody t ((p, Reserved Syntax) : ts) = case ts of
