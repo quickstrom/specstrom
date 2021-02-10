@@ -64,6 +64,9 @@ builtIns =
   (map . map)
     (first holey)
     [
+      [ 
+        ("_==>_", RightAssoc)
+      ],
       [("_||_", RightAssoc)],
       [("_&&_", RightAssoc)],
       [("_until_", RightAssoc)],
@@ -76,9 +79,6 @@ builtIns =
       [
         ("_==_", NonAssoc),
         ("_!=_", NonAssoc)
-      ],
-      [ 
-        ("_==>_", RightAssoc)
       ]
     ]
 

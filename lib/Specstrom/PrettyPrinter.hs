@@ -153,7 +153,7 @@ opPrecedence = \case
   GreaterEq -> 7
   AndOp -> 4
   OrOp -> 3
-  ImpliesOp -> 8
+  ImpliesOp -> 2
   UntilOp -> 5
 
 prettyUnaryOp :: Op -> Doc ann
@@ -201,7 +201,7 @@ prettyFormula p = \case
   Not f -> parensIf (p >= 6) ("not" <+> prettyFormula 6 f)
   And f1 f2 -> parensIf (p >= 4) (prettyFormula 4 f1 <> line <> "&&" <+> align (prettyFormula 4 f2))
   Or f1 f2 -> parensIf (p >= 3) (prettyFormula 3 f1 <> line <> "||" <+> align (prettyFormula 3 f2))
-  Implies f1 f2 -> parensIf (p >= 8) (prettyFormula 8 f1 <+> "==>" <+> prettyFormula 8 f2)
+  Implies f1 f2 -> parensIf (p >= 2) (prettyFormula 2 f1 <+> "==>" <+> prettyFormula 2 f2)
   Always f -> parens ("always" <+> prettyFormula 6 f)
   Eventually f -> parensIf (p >= 6) ("eventually" <+> prettyFormula 6 f)
   Next f -> parensIf (p >= 6) ("next" <+> prettyFormula 6 f)
