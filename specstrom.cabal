@@ -8,7 +8,7 @@ version:             0.1.0.0
 -- synopsis:
 -- description:
 -- bug-reports:
--- license:
+license:             BSD-3-Clause
 license-file:        LICENSE
 author:              Liam O’Connor
 maintainer:          l.oconnor@ed.ac.uk
