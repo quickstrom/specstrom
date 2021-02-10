@@ -125,11 +125,11 @@ prettyEvalError = \case
 prettyFormulaExpr :: Int -> FormulaExpr Accessor -> Doc AnsiStyle
 prettyFormulaExpr p = \case
   LocExpr _name _pos expr -> prettyFormulaExpr p expr
-  Accessor a -> parensIf (p > 0) ("access" <+> literal (enclose "`" "`" (pretty a)))
+  Accessor a -> parensIf (p >= 0) ("access" <+> literal (enclose "`" "`" (pretty a)))
   Op op args ->
     case args of
-      [e] -> parensIf (p > opPrecedence op) (prettyUnaryOp op <+> prettyFormulaExpr (opPrecedence op) e)
-      [e1, e2] -> parensIf (p > opPrecedence op) (prettyFormulaExpr (opPrecedence op) e1 <+> prettyBinaryOp op <+> prettyFormulaExpr (opPrecedence op) e2)
+      [e] -> parensIf (p >= opPrecedence op) (prettyUnaryOp op <+> prettyFormulaExpr (opPrecedence op) e)
+      [e1, e2] -> parensIf (p >= opPrecedence op) (prettyFormulaExpr (opPrecedence op) e1 <+> prettyBinaryOp op <+> prettyFormulaExpr (opPrecedence op) e2)
       _ -> "<invalid>"
   Constant val -> prettyIValue val
   FreezeVar name _ -> pretty name
@@ -153,7 +153,7 @@ opPrecedence = \case
   GreaterEq -> 7
   AndOp -> 4
   OrOp -> 3
-  ImpliesOp -> 4
+  ImpliesOp -> 8
   UntilOp -> 5
 
 prettyUnaryOp :: Op -> Doc ann
@@ -197,18 +197,18 @@ prettyValue = \case
 prettyFormula :: Int -> Formula Accessor -> Doc AnsiStyle
 prettyFormula p = \case
   Atomic e -> prettyFormulaExpr p e
-  Until f1 f2 -> parensIf (p > 5) (prettyFormula 5 f1 <+> "until" <+> prettyFormula 5 f2)
-  Not f -> "not" <+> parensIf (p > 6) (prettyFormula 6 f)
-  And f1 f2 -> parensIf (p > 4) (prettyFormula 4 f1 <> line <> "&&" <+> align (prettyFormula 4 f2))
-  Or f1 f2 -> parensIf (p > 3) (prettyFormula 3 f1 <> line <> "||" <+> align (prettyFormula 3 f2))
-  Implies f1 f2 -> parensIf (p > 4) (prettyFormula 4 f1 <+> "==>" <+> prettyFormula 4 f2)
-  Always f -> parensIf (p > 6) ("always" <+> prettyFormula 6 f)
-  Eventually f -> parensIf (p > 6) ("eventually" <+> prettyFormula 6 f)
-  Next f -> parensIf (p > 6) ("next" <+> prettyFormula 6 f)
+  Until f1 f2 -> parensIf (p >= 5) (prettyFormula 5 f1 <+> "until" <+> prettyFormula 5 f2)
+  Not f -> parensIf (p >= 6) ("not" <+> prettyFormula 6 f)
+  And f1 f2 -> parensIf (p >= 4) (prettyFormula 4 f1 <> line <> "&&" <+> align (prettyFormula 4 f2))
+  Or f1 f2 -> parensIf (p >= 3) (prettyFormula 3 f1 <> line <> "||" <+> align (prettyFormula 3 f2))
+  Implies f1 f2 -> parensIf (p >= 8) (prettyFormula 8 f1 <+> "==>" <+> prettyFormula 8 f2)
+  Always f -> parens ("always" <+> prettyFormula 6 f)
+  Eventually f -> parensIf (p >= 6) ("eventually" <+> prettyFormula 6 f)
+  Next f -> parensIf (p >= 6) ("next" <+> prettyFormula 6 f)
   Trivial -> "true"
   Absurd -> "false"
   LocFormula _name _pos f -> prettyFormula p f
-  FreezeIn _pos name e f -> parensIf (p > 0) (keyword "freeze" <+> pretty name <+> keyword "=" <+> prettyFormulaExpr 0 e <+> keyword "in" <+> prettyFormula 0 f)
+  FreezeIn _pos name e f -> parensIf (p >= 0) (keyword "freeze" <+> pretty name <+> keyword "=" <+> prettyFormulaExpr 0 e <+> keyword "in" <+> prettyFormula 0 f)
 
 parensIf :: Bool -> Doc ann -> Doc ann
 parensIf True = parens . align

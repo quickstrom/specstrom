@@ -11,7 +11,6 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Debug.Trace
 import Specstrom.Lexer
 import Text.Earley
 import Text.Earley.Mixfix
@@ -64,16 +63,22 @@ builtIns :: [[(Holey Text, Associativity)]]
 builtIns =
   (map . map)
     (first holey)
-    [ [ ("_||_", RightAssoc),
-        ("_&&_", RightAssoc),
-        ("_==>_", RightAssoc),
+    [
+      [("_||_", RightAssoc)],
+      [("_&&_", RightAssoc)],
+      [("_until_", RightAssoc)],
+      [
         ("not_", RightAssoc),
-        ("_==_", NonAssoc),
-        ("_!=_", NonAssoc),
         ("always_", RightAssoc),
         ("next_", RightAssoc),
-        ("eventually_", RightAssoc),
-        ("_until_", RightAssoc)
+        ("eventually_", RightAssoc)
+      ],
+      [
+        ("_==_", NonAssoc),
+        ("_!=_", NonAssoc)
+      ],
+      [ 
+        ("_==>_", RightAssoc)
       ]
     ]
 
