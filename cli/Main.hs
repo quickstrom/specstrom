@@ -5,11 +5,11 @@ module Main where
 import Data.Text (Text)
 import qualified Data.Text.IO as Text
 import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty)
+import Prettyprinter.Render.Terminal (renderIO)
 import Specstrom.Evaluator
 import Specstrom.Lexer
 import Specstrom.Parser
 import Specstrom.PrettyPrinter
-import Prettyprinter.Render.Terminal (renderIO)
 import System.Environment
 import System.IO (hPutStrLn, stderr)
 

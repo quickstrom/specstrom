@@ -7,9 +7,9 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
+import Prettyprinter.Render.Terminal
 import Specstrom.Lexer
 import Specstrom.Parser
-import Prettyprinter.Render.Terminal
 
 prettyPos :: Position -> Doc AnsiStyle
 prettyPos (f, l, c) = pretty f <> ":" <> pretty l <> ":" <> pretty c
