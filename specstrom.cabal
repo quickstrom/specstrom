@@ -54,8 +54,5 @@ test-suite specstrom-test
   -- other-extensions:
   build-depends:       hedgehog
                      , specstrom
-                     , tasty
-                     , tasty-discover
-                     , tasty-hedgehog
   other-modules:       Specstrom.PrettyPrinterTest
                      , Specstrom.Gen
