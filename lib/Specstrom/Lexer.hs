@@ -63,7 +63,7 @@ readLiteral' :: Char -> Text -> Maybe (Text, Text)
 readLiteral' delimiter rest =
   let (chunk, rest') = Text.break (`elem` [delimiter, '\\']) rest
    in case Text.uncons rest' of
-        Just ('\\', xs) | Text.length xs > 1 -> first ((chunk <>) . (Text.singleton '\\' <>) . (Text.take 1 xs <>)) <$> readLiteral' delimiter xs
+        Just ('\\', Text.uncons -> Just (x, xs)) -> first ((chunk <>) . (Text.singleton '\\' <>) . (Text.singleton x <>)) <$> readLiteral' delimiter xs
         Just (x, xs) | x == delimiter -> Just (chunk, xs)
         _ -> Nothing
 

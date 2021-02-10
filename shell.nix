@@ -9,5 +9,6 @@ in project.haskellPackages.shellFor {
     nixfmt
     project.haskellPackages.haskell-language-server
     project.haskellPackages.ormolu
+    ghcid
   ]);
 }

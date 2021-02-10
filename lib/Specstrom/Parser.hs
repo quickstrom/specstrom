@@ -11,7 +11,6 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Debug.Trace
 import Specstrom.Lexer
 import Text.Earley
 import Text.Earley.Mixfix
@@ -64,7 +63,24 @@ builtIns :: [[(Holey Text, Associativity)]]
 builtIns =
   (map . map)
     (first holey)
-    [[("_@@@_", LeftAssoc)]]
+    [
+      [ 
+        ("_==>_", RightAssoc)
+      ],
+      [("_||_", RightAssoc)],
+      [("_&&_", RightAssoc)],
+      [("_until_", RightAssoc)],
+      [
+        ("not_", RightAssoc),
+        ("always_", RightAssoc),
+        ("next_", RightAssoc),
+        ("eventually_", RightAssoc)
+      ],
+      [
+        ("_==_", NonAssoc),
+        ("_!=_", NonAssoc)
+      ]
+    ]
 
 parseBindingBody :: Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Body)
 parseBindingBody t ((p, Reserved Syntax) : ts) = case ts of
@@ -125,7 +141,7 @@ parseExpressionTo terminator t ts =
    in case fullParses (parser $ grammar t) candidate of
         ([one], _) -> Right (ts', one)
         ([], r) -> case unconsumed r of
-          blah@((p, t') : _) | traceShow blah True -> Left (ExpectedGot p (expected r) t')
+          ((p, t') : _) -> Left (ExpectedGot p (expected r) t')
         (e : es, _r) -> Left (ExpressionAmbiguous (e :| es))
 
 grammar :: Table -> Grammar r (Prod r Text (Position, Token) Expr)
