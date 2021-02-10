@@ -1,4 +1,7 @@
 *.swp
 cabal.project.local
 dist-newstyle
+
+# Nix and such
 .direnv
+/result*
