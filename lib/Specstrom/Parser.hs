@@ -63,21 +63,17 @@ builtIns :: [[(Holey Text, Associativity)]]
 builtIns =
   (map . map)
     (first holey)
-    [
-      [ 
-        ("_==>_", RightAssoc)
+    [ [ ("_==>_", RightAssoc)
       ],
       [("_||_", RightAssoc)],
       [("_&&_", RightAssoc)],
       [("_until_", RightAssoc)],
-      [
-        ("not_", RightAssoc),
+      [ ("not_", RightAssoc),
         ("always_", RightAssoc),
         ("next_", RightAssoc),
         ("eventually_", RightAssoc)
       ],
-      [
-        ("_==_", NonAssoc),
+      [ ("_==_", NonAssoc),
         ("_!=_", NonAssoc)
       ]
     ]

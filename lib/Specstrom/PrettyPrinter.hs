@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Specstrom.PrettyPrinter where
@@ -10,9 +10,9 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 import Prettyprinter.Render.Terminal
+import Specstrom.Evaluator
 import Specstrom.Lexer
 import Specstrom.Parser
-import Specstrom.Evaluator
 
 prettyPos :: Position -> Doc AnsiStyle
 prettyPos (f, l, c) = pretty f <> ":" <> pretty l <> ":" <> pretty c
@@ -181,10 +181,10 @@ prettyBinaryOp UntilOp = "until"
 
 prettyIValue :: IValue -> Doc AnsiStyle
 prettyIValue = \case
-    LitVal lit -> prettyLit lit
-    BoolVal True -> "true"
-    BoolVal False -> "false"
-    Null -> "null"
+  LitVal lit -> prettyLit lit
+  BoolVal True -> "true"
+  BoolVal False -> "false"
+  Null -> "null"
 
 prettyValue :: Value -> Doc AnsiStyle
 prettyValue = \case
