@@ -4,7 +4,7 @@
 // All other syntax is user-definable using syntax-keywords using mix-fix operators.
 // Note that this means spaces between symbols and words is important. a&&b is not a && b!
 
-let unchanged x  = freeze a = x in next (x == a); 
+let unchanged x  = freeze a = x. next (x == a); 
 
 let buttonText = access `.play-pause`;
 let timeDisplayText = access `.time-display`;

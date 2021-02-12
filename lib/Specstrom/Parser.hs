@@ -37,7 +37,8 @@ data Lit
   deriving (Show, Eq)
 
 data Expr
-  = Var Position Text
+  = Projection Expr Text 
+  | Var Position Text
   | App Expr Expr
   | Literal Position Lit
   | Freeze Position Expr Expr Expr
@@ -47,6 +48,7 @@ exprPos :: Expr -> Position
 exprPos (Var p _) = p
 exprPos (App e1 _e2) = exprPos e1
 exprPos (Literal p _) = p
+exprPos (Projection e _) = exprPos e
 exprPos (Freeze p _ _ _) = p
 
 type Name = Text
@@ -246,15 +248,16 @@ grammar table = mdo
     rule $
       ident
         <|> lparen *> expr <* rparen
+  normalProj <- rule $ atom <|> Projection <$> normalProj <*> projection
   normalApp <-
     rule $
-      atom
-        <|> App <$> normalApp <*> atom
+      normalProj
+        <|> App <$> normalApp <*> normalProj
   expr <- mixfixExpression tbl normalApp makeAp
   return expr
   where
     tbl =
-      [[([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (identToken "in"), Nothing], RightAssoc)]]
+      [[([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)]]
         ++ map (map $ first $ map $ fmap identToken) table
 
     mixfixParts =
@@ -264,7 +267,10 @@ grammar table = mdo
     rparen = satisfy ((== RParen) . snd) <?> "right parenthesis"
     identToken s = isToken (Ident s) s
     isToken s t = satisfy ((== s) . snd) <?> t
-
+    projection = terminal $ \(p, t) ->
+      case t of
+        ProjectionTok s -> pure s
+        _ -> Nothing
     variable = terminal $ \(p, t) ->
       case t of
         Ident s -> guard (s `notElem` mixfixParts) >> pure (Var p s)

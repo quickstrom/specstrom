@@ -15,6 +15,7 @@ data Kwd = Define | Syntax | Let | Import | Check | With deriving (Show, Eq)
 data Token
   = Ident Text
   | Reserved Kwd
+  | ProjectionTok Text
   | StringLitTok Text
   | CharLitTok Char
   | IntLitTok Int
@@ -23,6 +24,7 @@ data Token
   | LParen
   | RParen
   | Semi
+  | Dot
   | EOF
   deriving (Show, Eq)
 
@@ -67,11 +69,8 @@ readLiteral' delimiter rest =
         Just (x, xs) | x == delimiter -> Just (chunk, xs)
         _ -> Nothing
 
-reservedInitial :: Char -> Bool
-reservedInitial c = isSpace c || c `elem` ("()123456789'\";" :: [Char])
-
 reserved :: Char -> Bool
-reserved c = isSpace c || c `elem` ("();" :: [Char])
+reserved c = isSpace c || c `elem` ("();." :: [Char])
 
 lexer :: Position -> Text -> Either LexerError [(Position, Token)]
 lexer p t
@@ -107,9 +106,14 @@ lexer p t
     Just ('(', cs) -> ((p, LParen) :) <$> lexer (nextCol p) cs
     Just (')', cs) -> ((p, RParen) :) <$> lexer (nextCol p) cs
     Just (';', cs) -> ((p, Semi) :) <$> lexer (nextCol p) cs
+    Just ('.', cs) -> 
+      let (candidate, rest) = Text.break reserved cs
+       in if Text.null candidate then ((p, Dot):) <$> lexer (nextCol p) cs
+          else ((p, ProjectionTok candidate):) <$> lexer (advance candidate p) rest
+            
     Just (c, cs) ->
-      let (candidate, rest) = Text.break reserved (Text.singleton c <> cs)
-       in ((p, fromCandidate candidate) :) <$> lexer p rest
+      let (candidate, rest) = Text.break reserved t
+       in ((p, fromCandidate candidate) :) <$> lexer (advance candidate p) rest
 
 fromCandidate :: Text -> Token
 fromCandidate "=" = Reserved Define
