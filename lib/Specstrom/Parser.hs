@@ -37,7 +37,7 @@ data Lit
   deriving (Show, Eq)
 
 data Expr
-  = Projection Expr Text 
+  = Projection Expr Text
   | Var Position Text
   | App Expr Expr
   | Literal Position Lit

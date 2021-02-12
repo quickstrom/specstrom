@@ -64,7 +64,7 @@ prettyToken (Reserved Let) = keyword "let"
 prettyToken (Reserved Check) = keyword "check"
 prettyToken (Reserved With) = keyword "with"
 prettyToken (Reserved Import) = keyword "import"
-prettyToken (ProjectionTok t) = projection ("."<>t)
+prettyToken (ProjectionTok t) = projection ("." <> t)
 prettyToken (Reserved Syntax) = keyword "syntax"
 prettyToken (StringLitTok str) = literal (pretty (show str))
 prettyToken (CharLitTok str) = literal (pretty (show str))
@@ -96,10 +96,11 @@ prettyGlob = hsep . map prettyGlobTerm
   where
     prettyGlobTerm = hcat . map (maybe "*" ident)
 
-prettyToplevel :: TopLevel -> Doc AnsiStyle 
+prettyToplevel :: TopLevel -> Doc AnsiStyle
 prettyToplevel (Properties _p g1 g2) = keyword "check" <+> prettyGlob g1 <+> keyword "with" <+> prettyGlob g2 <> keyword ";"
 prettyToplevel (Binding b) = prettyBind b
 prettyToplevel (Imported i bs) = keyword "import" <+> literal (pretty i) <> keyword ";" <> line <> indent 2 (prettyAll bs)
+
 prettyBody :: Body -> Doc AnsiStyle
 prettyBody (Local b e) =
   prettyBind b
@@ -123,8 +124,8 @@ prettyExpr trm = renderTerm True trm
         Literal _p l -> prettyLit l
         Projection e pr -> renderTerm False e <> projection ("." <> pr)
         App {} -> mempty -- Handled by peelAps
-        Freeze _ n e b -> 
-          (if outer then id else parens) $ 
+        Freeze _ n e b ->
+          (if outer then id else parens) $
             "freeze" <+> prettyExpr n <+> "=" <+> prettyExpr e <+> "in" <+> prettyExpr b
       | (Var _ n, args) <- peelAps t [],
         Text.length (Text.filter (== '_') n) == length args =
@@ -252,5 +253,5 @@ literal = annotate (colorDull Cyan)
 ident :: Pretty p => p -> Doc AnsiStyle
 ident = annotate (color Black) . pretty
 
-projection :: Pretty p => p -> Doc AnsiStyle 
+projection :: Pretty p => p -> Doc AnsiStyle
 projection = annotate (color Green) . pretty

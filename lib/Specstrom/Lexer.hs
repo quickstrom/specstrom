@@ -106,11 +106,11 @@ lexer p t
     Just ('(', cs) -> ((p, LParen) :) <$> lexer (nextCol p) cs
     Just (')', cs) -> ((p, RParen) :) <$> lexer (nextCol p) cs
     Just (';', cs) -> ((p, Semi) :) <$> lexer (nextCol p) cs
-    Just ('.', cs) -> 
+    Just ('.', cs) ->
       let (candidate, rest) = Text.break reserved cs
-       in if Text.null candidate then ((p, Dot):) <$> lexer (nextCol p) cs
-          else ((p, ProjectionTok candidate):) <$> lexer (advance candidate p) rest
-            
+       in if Text.null candidate
+            then ((p, Dot) :) <$> lexer (nextCol p) cs
+            else ((p, ProjectionTok candidate) :) <$> lexer (advance candidate p) rest
     Just (c, cs) ->
       let (candidate, rest) = Text.break reserved t
        in ((p, fromCandidate candidate) :) <$> lexer (advance candidate p) rest
