@@ -10,7 +10,7 @@ import qualified Data.Text as Text
 import qualified Data.Text.Read as Text
 import Text.Read (readMaybe)
 
-data Kwd = Define | Syntax | Let deriving (Show, Eq)
+data Kwd = Define | Syntax | Let | Import | Check | With deriving (Show, Eq)
 
 data Token
   = Ident Text
@@ -115,4 +115,7 @@ fromCandidate :: Text -> Token
 fromCandidate "=" = Reserved Define
 fromCandidate "syntax" = Reserved Syntax
 fromCandidate "let" = Reserved Let
+fromCandidate "import" = Reserved Import
+fromCandidate "check" = Reserved Check
+fromCandidate "with" = Reserved With
 fromCandidate s = Ident s

@@ -3,7 +3,7 @@
 module Main where
 
 import Data.Bifunctor (first)
-import Data.Text (Text)
+import Data.Text (Text,pack)
 import qualified Data.Text.IO as Text
 import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty, line)
 import Prettyprinter.Render.Terminal (renderIO)
@@ -13,21 +13,20 @@ import Specstrom.Parser
 import Specstrom.PrettyPrinter
 import System.Environment
 import System.IO (hPutStrLn, stderr, stdout)
+import Control.Monad.Except (runExceptT)
 
-run :: FilePath -> Text -> IO ()
-run f s =
-  case run' of
+searchPaths :: [FilePath]
+searchPaths = ["."]
+
+load :: Text -> IO ()
+load f = do
+  result <- first prettyParseError <$> runExceptT (loadModule searchPaths ("Command line",0,0) f builtIns)
+  case result of
     Left err -> renderIO stderr (layoutPretty defaultLayoutOptions (err <> line))
-    Right doc -> renderIO stdout (layoutPretty defaultLayoutOptions (doc <> line))
-  where
-    run' = do
-      ts <- first prettyLexerError (lexer (f, 1, 1) s)
-      (_, b) <- first prettyParseError (parseBindingBody builtIns ts)
-      formula <- first prettyEvalError (evaluate initialEnv b)
-      return (prettyValue formula)
+    Right (_,doc) -> renderIO stdout (layoutPretty defaultLayoutOptions (prettyAll doc <> line))
 
 main :: IO ()
 main =
   getArgs >>= \case
-    [f] -> Text.readFile f >>= run f
-    _ -> hPutStrLn stderr "Usage: specstrom FILE"
+    [f] -> load (pack f)
+    _ -> hPutStrLn stderr "Usage: specstrom MODULE-NAME"

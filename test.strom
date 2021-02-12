@@ -31,7 +31,9 @@ let pause = playing ~> paused && unchanged timeDisplayText;
 
 let tick = playing ~> playing && not unchanged timeDisplayText;
 
-paused && always (play || pause || tick) // always always == always, I am just demonstrating the prefix syntax.
+let prop =  paused && always (play || pause || tick); // always always == always, I am just demonstrating the prefix syntax.
+
+check prop with *;
 
 //TODO:
 // Currently no lambda syntax. All functions are named. So far I haven't needed lambdas.

@@ -3,17 +3,22 @@
 
 module Specstrom.Parser where
 
+import qualified Data.Text.IO as Text
+
 import Control.Applicative
 import Control.Arrow (first)
-import Control.Monad (guard)
-import Data.List (nub, (\\))
+import Control.Monad (guard, filterM)
+import Data.List (nub, (\\), intersperse)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe
-import Data.Text (Text)
+import Data.Text (Text, splitOn)
 import qualified Data.Text as Text
 import Specstrom.Lexer
 import Text.Earley
 import Text.Earley.Mixfix
+import Control.Monad.Except
+import System.FilePath (FilePath, (<.>),(</>))
+import System.Directory (doesFileExist)
 
 holey :: Text -> Holey Text
 holey t =
@@ -24,7 +29,13 @@ holey t =
       where
         (i, rest) = Text.span (/= '_') t
 
-data Lit = IntLit Int | FloatLit Double | StringLit Text | CharLit Char | SelectorLit Text deriving (Show, Eq)
+data Lit 
+  = IntLit Int 
+  | FloatLit Double 
+  | StringLit Text 
+  | CharLit Char 
+  | SelectorLit Text 
+  deriving (Show, Eq)
 
 data Expr
   = Var Position Text
@@ -43,8 +54,19 @@ type Name = Text
 
 type Pattern = (Name, Position)
 
-data Body = Bind Name Position [Pattern] Body Body | Done Expr
-  deriving (Show)
+type Glob = [GlobTerm]
+type GlobTerm = [Maybe Text]
+
+data Bind = Bind Name Position [Pattern] Body
+          deriving (Show)
+
+data Body = Local Bind Body | Done Expr
+          deriving (Show)
+
+data TopLevel = Binding Bind
+              | Properties Position Glob Glob
+              | Imported Text [TopLevel]
+              deriving (Show)
 
 data ParseError
   = MalformedSyntaxDeclaration Position
@@ -52,9 +74,14 @@ data ParseError
   | ExpectedPattern Expr
   | ExpectedSemicolon Position
   | ExpectedEquals Position
+  | ExpectedWith Position
+  | ExpectedModuleName Position
   | ExpectedGot Position [Text] Token
   | ExpressionAmbiguous (NonEmpty Expr)
   | DuplicatePatternBinding Position [Text]
+  | TrailingGarbage Position Token
+  | LexerFailure LexerError
+  | ModuleNotFound Position Text
   deriving (Show)
 
 type Table = [[(Holey Text, Associativity)]]
@@ -78,24 +105,86 @@ builtIns =
       ]
     ]
 
-parseBindingBody :: Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Body)
-parseBindingBody t ((p, Reserved Syntax) : ts) = case ts of
-  ((_, Ident n) : (_, IntLitTok i) : (_, Semi) : ts') ->
-    insertSyntax p n i NonAssoc t >>= \t' -> parseBindingBody t' ts'
-  ((_, Ident n) : (_, IntLitTok i) : (_, Ident "left") : (_, Semi) : ts') ->
-    insertSyntax p n i LeftAssoc t >>= \t' -> parseBindingBody t' ts'
-  ((_, Ident n) : (_, IntLitTok i) : (_, Ident "right") : (_, Semi) : ts') ->
-    insertSyntax p n i RightAssoc t >>= \t' -> parseBindingBody t' ts'
-  _ -> Left $ MalformedSyntaxDeclaration p
-parseBindingBody t ((p, Reserved Let) : ts) = do
+
+parseGlob :: [(Position, Token)] -> Either ParseError ([(Position, Token)], Glob)
+parseGlob ((p, Ident n):rest) = do 
+  fmap (asGlobTerm n :) <$> parseGlob rest 
+  where 
+    asGlobTerm n = filter (/= Just "") $ intersperse Nothing (map Just (splitOn "*" n))
+parseGlob rest = Right (rest, [])
+
+wrap :: Either ParseError a -> ExceptT ParseError IO a
+wrap = ExceptT . pure 
+
+
+loadModule :: [FilePath] -> Position -> Text -> Table -> ExceptT ParseError IO (Table, [TopLevel]) 
+loadModule search p n t  = do
+    let candidates = map (<.> "strom") $ map (</> Text.unpack n) $ search
+    available <- filterM (lift . doesFileExist) candidates 
+    case available of 
+      [] -> throwError $ ModuleNotFound p n
+      (x:_) -> do 
+        contents <- lift $ Text.readFile x
+        case lexer (x,1,1) contents of 
+          Left e -> throwError $ LexerFailure e 
+          Right toks -> do 
+            (t',inc) <- parseToplevel search t toks
+            pure (t', inc)
+parseToplevel :: [FilePath] -> Table -> [(Position, Token)] -> ExceptT ParseError IO (Table, [TopLevel])
+parseToplevel search t ((p, Reserved Import) : ts) = case ts of 
+  ((_,Ident n):ts') -> case ts' of
+    ((_,Semi):ts'') -> do 
+      (t', inc) <- loadModule search p n t
+      fmap (Imported n inc:) <$> parseToplevel search t' ts''
+    ((p',_):_) -> throwError $ ExpectedSemicolon p'
+  ((p',_):_) -> throwError $ ExpectedModuleName p'
+parseToplevel search t ((p, Reserved Syntax) : ts) = do
+  (ts', t') <- wrap (parseSyntax t p ts)
+  parseToplevel search t' ts'
+parseToplevel search t ((p, Reserved Let) : ts) = do
+  (rest,b) <- wrap (parseBind t p ts)
+  fmap (Binding b:) <$> parseToplevel search t rest
+parseToplevel search t ((p, Reserved Check) : ts) = do
+  (rest,g1) <- wrap (parseGlob ts)
+  case rest of 
+    ((_,Reserved With):ts') -> do
+      (rest', g2) <- wrap (parseGlob ts')
+      case rest' of 
+        ((_, Semi): rest'') -> fmap (Properties p g1 g2:) <$> parseToplevel search t rest''
+        ((p',_):_) -> throwError $ ExpectedSemicolon p'
+    ((p',_):_) -> throwError $ ExpectedWith p'
+parseToplevel search t [] = pure (t,[])
+parseToplevel search t [(p,EOF)] = pure (t,[])
+parseToplevel search t ((p, tok):ts) = throwError $ TrailingGarbage p tok
+
+parseBind :: Table -> Position -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Bind)
+parseBind t p ts = do 
   (ts', n, ps) <- parsePatterns t ts
   case ts' of
     ((_, Reserved Define) : ts'') -> do
       (rest, body) <- parseBindingBody t ts''
       case rest of
-        ((_, Semi) : rest') -> fmap (Bind n p ps body) <$> parseBindingBody t rest'
+        ((_, Semi) : rest') -> Right (rest', Bind n p ps body)
         ((p', _) : _) -> Left $ ExpectedSemicolon p'
     ((p', _) : _) -> Left $ ExpectedEquals p'
+
+parseSyntax :: Table -> Position -> [(Position,Token)] -> Either ParseError ([(Position,Token)], Table)
+parseSyntax t p ts = case ts of
+  ((_, Ident n) : (_, IntLitTok i) : (_, Semi) : ts') ->
+    insertSyntax p n i NonAssoc t >>= \t' -> Right (ts', t')
+  ((_, Ident n) : (_, IntLitTok i) : (_, Ident "left") : (_, Semi) : ts') ->
+    insertSyntax p n i LeftAssoc t >>= \t' -> Right (ts', t')
+  ((_, Ident n) : (_, IntLitTok i) : (_, Ident "right") : (_, Semi) : ts') ->
+    insertSyntax p n i RightAssoc t >>= \t' -> Right (ts', t')
+  _ -> Left $ MalformedSyntaxDeclaration p
+
+parseBindingBody :: Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Body)
+parseBindingBody t ((p, Reserved Syntax) : ts) = do
+  (ts', t') <- parseSyntax t p ts
+  parseBindingBody t' ts'
+parseBindingBody t ((p, Reserved Let) : ts) = do
+  (rest,b) <- parseBind t p ts
+  fmap (Local b) <$> parseBindingBody t rest
 parseBindingBody t ts = fmap Done <$> parseExpressionTo Semi t ts
 
 insertSyntax :: Position -> Name -> Int -> Associativity -> Table -> Either ParseError Table

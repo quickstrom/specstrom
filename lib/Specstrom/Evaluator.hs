@@ -118,7 +118,7 @@ extend env (n, p) v
   | otherwise = Right $ M.insert n v env
 
 evaluate :: Env -> Body -> Either EvalError Value
-evaluate g (Bind f p ps b1 b2) = do
+evaluate g (Local (Bind f p ps b1) b2) = do
   v1 <- evalBind g ps b1
   g' <- extend g (f, p) v1
   evaluate g' b2

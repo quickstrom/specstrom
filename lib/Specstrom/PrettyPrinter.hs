@@ -35,11 +35,15 @@ prettyLexerError (UnterminatedStringLit p) = errorMessage p "no closing quote fo
 prettyLexerError (UnterminatedSelectorLit p) = errorMessage p "no closing backtick for selector literal" []
 
 prettyParseError :: ParseError -> Doc AnsiStyle
+prettyParseError (LexerFailure e) = prettyLexerError e
+prettyParseError (ModuleNotFound p n) = errorMessage p "module not found" [ident n]
 prettyParseError (MalformedSyntaxDeclaration p) = errorMessage p "malformed syntax declaration" []
 prettyParseError (SyntaxAlreadyDeclared n p) = errorMessage p "syntax already declared:" [ident n]
 prettyParseError (ExpectedPattern e) = errorMessage (exprPos e) "expected pattern, got:" [prettyExpr e]
 prettyParseError (ExpectedSemicolon p) = errorMessage p "expected semicolon." []
 prettyParseError (ExpectedEquals p) = errorMessage p "expected equals sign." []
+prettyParseError (ExpectedModuleName p) = errorMessage p "expected module name." []
+prettyParseError (ExpectedWith p) = errorMessage p "expected 'with'." []
 prettyParseError (ExpectedGot p s t) =
   errorMessage
     p
@@ -51,11 +55,14 @@ prettyParseError (ExpressionAmbiguous (e :| es)) =
 prettyParseError (DuplicatePatternBinding p [b]) = errorMessage p "duplicate bound variable in pattern:" [pretty b]
 prettyParseError (DuplicatePatternBinding p bs) =
   errorMessage p "duplicate bound variables in pattern:" [sep (punctuate comma (map pretty bs))]
+prettyParseError (TrailingGarbage p t) = errorMessage p "trailing tokens in file:" [prettyToken t]
 
 prettyToken :: Token -> Doc AnsiStyle
 prettyToken (Ident s) = ident s
 prettyToken (Reserved Define) = keyword "="
 prettyToken (Reserved Let) = keyword "let"
+prettyToken (Reserved Check) = keyword "check"
+prettyToken (Reserved With) = keyword "with"
 prettyToken (Reserved Syntax) = keyword "syntax"
 prettyToken (StringLitTok str) = literal (pretty (show str))
 prettyToken (CharLitTok str) = literal (pretty (show str))
@@ -67,18 +74,35 @@ prettyToken RParen = ")"
 prettyToken Semi = ";"
 prettyToken EOF = "EOF"
 
-prettyBody :: Body -> Doc AnsiStyle
-prettyBody (Bind n _p ps bs e) =
+prettyBind :: Bind -> Doc AnsiStyle
+prettyBind (Bind n _p ps bs) =
   keyword "let" <+> prettyExpr (unpeelAps (var' n) (map (var' . fst) ps))
     <+> nest
       3
       ( keyword "=" <> softline
           <> (prettyBody bs <> keyword ";")
       )
+  where
+    var' = Var undefined      
+
+prettyAll :: [TopLevel] -> Doc AnsiStyle 
+prettyAll = vcat . map prettyToplevel
+
+prettyGlob :: Glob -> Doc AnsiStyle
+prettyGlob = hsep . map prettyGlobTerm
+  where 
+    prettyGlobTerm = hcat . map (maybe "*" ident)
+
+prettyToplevel :: TopLevel -> Doc AnsiStyle 
+prettyToplevel (Properties p g1 g2) = keyword "check" <+> prettyGlob g1 <+> keyword "with" <+> prettyGlob g2 <> keyword ";"
+prettyToplevel (Binding b) = prettyBind b
+prettyToplevel (Imported ident bs) = keyword "import" <+> literal (pretty ident) <> keyword ";" <> line <> indent 2 (prettyAll bs)
+prettyBody :: Body -> Doc AnsiStyle
+prettyBody (Local b e)
+    =  prettyBind b
     <> line
     <> prettyBody e
-  where
-    var' = Var undefined
+  
 prettyBody (Done e) = prettyExpr e
 
 prettyLit :: Lit -> Doc AnsiStyle
