@@ -276,11 +276,12 @@ grammar table = mdo
         Ident s -> guard (s `notElem` mixfixParts) >> pure (Var p s)
         _ -> Nothing
     makeAp hol as = case (unholey hol, as) of
-      (Var p "freeze_=_in_", [a1, a2, a3]) -> Freeze p a1 a2 a3
+      (Var p "freeze_=_._", [a1, a2, a3]) -> Freeze p a1 a2 a3
       _ -> unpeelAps (unholey hol) as
     unholey ls = Var (getPosition ls) (foldMap (fromMaybe "_") (map (fmap (unident . snd)) ls))
       where
         unident (Ident s) = s
+        unident Dot = "."
         unident _ = "="
     getPosition ls = case filter isJust ls of
       [] -> error "No concrete token: the impossible happened"

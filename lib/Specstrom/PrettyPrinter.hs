@@ -124,9 +124,9 @@ prettyExpr trm = renderTerm True trm
         Literal _p l -> prettyLit l
         Projection e pr -> renderTerm False e <> projection ("." <> pr)
         App {} -> mempty -- Handled by peelAps
-        Freeze _ n e b ->
-          (if outer then id else parens) $
-            "freeze" <+> prettyExpr n <+> "=" <+> prettyExpr e <+> "in" <+> prettyExpr b
+        Freeze _ n e b -> 
+          (if outer then id else parens) $ 
+            "freeze" <+> prettyExpr n <+> "=" <+> prettyExpr e <> "." <+> prettyExpr b
       | (Var _ n, args) <- peelAps t [],
         Text.length (Text.filter (== '_') n) == length args =
         (if outer then id else parens) $ hsep $ infixTerms n args
@@ -238,7 +238,7 @@ prettyFormula p = \case
   Trivial -> "true"
   Absurd -> "false"
   LocFormula _name _pos f -> prettyFormula p f
-  FreezeIn _pos name e f -> parensIf (p >= 0) (keyword "freeze" <+> pretty name <+> keyword "=" <+> prettyFormulaExpr 0 e <+> keyword "in" <+> prettyFormula 0 f)
+  FreezeIn _pos name e f -> parensIf (p >= 0) (keyword "freeze" <+> pretty name <+> keyword "=" <+> prettyFormulaExpr 0 e <+> keyword "." <> prettyFormula 0 f)
 
 parensIf :: Bool -> Doc ann -> Doc ann
 parensIf True = parens . align
