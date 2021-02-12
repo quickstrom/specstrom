@@ -46,6 +46,7 @@
                              ))
   )
 
+;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.strom\\'" . specstrom-mode))
  
 (provide 'specstrom-mode)
