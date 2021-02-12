@@ -83,26 +83,26 @@ prettyBind (Bind n _p ps bs) =
           <> (prettyBody bs <> keyword ";")
       )
   where
-    var' = Var undefined      
+    var' = Var undefined
 
-prettyAll :: [TopLevel] -> Doc AnsiStyle 
+prettyAll :: [TopLevel] -> Doc AnsiStyle
 prettyAll = vcat . map prettyToplevel
 
 prettyGlob :: Glob -> Doc AnsiStyle
 prettyGlob = hsep . map prettyGlobTerm
-  where 
+  where
     prettyGlobTerm = hcat . map (maybe "*" ident)
 
-prettyToplevel :: TopLevel -> Doc AnsiStyle 
+prettyToplevel :: TopLevel -> Doc AnsiStyle
 prettyToplevel (Properties p g1 g2) = keyword "check" <+> prettyGlob g1 <+> keyword "with" <+> prettyGlob g2 <> keyword ";"
 prettyToplevel (Binding b) = prettyBind b
 prettyToplevel (Imported ident bs) = keyword "import" <+> literal (pretty ident) <> keyword ";" <> line <> indent 2 (prettyAll bs)
+
 prettyBody :: Body -> Doc AnsiStyle
-prettyBody (Local b e)
-    =  prettyBind b
+prettyBody (Local b e) =
+  prettyBind b
     <> line
     <> prettyBody e
-  
 prettyBody (Done e) = prettyExpr e
 
 prettyLit :: Lit -> Doc AnsiStyle
