@@ -4,20 +4,12 @@
       (let* (
              ;; define several category of keywords
              (x-keywords '("let" "freeze" "forall" "exists"))
-             (x-actions '("click!" "\\.\\*!"))
              (x-constants '("true" "false" "null"))
-             (x-builtin '("next" "always" "until" "eventually"
-                          "==" "!=" "not"
-                          "+" "-" "*" "/" "%"
-                          "==>" "&&" "||"
-                          "<" "<=" ">" ">="
-                          "unchanged" "~>"
-                          ))
+             
 
              ;; generate regex string for each category of keywords
              (x-keywords-regexp (regexp-opt x-keywords 'words))
              (x-constants-regexp (regexp-opt x-constants 'words))
-             (x-builtin-regexp (regexp-opt x-builtin nil))
              )
 
         `(
@@ -25,10 +17,10 @@
           (,x-keywords-regexp . font-lock-keyword-face)
           (,x-constants-regexp . font-lock-constant-face)
 
-          ("\\(?:.+?\\?\\)" . font-lock-builtin-face)
-          ("\\(?:.+?\\!\\)" . font-lock-builtin-face)
+          ("\\(?:[^ ]+?\\?\\)" . font-lock-builtin-face)
+          ("\\(?:[^ ]+?\\!\\)" . font-lock-builtin-face)
 
-          (,x-builtin-regexp . font-lock-function-name-face)
+          ;;(,x-builtin-regexp . font-lock-function-name-face)
 
           ;; note: order above matters, because once colored, that part won't change.
           ;; in general, put longer words first
