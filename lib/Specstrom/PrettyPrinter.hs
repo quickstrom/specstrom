@@ -124,8 +124,8 @@ prettyExpr trm = renderTerm True trm
         Literal _p l -> prettyLit l
         Projection e pr -> renderTerm False e <> projection ("." <> pr)
         App {} -> mempty -- Handled by peelAps
-        Freeze _ n e b -> 
-          (if outer then id else parens) $ 
+        Freeze _ n e b ->
+          (if outer then id else parens) $
             "freeze" <+> prettyExpr n <+> "=" <+> prettyExpr e <> "." <+> prettyExpr b
       | (Var _ n, args) <- peelAps t [],
         Text.length (Text.filter (== '_') n) == length args =
