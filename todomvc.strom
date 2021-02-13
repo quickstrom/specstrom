@@ -1,0 +1,175 @@
+// Would be nice to limit the imports as in the comments:
+
+import list; // (zip, mapNotNull, length, first, last);
+import string; //  (trim, split, parseInt);
+
+//-------------------------------------------------
+// Operators
+//-------------------------------------------------
+
+syntax _>'_ 8;
+let x >' n = freeze x' = x. next (x' > n);
+
+syntax _>='_ 8;
+let x >=' n = freeze x' = x. next (x' >= n);
+
+syntax _<'_ 8;
+let x >' n = freeze x' = x. next (x' > n);
+
+syntax _<='_ 8;
+let x >=' n = freeze x' = x. next (x' >= n);
+
+syntax _+='_ 8;
+let x >' n = freeze x' = x. next (x' == x + n);
+
+syntax _-='_ 8;
+let x >' n = freeze x' = x. next (x' == x - n);
+
+//-------------------------------------------------
+// Actions
+//-------------------------------------------------
+
+let select-other-filter! = click! `.todoapp .filters a:not(.selected)`
+  weighted 5.0;
+
+let select-same-filter! = click! `.todoapp .filters a.selected`;
+
+let toggle-all-todos! = click! `.todoapp label[for=toggle-all]`;
+
+let delete-todo! = click! `.todoapp .destroy`;
+
+let focus-input! = focus! `.todoapp .new-todo`
+  weighted 5.0;
+
+let click-any-link! = click! `a`
+  weighted 5.0;
+
+let create-todo! = key-press! key-return // or keys.return?
+  weighted 5.0;
+
+let selectedFilter = `.todoapp .filters a.selected`.textContent;
+
+let items =
+  mapNotNull
+    // TODO: just a lambda syntax sketch
+    (li label -> if li.css.display != "none" then label else null)
+    (zip `.todo-list li` `.todo-list li label`);
+
+let lastItem = last items;
+
+let numItems = length items;
+
+let checkboxes = `.todo-list li input[type=checkbox]`;
+
+let numUnchecked = length (filter (c -> not c.checked) checkboxes);
+
+let numChecked = length (filter (c -> c.checked) checkboxes);
+
+let pendingText = `.todoapp .new-todo`.value ?: "";
+
+let numItemsLeft =
+    let strong = `.todoapp .todo-count strong`.textContent;
+    if strong != null
+    then parseInt (first (split " " (trim strong)))
+    else 0;
+
+let availableFilters = map (f -> f.textContent) `.todoapp .filters a`;
+
+//-------------------------------------------------
+// States & Transitions
+//-------------------------------------------------
+
+let initial =
+    (selectedFilter == null || selectedFilter == "All")
+      && numItems == 0
+      && pendingText == "";
+
+let enterText =
+    not unchanged pendingText
+      && unchanged items
+      && unchanged selectedFilter;
+
+let changeFilter =
+  // adding the first todo item switches to the All filter
+  selectedFilter == null && next selectedFilter == "All"
+  // going from "All" to some filter (including "All") cannot increase number of items
+  || selectedFilter == "All" && numItems >=' numItems
+  // going to "Active" should only show as many items as are considered left to do
+  || next (selectedFilter == "Active" && numItemsLeft == numUnchecked && numItems == numUnchecked)
+  // going to a different filter should not change the pending todo item
+  || not (unchanged selectedFilter) && unchanged pendingText
+  ;
+
+let addNew =
+  next (pendingText == "")
+    && not next selectedFilter == null
+    && (next selectedFilter == "All") ==> pendingText == next lastItem
+    && (next selectedFilter == "Active") ==> pendingText == next lastItem
+    && (next selectedFilter == "Completed") ==> unchanged items;
+
+let checkOne =
+  unchanged pendingText
+    && unchanged selectedFilter
+    && selectedFilter != "Completed"
+    && selectedFilter == "All" ==> unchanged numItems && numChecked <' numChecked
+    && selectedFilter == "Active" ==> numItems >' numItems && numItemsLeft >' numItemsLeft;
+
+let uncheckOne =
+  unchanged pendingText
+    && unchanged selectedFilter
+    && selectedFilter != "Active"
+    && selectedFilter == "All" ==> unchanged numItems && numChecked >' numChecked
+    && selectedFilter == "Completed" ==> numItems >' numItems && numItemsLeft <' numItemsLeft;
+
+let delete =
+  unchanged pendingText
+    && selectedFilter != null
+    && numItems == 1 ==>
+      if selectedFilter == "All"
+      // removing the last todo item causes the filters to be hidden
+      then next (numItems == 0 && selectedFilter == null)
+      // in other filters, there *might* be other todo items that are just not visible
+      else next (numItems == 0)
+    && numItems > 1 ==>
+      unchanged selectedFilter
+        && numItems -= 1
+        && (selectedFilter == "Active" ==> numItemsLeft -= 1
+        && (selectedFilter == "Completed" ==> unchanged numItemsLeft)
+  ;
+
+let toggleAll =
+    unchanged pendingText
+      && unchanged selectedFilter
+      && selectedFilter != null
+      && selectedFilter == "All" ==> unchanged numItems && next (numItems == numChecked)
+      && (selectedFilter == "Active" ==>
+           // If there are active items, they're checked
+           (numItems > 0 && next numItems == 0)
+           // If there are none, all checked items are unchecked (but we can't see how many
+           // there are, just more than 0)
+           || (numItems == 0 && next numItems > 0)
+         )
+      && selectedFilter == "Completed" ==> numItems +=' numItemsLeft
+  ;
+
+
+let hasFilters = numItems == 0 || availableFilters == ["All", "Active", "Completed"];
+
+let prop_safety =
+  initial
+    && always
+        ( enterText
+            || addNew
+            || changeFilter
+            || checkOne
+            || uncheckOne
+            || delete
+            || toggleAll
+        )
+    && always hasFilters;
+
+let ready? = changed? `.todoapp .new-todo` when `.todoapp .new-todo`.textContent != "";
+
+import test;
+
+check prop_* with * when ready?;

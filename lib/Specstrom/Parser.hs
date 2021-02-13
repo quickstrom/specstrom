@@ -104,7 +104,11 @@ builtIns =
         ("eventually_", RightAssoc)
       ],
       [ ("_==_", NonAssoc),
-        ("_!=_", NonAssoc)
+        ("_!=_", NonAssoc),
+        ("_>_", NonAssoc),
+        ("_>=_", NonAssoc),
+        ("_<_", NonAssoc),
+        ("_<=_", NonAssoc)
       ]
     ]
 
