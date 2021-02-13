@@ -168,7 +168,7 @@ let prop_safety =
         )
     && always hasFilters;
 
-let ready? = changed? `.todoapp .new-todo` when `.todoapp .new-todo`.textContent != "";
+let ready? = changed? `.todoapp .new-todo` when length `.todoapp .new-todo` == 1; // is the query result a list?
 
 import test;
 
