@@ -1,6 +1,6 @@
 // Would be nice to limit the imports as in the comments:
 
-import list; // (zip, mapNotNull, length, first, last);
+import list; // (length, first, last);
 import string; //  (trim, split, parseInt);
 
 //-------------------------------------------------
@@ -50,20 +50,22 @@ let create-todo! = key-press! key-return // or keys.return?
 let selectedFilter = `.todoapp .filters a.selected`.textContent;
 
 let items =
-  mapNotNull
-    // TODO: just a lambda syntax sketch
-    (li label -> if li.css.display != "none" then label else null)
-    (zip `.todo-list li` `.todo-list li label`);
+  [
+    label
+    for li in `.todo-list li`
+    zip label in `.todo-list li label`
+    if li.css.display != "none" 
+  ]
 
 let lastItem = last items;
 
 let numItems = length items;
 
-let checkboxes = `.todo-list li input[type=checkbox]`;
+let checkboxes = ;
 
-let numUnchecked = length (filter (c -> not c.checked) checkboxes);
+let numUnchecked = length `.todo-list li input[type=checkbox]:not(:checked)`;
 
-let numChecked = length (filter (c -> c.checked) checkboxes);
+let numChecked = length `.todo-list li input[type=checkbox]:checked`;
 
 let pendingText = `.todoapp .new-todo`.value ?: "";
 
@@ -73,7 +75,11 @@ let numItemsLeft =
     then parseInt (first (split " " (trim strong)))
     else 0;
 
-let availableFilters = map (f -> f.textContent) `.todoapp .filters a`;
+let availableFilters =
+  [
+    f.textContent
+    for f in `.todoapp .filters a`
+  ];
 
 //-------------------------------------------------
 // States & Transitions

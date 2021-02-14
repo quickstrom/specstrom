@@ -3,7 +3,7 @@
 (setq specstrom-font-lock-keywords
       (let* (
              ;; define several category of keywords
-             (x-keywords '("if" "then" "else" "let" "freeze" "forall" "exists" "in" "check" "import" "with" "when" "weighted"))
+             (x-keywords '("if" "then" "else" "let" "freeze" "forall" "exists" "in" "for" "zip" "check" "import" "with" "when" "weighted"))
              (x-constants '("true" "false" "null"))
              
 
