@@ -67,7 +67,7 @@ let numUnchecked = length `.todo-list li input[type=checkbox]:not(:checked)`;
 
 let numChecked = length `.todo-list li input[type=checkbox]:checked`;
 
-let pendingText = `.todoapp .new-todo`.value ?: "";
+let pendingText = `.todoapp .new-todo`.value ?? "";
 
 let numItemsLeft =
     let strong = `.todoapp .todo-count strong`.textContent;
