@@ -14,10 +14,10 @@ syntax _>='_ 8;
 let x >=' n = freeze x' = x. next (x' >= n);
 
 syntax _<'_ 8;
-let x >' n = freeze x' = x. next (x' > n);
+let x >' n = freeze x' = x. next (x' < n);
 
 syntax _<='_ 8;
-let x >=' n = freeze x' = x. next (x' >= n);
+let x >=' n = freeze x' = x. next (x' <= n);
 
 syntax _+='_ 8;
 let x >' n = freeze x' = x. next (x' == x + n);
