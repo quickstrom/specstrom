@@ -11,7 +11,6 @@ module Specstrom.StreamingVerifier where
 
 import Algebra.Heyting
 import Algebra.Lattice
-import Control.Applicative (Applicative (liftA2))
 import Numeric.Natural
 
 -- * Language
