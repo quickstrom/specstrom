@@ -1,7 +1,9 @@
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 
 -- | This module is a draft for the streaming verifier of
 -- Specstrom/quickLTL formulae. Currently it uses a separate and
@@ -9,7 +11,14 @@
 -- experimentation.
 module Specstrom.StreamingVerifier where
 
+import Control.Monad.Error.Class (MonadError (throwError))
+import Control.Monad.Except (runExceptT)
+import Control.Monad.IO.Class (MonadIO)
 import Numeric.Natural
+import Pipes (Producer, await, yield, (>->))
+import Pipes.Parse (Parser, draw, evalStateT, peek, runStateT)
+import Pipes.Prelude (stdinLn)
+import System.IO (BufferMode (LineBuffering), hSetBuffering, stdin)
 
 -- * Language
 
@@ -142,19 +151,19 @@ requiresMoreStates = \case
 
 -- | Steps the formula through the trace as long as it requires
 -- more states (i.e. contains 'DNext' terms).
-stepRequired :: Formula -> Trace -> Either CheckError (Formula, Trace)
-stepRequired f t | requiresMoreStates f =
+stepRequiredList :: Formula -> Trace -> Either CheckError (Formula, Trace)
+stepRequiredList f t | requiresMoreStates f =
   case t of
     [] -> Left (CannotStep f)
-    x : xs -> stepRequired (step f x) xs
-stepRequired f t = Right (f, t)
+    x : xs -> stepRequiredList (step f x) xs
+stepRequiredList f t = Right (f, t)
 
 -- | Steps the formula through the residual states (states that are
 -- available but not required) and computes the final result.
-stepResidual :: Formula -> Trace -> Either CheckError Result
-stepResidual f [] = Left (CannotStep f)
-stepResidual f (x1 : x2 : xs) = stepResidual (step f x1) (x2 : xs)
-stepResidual f [s] = compute f
+stepResidualList :: Formula -> Trace -> Either CheckError Result
+stepResidualList f [] = Left (CannotStep f)
+stepResidualList f (x1 : x2 : xs) = stepResidualList (step f x1) (x2 : xs)
+stepResidualList f [s] = compute f
   where
     compute = \case
       Trivial -> Right (Definitely True)
@@ -168,7 +177,73 @@ stepResidual f [s] = compute f
       Not p -> resultNegate <$> compute p
 
 -- | Verify a pre-collected trace with the given formula.
-verify :: Formula -> Trace -> Either CheckError Result
-verify f t = do
-  (f', t') <- stepRequired f t
-  stepResidual f' t'
+verifyList :: Formula -> Trace -> Either CheckError Result
+verifyList f t = do
+  (f', t') <- stepRequiredList f t
+  stepResidualList f' t'
+
+-- * Streaming with Pipes
+
+isDecided :: Formula -> Bool
+isDecided Trivial = True
+isDecided Absurd = True
+isDecided _ = False
+
+-- | Steps the formula through the trace as long as it requires
+-- more states (i.e. contains 'DNext' terms).
+stepRequired :: MonadError CheckError m => Formula -> Parser State m Formula
+stepRequired f
+  | requiresMoreStates f =
+    draw >>= \case
+      Nothing -> throwError (CannotStep f)
+      Just x ->
+        let f' = step f x
+         in stepRequired f'
+stepRequired f = pure f
+
+-- | Steps the formula through the residual states (states that are
+-- available but not required) and computes the final result.
+stepResidual :: MonadError CheckError m => Formula -> Parser State m Result
+stepResidual f =
+  draw >>= \case
+    Nothing -> throwError (CannotStep f)
+    Just s ->
+      case step f s of
+        f'
+          | isDecided f' -> compute s f'
+          | otherwise ->
+            peek >>= \case
+              Just {} -> stepResidual f'
+              Nothing -> compute s f'
+  where
+    compute s = \case
+      Trivial -> pure (Definitely True)
+      Absurd -> pure (Definitely False)
+      Atomic a -> pure (if a s then Definitely True else Definitely False)
+      Next {} -> pure (Probably False)
+      WNext {} -> pure (Probably True)
+      n@DNext {} -> throwError (UnexpectedEndFormula n)
+      And p q -> resultAnd <$> compute s p <*> compute s q
+      Or p q -> resultOr <$> compute s p <*> compute s q
+      Not p -> resultNegate <$> compute s p
+
+verify :: MonadError CheckError m => Formula -> Producer State m () -> m Result
+verify f trace = do
+  (f', trace') <- runStateT (stepRequired f) trace
+  evalStateT (stepResidual f') trace'
+
+-- * Run interactively
+
+stdinStates :: MonadIO m => Producer State m ()
+stdinStates = stdinLn >-> loop
+  where
+    loop = do
+      line <- await
+      if null line then pure () else mapM_ yield line >> loop
+
+verifyInteractive :: Formula -> IO ()
+verifyInteractive f = do
+  hSetBuffering stdin LineBuffering
+  runExceptT (verify f stdinStates) >>= \case
+    Left err -> putStrLn ("Verification failed with error:" <> show err)
+    Right result -> putStrLn ("Verification result: " <> show result)
