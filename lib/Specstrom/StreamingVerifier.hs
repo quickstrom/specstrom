@@ -204,6 +204,8 @@ stepRequired f = pure f
 -- | Steps the formula through the residual states (states that are
 -- available but not required) and computes the final result.
 stepResidual :: MonadError CheckError m => Formula -> Parser State m Result
+stepResidual Trivial = pure (Definitely True)
+stepResidual Absurd = pure (Definitely False)
 stepResidual f =
   draw >>= \case
     Nothing -> throwError (CannotStep f)
