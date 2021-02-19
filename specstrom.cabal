@@ -61,4 +61,5 @@ test-suite specstrom-test
   build-depends:       hedgehog
                      , specstrom
   other-modules:       Specstrom.PrettyPrinterTest
+                     , Specstrom.StreamingVerifierTest
                      , Specstrom.Gen

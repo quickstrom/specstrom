@@ -26,6 +26,7 @@ data Formula
   | Atomic (State -> Bool)
   | And Formula Formula
   | Or Formula Formula
+  | Not Formula
   | -- | strong next
     Next Formula
   | -- | weak next
@@ -40,6 +41,7 @@ instance Show Formula where
     Atomic _ -> "Atomic"
     And p q -> "(And " <> show p <> " " <> show q <> ")"
     Or p q -> "(Or " <> show p <> " " <> show q <> ")"
+    Not p -> "(Not " <> show p <> ")"
     Next _ -> "(Next ...)"
     WNext _ -> "(WNext ...)"
     DNext p -> "(DNext " <> show p <> ")"
@@ -82,10 +84,20 @@ instance BoundedMeetSemiLattice Formula where
 instance BoundedJoinSemiLattice Formula where
   bottom = Absurd
 
+instance Heyting Formula where
+  p ==> q = neg p \/ q
+  neg = \case
+    Trivial -> Absurd
+    Absurd -> Trivial
+    Not p -> p
+    And p q -> neg p \/ neg q
+    Or p q -> neg p /\ neg q
+    p -> Not p
+
 -- * Checking
 
 data Certainty a = Definitely a | Probably a
-  deriving (Show, Functor)
+  deriving (Eq, Show, Functor)
 
 instance Lattice (Certainty Bool) where
   _ /\ Definitely False = Definitely False
@@ -109,7 +121,7 @@ instance BoundedJoinSemiLattice (Certainty Bool) where
   bottom = Definitely bottom
 
 instance Heyting (Certainty Bool) where
-  f1 ==> f2 = neg f1 /\ f2
+  p ==> q = neg p \/ q
   neg = fmap neg
 
 type Result = Certainty Bool
@@ -126,6 +138,7 @@ step Absurd _ = Absurd
 step (Atomic a) s = if a s then Trivial else Absurd
 step (And f1 f2) s = step f1 s /\ step f2 s
 step (Or f1 f2) s = step f1 s \/ step f2 s
+step (Not p) s = neg (step p s)
 step (Next f) _ = f
 step (WNext f) _ = f
 step (DNext f) _ = f
@@ -135,8 +148,9 @@ requiresMoreStates = \case
   Trivial -> False
   Absurd -> False
   Atomic {} -> False
-  (And f1 f2) -> requiresMoreStates f1 \/ requiresMoreStates f2
-  (Or f1 f2) -> requiresMoreStates f1 \/ requiresMoreStates f2
+  And f1 f2 -> requiresMoreStates f1 \/ requiresMoreStates f2
+  Or f1 f2 -> requiresMoreStates f1 \/ requiresMoreStates f2
+  Not p -> requiresMoreStates p
   Next {} -> False
   WNext {} -> False
   DNext {} -> True
@@ -164,8 +178,9 @@ stepResidual f [s] = compute f
       Next {} -> Right (Probably False)
       WNext {} -> Right (Probably True)
       n@DNext {} -> Left (UnexpectedEndFormula n)
-      And p q -> liftA2 (/\) (compute p) (compute q)
-      Or p q -> liftA2 (\/) (compute p) (compute q)
+      And p q -> (/\) <$> compute p <*> compute q
+      Or p q -> (\/) <$> compute p <*> compute q
+      Not p -> neg <$> compute p
 
 -- | Verify a pre-collected trace with the given formula.
 verify :: Formula -> Trace -> Either CheckError Result
