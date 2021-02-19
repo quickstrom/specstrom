@@ -131,13 +131,14 @@ data CheckError
   | UnexpectedEndFormula Formula
   deriving (Show)
 
--- | Advance the formula one step forward using the given state.
+-- | Simplify and advance the formula one step forward using the given
+-- state.
 step :: Formula -> State -> Formula
 step Trivial _ = Trivial
 step Absurd _ = Absurd
 step (Atomic a) s = if a s then Trivial else Absurd
-step (And f1 f2) s = step f1 s /\ step f2 s
-step (Or f1 f2) s = step f1 s \/ step f2 s
+step (And p q) s = step p s /\ step q s
+step (Or p q) s = step p s \/ step q s
 step (Not p) s = neg (step p s)
 step (Next f) _ = f
 step (WNext f) _ = f
@@ -148,8 +149,8 @@ requiresMoreStates = \case
   Trivial -> False
   Absurd -> False
   Atomic {} -> False
-  And f1 f2 -> requiresMoreStates f1 \/ requiresMoreStates f2
-  Or f1 f2 -> requiresMoreStates f1 \/ requiresMoreStates f2
+  And p q -> requiresMoreStates p \/ requiresMoreStates q
+  Or p q -> requiresMoreStates p \/ requiresMoreStates q
   Not p -> requiresMoreStates p
   Next {} -> False
   WNext {} -> False
