@@ -7,7 +7,6 @@ import Hedgehog (Gen, Property, annotateShow, checkParallel, discover, failure, 
 import qualified Hedgehog.Gen as Gen
 import Specstrom.StreamingVerifier
 import qualified Hedgehog.Range as Range
-import Algebra.Heyting (Heyting(neg))
 
 prop_always_eventually_equivalence :: Property
 prop_always_eventually_equivalence = property $ do
@@ -15,7 +14,7 @@ prop_always_eventually_equivalence = property $ do
   state <- forAll genState
   n <- forAll (Gen.integral (Range.linear 0 10))
   let p = is state
-  case (verify (always n p) trace, verify (neg (eventually n (neg p))) trace) of
+  case (verify (always n p) trace, verify (formulaNegate (eventually n (formulaNegate p))) trace) of
     (Right r1, Right r2) -> r1 === r2
     (Left CannotStep{}, Left CannotStep{}) -> pure ()
     (Left UnexpectedEndFormula{}, _) -> failure

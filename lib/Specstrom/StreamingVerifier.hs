@@ -9,8 +9,6 @@
 -- experimentation.
 module Specstrom.StreamingVerifier where
 
-import Algebra.Heyting
-import Algebra.Lattice
 import Numeric.Natural
 
 -- * Language
@@ -57,73 +55,60 @@ wnext :: Formula -> Formula
 wnext = WNext
 
 always :: Natural -> Formula -> Formula
-always 0 f = f /\ WNext (always 0 f)
-always n f = f /\ DNext (always (pred n) f)
+always 0 f = f `formulaAnd` WNext (always 0 f)
+always n f = f `formulaAnd` DNext (always (pred n) f)
 
 eventually :: Natural -> Formula -> Formula
-eventually 0 f = f \/ Next (eventually 0 f)
-eventually n f = f \/ DNext (eventually (pred n) f)
+eventually 0 f = f `formulaOr` Next (eventually 0 f)
+eventually n f = f `formulaOr` DNext (eventually (pred n) f)
 
-instance Lattice Formula where
-  Absurd /\ _ = Absurd
-  _ /\ Absurd = Absurd
-  Trivial /\ x = x
-  x /\ Trivial = x
-  x /\ y = And x y
+formulaAnd :: Formula -> Formula -> Formula
+formulaAnd Absurd _ = Absurd
+formulaAnd _ Absurd = Absurd
+formulaAnd Trivial x = x
+formulaAnd x Trivial = x
+formulaAnd x y = And x y
 
-  Absurd \/ x = x
-  x \/ Absurd = x
-  Trivial \/ _ = Trivial
-  _ \/ Trivial = Trivial
-  x \/ y = Or x y
+formulaOr :: Formula -> Formula -> Formula
+formulaOr Absurd x = x
+formulaOr x Absurd = x
+formulaOr Trivial _ = Trivial
+formulaOr _ Trivial = Trivial
+formulaOr x y = Or x y
 
-instance BoundedMeetSemiLattice Formula where
-  top = Trivial
-
-instance BoundedJoinSemiLattice Formula where
-  bottom = Absurd
-
-instance Heyting Formula where
-  p ==> q = neg p \/ q
-  neg = \case
-    Trivial -> Absurd
-    Absurd -> Trivial
-    Not p -> p
-    And p q -> neg p \/ neg q
-    Or p q -> neg p /\ neg q
-    p -> Not p
+formulaNegate :: Formula -> Formula
+formulaNegate = \case
+  Trivial -> Absurd
+  Absurd -> Trivial
+  Not p -> p
+  And p q -> formulaNegate p `formulaOr` formulaNegate q
+  Or p q -> formulaNegate p `formulaAnd` formulaNegate q
+  p -> Not p
 
 -- * Checking
 
-data Certainty a = Definitely a | Probably a
-  deriving (Eq, Show, Functor)
+data Result = Definitely Bool | Probably Bool
+  deriving (Eq, Show)
 
-instance Lattice (Certainty Bool) where
-  _ /\ Definitely False = Definitely False
-  Definitely False /\ _ = Definitely False
-  Definitely a /\ Definitely b = Definitely (a /\ b)
-  Probably a /\ Definitely b = Probably (a /\ b)
-  Definitely a /\ Probably b = Probably (a /\ b)
-  Probably a /\ Probably b = Probably (a /\ b)
+resultAnd :: Result -> Result -> Result
+resultAnd _ (Definitely False) = Definitely False
+resultAnd (Definitely False) _ = Definitely False
+resultAnd (Definitely a) (Definitely b) = Definitely (a && b)
+resultAnd (Probably a) (Definitely b) = Probably (a && b)
+resultAnd (Definitely a) (Probably b) = Probably (a && b)
+resultAnd (Probably a) (Probably b) = Probably (a && b)
 
-  p \/ Definitely False = p
-  Definitely False \/ p = p
-  Definitely a \/ Definitely b = Definitely (a \/ b)
-  Probably a \/ Definitely b = Definitely (a \/ b)
-  Definitely a \/ Probably b = Definitely (a \/ b)
-  Probably a \/ Probably b = Probably (a \/ b)
+resultOr :: Result -> Result -> Result
+resultOr p (Definitely False) = p
+resultOr (Definitely False) p = p
+resultOr (Definitely a) (Definitely b) = Definitely (a || b)
+resultOr (Probably a) (Definitely b) = Definitely (a || b)
+resultOr (Definitely a) (Probably b) = Definitely (a || b)
+resultOr (Probably a) (Probably b) = Probably (a || b)
 
-instance BoundedMeetSemiLattice (Certainty Bool) where
-  top = Definitely top
-
-instance BoundedJoinSemiLattice (Certainty Bool) where
-  bottom = Definitely bottom
-
-instance Heyting (Certainty Bool) where
-  p ==> q = neg p \/ q
-  neg = fmap neg
-
-type Result = Certainty Bool
+resultNegate :: Result -> Result
+resultNegate (Probably b) = Probably (not b)
+resultNegate (Definitely b) = Definitely (not b)
 
 data CheckError
   = CannotStep Formula
@@ -136,9 +121,9 @@ step :: Formula -> State -> Formula
 step Trivial _ = Trivial
 step Absurd _ = Absurd
 step (Atomic a) s = if a s then Trivial else Absurd
-step (And p q) s = step p s /\ step q s
-step (Or p q) s = step p s \/ step q s
-step (Not p) s = neg (step p s)
+step (And p q) s = step p s `formulaAnd` step q s
+step (Or p q) s = step p s `formulaOr` step q s
+step (Not p) s = formulaNegate (step p s)
 step (Next f) _ = f
 step (WNext f) _ = f
 step (DNext f) _ = f
@@ -148,8 +133,8 @@ requiresMoreStates = \case
   Trivial -> False
   Absurd -> False
   Atomic {} -> False
-  And p q -> requiresMoreStates p \/ requiresMoreStates q
-  Or p q -> requiresMoreStates p \/ requiresMoreStates q
+  And p q -> requiresMoreStates p || requiresMoreStates q
+  Or p q -> requiresMoreStates p || requiresMoreStates q
   Not p -> requiresMoreStates p
   Next {} -> False
   WNext {} -> False
@@ -178,9 +163,9 @@ stepResidual f [s] = compute f
       Next {} -> Right (Probably False)
       WNext {} -> Right (Probably True)
       n@DNext {} -> Left (UnexpectedEndFormula n)
-      And p q -> (/\) <$> compute p <*> compute q
-      Or p q -> (\/) <$> compute p <*> compute q
-      Not p -> neg <$> compute p
+      And p q -> resultAnd <$> compute p <*> compute q
+      Or p q -> resultOr <$> compute p <*> compute q
+      Not p -> resultNegate <$> compute p
 
 -- | Verify a pre-collected trace with the given formula.
 verify :: Formula -> Trace -> Either CheckError Result

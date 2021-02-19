@@ -21,8 +21,6 @@ common shared
   build-depends:       base >=4.13 && <4.14
                      , containers
                      , prettyprinter
-                     -- only for streaming verifier experiment:
-                     , lattices
                      , text
                      , mtl
                      , filepath
