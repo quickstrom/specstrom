@@ -247,5 +247,6 @@ verifyInteractive :: Formula -> IO ()
 verifyInteractive f = do
   hSetBuffering stdin LineBuffering
   runExceptT (verify f stdinStates) >>= \case
-    Left err -> putStrLn ("Verification failed with error:" <> show err)
+    Left CannotStep{} -> putStrLn "Verification failed due to lack of observed states."
+    Left err -> putStrLn ("Verification failed with error: " <> show err)
     Right result -> putStrLn ("Verification result: " <> show result)
