@@ -125,114 +125,94 @@ data CheckError
   deriving (Show)
 
 -- | Simplify and advance the formula one step forward using the given
--- state.
-step :: Formula -> State -> Formula
-step Trivial _ = Trivial
-step Absurd _ = Absurd
-step (Atomic a) s = if a s then Trivial else Absurd
-step (And p q) s = step p s `formulaAnd` step q s
-step (Or p q) s = step p s `formulaOr` step q s
-step (Not p) s = formulaNegate (step p s)
-step (Next f) _ = f
-step (WNext f) _ = f
-step (DNext f) _ = f
-
-requiresMoreStates :: Formula -> Bool
-requiresMoreStates = \case
-  Trivial -> False
-  Absurd -> False
-  Atomic {} -> False
-  And p q -> requiresMoreStates p || requiresMoreStates q
-  Or p q -> requiresMoreStates p || requiresMoreStates q
-  Not p -> requiresMoreStates p
-  Next {} -> False
-  WNext {} -> False
-  DNext {} -> True
+-- state. Returns a 'Left' if more states are required to determine
+-- a result, and 'Right' if a possible result is available.
+step :: Formula -> State -> Either Formula (Formula, Result)
+step Trivial _ = Right (Trivial, Definitely True)
+step Absurd _ = Right (Absurd, Definitely False)
+step (Atomic a) s = if a s then Right (Trivial, Definitely True) else Right (Absurd, Definitely False)
+step (And p q) s = do
+  case (step p s, step q s) of
+    (Right (p', pr), Right (q', qr)) -> Right (p' `formulaAnd` q', pr `resultAnd` qr)
+    (_, r@(Right (_, Definitely False))) -> r
+    (r@(Right (_, Definitely False)), _) -> r
+    (Left p', Right (q', _)) -> Left (p' `formulaAnd` q')
+    (Right ( p', _), Left q') -> Left (p' `formulaAnd` q')
+    (Left p', Left q') -> Left (p' `formulaAnd` q')
+step (Or p q) s = do
+  case (step p s, step q s) of
+    (Right (p', pr), Right (q', qr)) -> Right (p' `formulaOr` q', pr `resultOr` qr)
+    (_, r@(Right (_, Definitely True))) -> r
+    (r@(Right (_, Definitely True)), _) -> r
+    (Left p', Left q') -> Left (Or p' q')
+    (r@Left {}, _) -> r
+    (_, r@Left {}) -> r
+step (Not p) s = do
+  case step p s of
+    Left p' -> Left (formulaNegate p')
+    Right (p', pr) -> Right (formulaNegate p', resultNegate pr)
+step (Next f) _ = Right (f, Probably False)
+step (WNext f) _ = Right (f, Probably True)
+step (DNext f) _ = Left f
 
 -- | Steps the formula through the trace as long as it requires
 -- more states (i.e. contains 'DNext' terms).
-stepRequiredList :: Formula -> Trace -> Either CheckError (Formula, Trace)
-stepRequiredList f t | requiresMoreStates f =
-  case t of
-    [] -> Left (CannotStep f)
-    x : xs -> stepRequiredList (step f x) xs
-stepRequiredList f t = Right (f, t)
+stepRequiredList :: Formula -> Trace -> Either CheckError (Formula, Result, Trace)
+stepRequiredList f [] = Left (CannotStep f)
+stepRequiredList f (x : xs) =
+  case step f x of
+    Left f' -> stepRequiredList f' xs
+    Right (f', r) -> pure (f', r, xs)
 
 -- | Steps the formula through the residual states (states that are
 -- available but not required) and computes the final result.
-stepResidualList :: Formula -> Trace -> Either CheckError Result
-stepResidualList f [] = Left (CannotStep f)
-stepResidualList f (x1 : x2 : xs) = stepResidualList (step f x1) (x2 : xs)
-stepResidualList f [s] = compute f
-  where
-    compute = \case
-      Trivial -> Right (Definitely True)
-      Absurd -> Right (Definitely False)
-      Atomic a -> if a s then Right (Definitely True) else Right (Definitely False)
-      Next {} -> Right (Probably False)
-      WNext {} -> Right (Probably True)
-      n@DNext {} -> Left (UnexpectedEndFormula n)
-      And p q -> resultAnd <$> compute p <*> compute q
-      Or p q -> resultOr <$> compute p <*> compute q
-      Not p -> resultNegate <$> compute p
+stepResidualList :: Formula -> Result -> Trace -> Either CheckError Result
+stepResidualList f _ (x : xs) =
+  case step f x of
+    Left f' -> throwError (CannotStep f')
+    Right (f', r) -> stepResidualList f' r xs
+stepResidualList _ r [] = pure r
 
 -- | Verify a pre-collected trace with the given formula.
 verifyList :: Formula -> Trace -> Either CheckError Result
 verifyList f t = do
-  (f', t') <- stepRequiredList f t
-  stepResidualList f' t'
+  (f', r, t') <- stepRequiredList f t
+  stepResidualList f' r t'
 
 -- * Streaming with Pipes
 
-isDecided :: Formula -> Bool
-isDecided Trivial = True
-isDecided Absurd = True
-isDecided _ = False
+isDefinitive :: Formula -> Bool
+isDefinitive Trivial = True
+isDefinitive Absurd = True
+isDefinitive _ = False
 
 -- | Steps the formula through the trace as long as it requires
 -- more states (i.e. contains 'DNext' terms).
-stepRequired :: MonadError CheckError m => Formula -> Parser State m Formula
-stepRequired f
-  | requiresMoreStates f =
-    draw >>= \case
-      Nothing -> throwError (CannotStep f)
-      Just x ->
-        let f' = step f x
-         in stepRequired f'
-stepRequired f = pure f
+stepRequired :: MonadError CheckError m => Formula -> Parser State m (Formula, Result)
+stepRequired f =
+  draw >>= \case
+    Nothing -> throwError (CannotStep f)
+    Just x ->
+      case step f x of
+        Left f' -> stepRequired f'
+        Right (f', r) -> pure (f', r)
 
 -- | Steps the formula through the residual states (states that are
 -- available but not required) and computes the final result.
-stepResidual :: MonadError CheckError m => Formula -> Parser State m Result
-stepResidual Trivial = pure (Definitely True)
-stepResidual Absurd = pure (Definitely False)
-stepResidual f =
+stepResidual :: MonadError CheckError m => Formula -> Result -> Parser State m Result
+stepResidual _ r@Definitely {} = pure r
+stepResidual f r =
   draw >>= \case
-    Nothing -> throwError (CannotStep f)
+    Nothing -> pure r
     Just s ->
       case step f s of
-        f'
-          | isDecided f' -> compute s f'
-          | otherwise ->
-            peek >>= \case
-              Just {} -> stepResidual f'
-              Nothing -> compute s f'
-  where
-    compute s = \case
-      Trivial -> pure (Definitely True)
-      Absurd -> pure (Definitely False)
-      Atomic a -> pure (if a s then Definitely True else Definitely False)
-      Next {} -> pure (Probably False)
-      WNext {} -> pure (Probably True)
-      n@DNext {} -> throwError (UnexpectedEndFormula n)
-      And p q -> resultAnd <$> compute s p <*> compute s q
-      Or p q -> resultOr <$> compute s p <*> compute s q
-      Not p -> resultNegate <$> compute s p
+        Left f' -> throwError (CannotStep f')
+        Right (f', r') -> stepResidual f' r'
 
 verify :: MonadError CheckError m => Formula -> Producer State m () -> m Result
 verify f trace = do
-  (f', trace') <- runStateT (stepRequired f) trace
-  evalStateT (stepResidual f') trace'
+  ((f', r), trace') <- runStateT (stepRequired f) trace
+  evalStateT (stepResidual f' r) trace'
 
 -- * Run interactively
 
@@ -247,6 +227,6 @@ verifyInteractive :: Formula -> IO ()
 verifyInteractive f = do
   hSetBuffering stdin LineBuffering
   runExceptT (verify f stdinStates) >>= \case
-    Left CannotStep{} -> putStrLn "Verification failed due to lack of observed states."
+    Left CannotStep {} -> putStrLn "Verification failed due to lack of observed states."
     Left err -> putStrLn ("Verification failed with error: " <> show err)
     Right result -> putStrLn ("Verification result: " <> show result)
