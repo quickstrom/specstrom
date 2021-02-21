@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
@@ -16,7 +15,7 @@ import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO)
 import Numeric.Natural
 import Pipes (Producer, await, yield, (>->))
-import Pipes.Parse (Parser, draw, evalStateT, peek, runStateT)
+import Pipes.Parse (Parser, draw, evalStateT, runStateT)
 import Pipes.Prelude (stdinLn)
 import System.IO (BufferMode (LineBuffering), hSetBuffering, stdin)
 
@@ -124,36 +123,50 @@ data CheckError
   | UnexpectedEndFormula Formula
   deriving (Show)
 
+data Step = Step {stepFormula :: Formula, stepResult :: Maybe Result}
+
+stepTop :: Step
+stepTop = Step Trivial (Just (Definitely True))
+
+stepBottom :: Step
+stepBottom = Step Absurd (Just (Definitely False))
+
+stepAnd :: Step -> Step -> Step
+stepAnd s1 s2 =
+  case (s1, s2) of
+    (Step p' (Just pr), Step q' (Just qr)) -> Step (p' `formulaAnd` q') (Just (pr `resultAnd` qr))
+    (_, r@(Step _ (Just (Definitely False)))) -> r
+    (r@(Step _ (Just (Definitely False))), _) -> r
+    (Step p' Nothing, Step q' Just {}) -> Step (p' `formulaAnd` q') Nothing
+    (Step p' Just {}, Step q' Nothing) -> Step (p' `formulaAnd` q') Nothing
+    (Step p' Nothing, Step q' Nothing) -> Step (p' `formulaAnd` q') Nothing
+
+stepOr :: Step -> Step -> Step
+stepOr s1 s2 =
+  case (s1, s2) of
+    (Step p' (Just pr), Step q' (Just qr)) -> Step (p' `formulaOr` q') (Just (pr `resultOr` qr))
+    (_, r@(Step _ (Just (Definitely True)))) -> r
+    (r@(Step _ (Just (Definitely True))), _) -> r
+    (Step p' Nothing, Step q' Nothing) -> Step (p' `formulaOr` q') Nothing
+    (r@(Step _ Nothing), _) -> r
+    (_, r@(Step _ Nothing)) -> r
+
+stepNegate :: Step -> Step
+stepNegate (Step p' pr) = Step (formulaNegate p') (resultNegate <$> pr)
+
 -- | Simplify and advance the formula one step forward using the given
 -- state. Returns a 'Left' if more states are required to determine
 -- a result, and 'Right' if a possible result is available.
-step :: Formula -> State -> Either Formula (Formula, Result)
-step Trivial _ = Right (Trivial, Definitely True)
-step Absurd _ = Right (Absurd, Definitely False)
-step (Atomic a) s = if a s then Right (Trivial, Definitely True) else Right (Absurd, Definitely False)
-step (And p q) s = do
-  case (step p s, step q s) of
-    (Right (p', pr), Right (q', qr)) -> Right (p' `formulaAnd` q', pr `resultAnd` qr)
-    (_, r@(Right (_, Definitely False))) -> r
-    (r@(Right (_, Definitely False)), _) -> r
-    (Left p', Right (q', _)) -> Left (p' `formulaAnd` q')
-    (Right ( p', _), Left q') -> Left (p' `formulaAnd` q')
-    (Left p', Left q') -> Left (p' `formulaAnd` q')
-step (Or p q) s = do
-  case (step p s, step q s) of
-    (Right (p', pr), Right (q', qr)) -> Right (p' `formulaOr` q', pr `resultOr` qr)
-    (_, r@(Right (_, Definitely True))) -> r
-    (r@(Right (_, Definitely True)), _) -> r
-    (Left p', Left q') -> Left (Or p' q')
-    (r@Left {}, _) -> r
-    (_, r@Left {}) -> r
-step (Not p) s = do
-  case step p s of
-    Left p' -> Left (formulaNegate p')
-    Right (p', pr) -> Right (formulaNegate p', resultNegate pr)
-step (Next f) _ = Right (f, Probably False)
-step (WNext f) _ = Right (f, Probably True)
-step (DNext f) _ = Left f
+step :: Formula -> State -> Step
+step Trivial _ = stepTop
+step Absurd _ = stepBottom
+step (Atomic a) s = if a s then stepTop else stepBottom
+step (And p q) s = stepAnd (step p s) (step q s)
+step (Or p q) s = stepOr (step p s) (step q s)
+step (Not p) s = stepNegate (step p s)
+step (Next f) _ = Step f (Just (Probably False))
+step (WNext f) _ = Step f (Just (Probably True))
+step (DNext f) _ = Step f Nothing
 
 -- | Steps the formula through the trace as long as it requires
 -- more states (i.e. contains 'DNext' terms).
@@ -161,16 +174,16 @@ stepRequiredList :: Formula -> Trace -> Either CheckError (Formula, Result, Trac
 stepRequiredList f [] = Left (CannotStep f)
 stepRequiredList f (x : xs) =
   case step f x of
-    Left f' -> stepRequiredList f' xs
-    Right (f', r) -> pure (f', r, xs)
+    Step f' Nothing -> stepRequiredList f' xs
+    Step f' (Just r) -> pure (f', r, xs)
 
 -- | Steps the formula through the residual states (states that are
 -- available but not required) and computes the final result.
 stepResidualList :: Formula -> Result -> Trace -> Either CheckError Result
 stepResidualList f _ (x : xs) =
   case step f x of
-    Left f' -> throwError (CannotStep f')
-    Right (f', r) -> stepResidualList f' r xs
+    Step f' Nothing -> throwError (CannotStep f')
+    Step f' (Just r) -> stepResidualList f' r xs
 stepResidualList _ r [] = pure r
 
 -- | Verify a pre-collected trace with the given formula.
@@ -194,8 +207,8 @@ stepRequired f =
     Nothing -> throwError (CannotStep f)
     Just x ->
       case step f x of
-        Left f' -> stepRequired f'
-        Right (f', r) -> pure (f', r)
+        Step f' Nothing -> stepRequired f'
+        Step f' (Just r) -> pure (f', r)
 
 -- | Steps the formula through the residual states (states that are
 -- available but not required) and computes the final result.
@@ -206,8 +219,8 @@ stepResidual f r =
     Nothing -> pure r
     Just s ->
       case step f s of
-        Left f' -> throwError (CannotStep f')
-        Right (f', r') -> stepResidual f' r'
+        Step f' Nothing -> throwError (CannotStep f')
+        Step f' (Just r') -> stepResidual f' r'
 
 verify :: MonadError CheckError m => Formula -> Producer State m () -> m Result
 verify f trace = do
