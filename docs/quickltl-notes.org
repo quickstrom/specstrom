@@ -33,5 +33,5 @@ Disjunction:
 | / | <>     |    |      |      |      |
 |   | DT     | DT | DT   | DT   | DT   |
 |   | /PT/   | DT | /PT/ | /PT/ | /PT/ |
-|   | /PF/   | DT | /PT/ | /PT/ | DF   |
-|   | DF     | DT | /PT/ | DF   | DF   |
+|   | /PF/   | DT | /PT/ | /PF/ | /PF/ |
+|   | DF     | DT | /PT/ | /PF/ | DF   |
