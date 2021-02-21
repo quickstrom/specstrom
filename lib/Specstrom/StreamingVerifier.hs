@@ -107,11 +107,11 @@ resultAnd (Definitely a) (Probably b) = Probably (a && b)
 resultAnd (Probably a) (Probably b) = Probably (a && b)
 
 resultOr :: Result -> Result -> Result
+resultOr _ (Definitely True) = Definitely True
+resultOr (Definitely True) _ = Definitely True
+resultOr p@Probably {} (Definitely False) = p
+resultOr (Definitely False) p@Probably {} = p
 resultOr p (Definitely False) = p
-resultOr (Definitely False) p = p
-resultOr (Definitely a) (Definitely b) = Definitely (a || b)
-resultOr (Probably a) (Definitely b) = Definitely (a || b)
-resultOr (Definitely a) (Probably b) = Definitely (a || b)
 resultOr (Probably a) (Probably b) = Probably (a || b)
 
 resultNegate :: Result -> Result
@@ -132,24 +132,10 @@ stepBottom :: Step
 stepBottom = Step Absurd (Just (Definitely False))
 
 stepAnd :: Step -> Step -> Step
-stepAnd s1 s2 =
-  case (s1, s2) of
-    (Step p' (Just pr), Step q' (Just qr)) -> Step (p' `formulaAnd` q') (Just (pr `resultAnd` qr))
-    (_, r@(Step _ (Just (Definitely False)))) -> r
-    (r@(Step _ (Just (Definitely False))), _) -> r
-    (Step p' Nothing, Step q' Just {}) -> Step (p' `formulaAnd` q') Nothing
-    (Step p' Just {}, Step q' Nothing) -> Step (p' `formulaAnd` q') Nothing
-    (Step p' Nothing, Step q' Nothing) -> Step (p' `formulaAnd` q') Nothing
+stepAnd (Step f1 r1) (Step f2 r2) = Step (f1 `formulaAnd` f2) (resultAnd <$> r1 <*> r2)
 
 stepOr :: Step -> Step -> Step
-stepOr s1 s2 =
-  case (s1, s2) of
-    (Step p' (Just pr), Step q' (Just qr)) -> Step (p' `formulaOr` q') (Just (pr `resultOr` qr))
-    (_, r@(Step _ (Just (Definitely True)))) -> r
-    (r@(Step _ (Just (Definitely True))), _) -> r
-    (Step p' Nothing, Step q' Nothing) -> Step (p' `formulaOr` q') Nothing
-    (r@(Step _ Nothing), _) -> r
-    (_, r@(Step _ Nothing)) -> r
+stepOr (Step f1 r1) (Step f2 r2) = Step (f1 `formulaOr` f2) (resultOr <$> r1 <*> r2)
 
 stepNegate :: Step -> Step
 stepNegate (Step p' pr) = Step (formulaNegate p') (resultNegate <$> pr)
