@@ -180,11 +180,6 @@ verifyList f t = do
 
 -- * Streaming with Pipes
 
-isDefinitive :: Formula -> Bool
-isDefinitive Trivial = True
-isDefinitive Absurd = True
-isDefinitive _ = False
-
 -- | Steps the formula through the trace as long as it requires
 -- more states (i.e. contains 'DNext' terms).
 stepRequired :: MonadError CheckError m => Formula -> Parser State m (Formula, Result)
