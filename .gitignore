@@ -2,6 +2,11 @@
 cabal.project.local
 dist-newstyle
 
+docs/*.html
+docs/*.pdf
+docs/*.log
+docs/*.tex
+
 # Nix and such
 .direnv
 /result*

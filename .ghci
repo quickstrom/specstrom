@@ -1,1 +1,1 @@
-:set -ilib -icli -itest -XOverloadedStrings
+:set -ilib -icli -itest -XOverloadedStrings -XFlexibleContexts

@@ -1,0 +1,37 @@
+#+TITLE: quickLTL
+#+SUBTITLE: Notes
+#+HTML_HEAD_EXTRA: <style type="text/css">th {font-weight: normal;} i { color: maroon; }</style>
+
+* Four-Valued Logic
+
+Let's use the following abbreviations for the four values of quickLTL:
+
+- DT :: Definitely True
+- PT :: Probably True
+- PF :: Probably False
+- DF :: Definitely False
+  
+** Truth tables
+   
+Here are truth tables for logical operators. Probable values are
+/styled like this/ and definite values are normal.
+  
+Conjunction:
+
+|   | $\wedge$ | DT   | /PT/ | /PF/ | DF |
+|---+----------+------+------+------+----|
+| / | <>       |      |      |      |    |
+|   | DT       | DT   | /PT/ | /PF/ | DF |
+|   | /PT/     | /PT/ | /PT/ | /PF/ | DF |
+|   | /PF/     | /PF/ | /PF/ | /PF/ | DF |
+|   | DF       | DF   | DF   | DF   | DF |
+
+Disjunction:
+
+|   | $\vee$ | DT | /PT/ | /PF/ | DF   |
+|---+--------+----+------+------+------|
+| / | <>     |    |      |      |      |
+|   | DT     | DT | DT   | DT   | DT   |
+|   | /PT/   | DT | /PT/ | /PT/ | /PT/ |
+|   | /PF/   | DT | /PT/ | /PF/ | /PF/ |
+|   | DF     | DT | /PT/ | /PF/ | DF   |

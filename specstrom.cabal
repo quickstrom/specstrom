@@ -25,6 +25,8 @@ common shared
                      , mtl
                      , filepath
                      , directory
+                     , pipes
+                     , pipes-parse
   -- TODO: -Werror=incomplete-patterns -Wredundant-constraints
   ghc-options:         -Wall 
   default-language:    Haskell2010
@@ -39,6 +41,7 @@ library
                      , Specstrom.Lexer 
                      , Specstrom.Parser 
                      , Specstrom.PrettyPrinter
+                     , Specstrom.StreamingVerifier
 
 
 executable specstrom
@@ -58,4 +61,5 @@ test-suite specstrom-test
   build-depends:       hedgehog
                      , specstrom
   other-modules:       Specstrom.PrettyPrinterTest
+                     , Specstrom.StreamingVerifierTest
                      , Specstrom.Gen
