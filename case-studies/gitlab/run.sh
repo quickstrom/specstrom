@@ -34,4 +34,7 @@ rm -r $HTML_REPORT_DIR
 
 quickstrom check --webdriver-path=/wd/hub --browser chrome gitlab.spec.purs http://localhost:8080 --reporter console --reporter html --html-report-directory $HTML_REPORT_DIR --tests=10 --max-actions=100
 
-echo "Report dir: $HTML_REPORT_DIR"
+echo "HTML report:"
+echo ""
+echo "    file://$HTML_REPORT_DIR"
+echo ""
