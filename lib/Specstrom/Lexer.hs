@@ -30,8 +30,8 @@ data Token
 
 type Position = (FilePath, Int, Int)
 
-dummyPosition :: Position 
-dummyPosition = ("",0,0)
+dummyPosition :: Position
+dummyPosition = ("", 0, 0)
 
 addRow :: Int -> Position -> Position
 addRow i (f, l, _c) = (f, l + i, 0)

@@ -30,7 +30,6 @@ holey t =
       where
         (i, rest) = Text.span (/= '_') t
 
-
 data ParseError
   = MalformedSyntaxDeclaration Position
   | SyntaxAlreadyDeclared Name Position
@@ -61,16 +60,16 @@ builtIns =
       --],
       [("_||_", RightAssoc)],
       [("_&&_", RightAssoc)],
---      [("_until_", RightAssoc)],
+      --      [("_until_", RightAssoc)],
       [ ("not_", RightAssoc),
         ("always_", RightAssoc),
         ("nextT_", RightAssoc),
         ("nextF_", RightAssoc),
         ("next_", RightAssoc)
---        ("eventually_", RightAssoc)
+        --        ("eventually_", RightAssoc)
       ],
       [ ("_==_", NonAssoc) --,
---        ("_!=_", NonAssoc)
+      --        ("_!=_", NonAssoc)
       ]
     ]
 
@@ -118,11 +117,11 @@ parseToplevel search t ((p, Reserved Check) : ts) = do
     ((_, Reserved With) : ts') -> do
       (rest', g2) <- wrap (parseGlob ts')
       case rest' of
-        ((_, Reserved When) :  ts'') -> do  
+        ((_, Reserved When) : ts'') -> do
           (rest'', g3) <- wrap (parseExpressionTo Semi t ts'')
           case rest'' of
             ((_, Semi) : rest''') -> fmap (Properties p g1 g2 g3 :) <$> parseToplevel search t rest'''
-            ((p',_):_) -> throwError $ ExpectedSemicolon p
+            ((p', _) : _) -> throwError $ ExpectedSemicolon p
         ((_, Semi) : rest'') -> fmap (Properties p g1 g2 undefined :) <$> parseToplevel search t rest'' --TODO add default
         ((p', _) : _) -> throwError $ ExpectedSemicolonOrWhen p'
     ((p', _) : _) -> throwError $ ExpectedWith p'
@@ -181,7 +180,7 @@ parseBindPattern t ts = do
       if uniques /= ns
         then Left (DuplicatePatternBinding p dupes)
         else pure (ts', FunP n p es')
-    _ -> do 
+    _ -> do
       p <- patFromExpr e
       pure (ts', Direct p)
 
@@ -189,14 +188,13 @@ patFromAnyExpr :: Expr e -> Maybe Pattern
 patFromAnyExpr (Var p n) = pure (VarP n p)
 patFromAnyExpr _ = Nothing
 
-
 patFromExpr :: Expr Pattern -> Either ParseError Pattern
-patFromExpr e = case patFromAnyExpr e of 
+patFromExpr e = case patFromAnyExpr e of
   Just e' -> pure e'
   Nothing -> Left $ ExpectedPattern e
 
 patFromExpr' :: Expr TempExpr -> Either ParseError Pattern
-patFromExpr' e = case patFromAnyExpr e of 
+patFromExpr' e = case patFromAnyExpr e of
   Just e' -> pure e'
   Nothing -> Left $ ExpectedPattern' e
 
@@ -206,7 +204,7 @@ parseExpressionTo :: Token -> Table -> [(Position, Token)] -> Either ParseError 
 parseExpressionTo terminator t ts =
   let (candidate, ts') = break ((\x -> x == terminator || x == EOF) . snd) ts
    in case fullParses (parser $ grammar t) candidate of
-        ([one], _) -> (ts',) <$> traverse (\(E e ) -> patFromExpr' e) one
+        ([one], _) -> (ts',) <$> traverse (\(E e) -> patFromExpr' e) one
         ([], r) -> case unconsumed r of
           ((p, t') : _) -> Left (ExpectedGot p (expected r) t')
         (e : es, _r) -> Left (ExpressionAmbiguous (e :| es))
@@ -233,15 +231,15 @@ grammar table = mdo
     rule $
       normalProj
         <|> App <$> normalApp <*> normalProj
-  expr <- mixfixExpression tbl normalApp makeAp  
+  expr <- mixfixExpression tbl normalApp makeAp
   return expr
   where
     tbl =
-      [ [
-        ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)
-        ]
-      , [([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)]
-      ] ++ map (map $ first $ map $ fmap identToken) table
+      [ [ ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)
+        ],
+        [([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)]
+      ]
+        ++ map (map $ first $ map $ fmap identToken) table
 
     mixfixParts =
       [ s | xs <- table, (ys, _) <- xs, Just s <- ys
@@ -260,7 +258,7 @@ grammar table = mdo
         _ -> Nothing
     makeAp hol as = case (unholey hol, as) of
       (Var p "freeze_=_._", [a1, a2, a3]) -> Freeze p (E a1) a2 a3
-      (Var p "fun_._",[a1,a2]) -> Lam p (E a1) a2
+      (Var p "fun_._", [a1, a2]) -> Lam p (E a1) a2
       _ -> unpeelAps (unholey hol) as
     unholey ls = Var (getPosition ls) (foldMap (fromMaybe "_") (map (fmap (unident . snd)) ls))
       where

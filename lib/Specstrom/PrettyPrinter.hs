@@ -118,7 +118,6 @@ prettyLit (SelectorLit s) = literal ("`" <> pretty s <> "`")
 prettyLit (IntLit s) = literal (pretty (show s))
 prettyLit (FloatLit s) = literal (pretty (show s))
 
-
 patternToExpr :: Pattern -> Expr TempExpr
 patternToExpr (VarP p n) = Var n p
 
@@ -126,11 +125,12 @@ bindPatternToExpr :: BindPattern -> Expr TempExpr
 bindPatternToExpr (FunP n p ps) = unpeelAps (Var p n) (map patternToExpr ps)
 bindPatternToExpr (Direct p) = patternToExpr p
 
-class PrettyPattern a where 
+class PrettyPattern a where
   prettyPattern :: a -> Doc AnsiStyle
 
-instance PrettyPattern Pattern where 
+instance PrettyPattern Pattern where
   prettyPattern p = prettyExpr (patternToExpr p)
+
 instance PrettyPattern TempExpr where
   prettyPattern (E e) = prettyExpr e
 
@@ -164,6 +164,7 @@ prettyExpr trm = renderTerm True trm
     infixTerms str [] = if Text.null str then [] else [ident str]
     infixTerms (Text.uncons -> Just ('_', str)) (x : xs) = renderTerm False x : infixTerms str xs
     infixTerms str args | (first, rest) <- Text.span (/= '_') str = ident first : infixTerms rest args
+
 {-
 prettyEvalError :: EvalError -> Doc AnsiStyle
 prettyEvalError = \case

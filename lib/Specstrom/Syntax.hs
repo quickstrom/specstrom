@@ -1,7 +1,11 @@
-{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
-module Specstrom.Syntax where 
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
+
+module Specstrom.Syntax where
+
+import Data.Text (Text)
 import Specstrom.Lexer (Position)
-import Data.Text(Text)
 
 data Lit
   = IntLit Int
@@ -38,18 +42,17 @@ exprPos (Lam p _ _) = p
 
 type Name = Text
 
-
 type Glob = [GlobTerm]
 
 type GlobTerm = [Maybe Text]
 
+data BindPattern
+  = Direct Pattern
+  | FunP Name Position [Pattern]
+  deriving (Show)
 
-data BindPattern = Direct Pattern 
-                 | FunP Name Position [Pattern]
-                 deriving (Show)
 data Pattern = VarP Name Position
-             deriving (Show)
-
+  deriving (Show)
 
 bindPatternVars :: BindPattern -> [Name]
 bindPatternVars (FunP n p ps) = n : concatMap patternVars ps
