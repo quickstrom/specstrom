@@ -10,7 +10,7 @@ import qualified Data.Text as Text
 import qualified Data.Text.Read as Text
 import Text.Read (readMaybe)
 
-data Kwd = Define | Syntax | Let | Import | Check | With deriving (Show, Eq)
+data Kwd = Define | Syntax | Let | Import | Check | With | Fun | When deriving (Show, Eq)
 
 data Token
   = Ident Text
@@ -29,6 +29,9 @@ data Token
   deriving (Show, Eq)
 
 type Position = (FilePath, Int, Int)
+
+dummyPosition :: Position 
+dummyPosition = ("",0,0)
 
 addRow :: Int -> Position -> Position
 addRow i (f, l, _c) = (f, l + i, 0)
@@ -122,4 +125,6 @@ fromCandidate "let" = Reserved Let
 fromCandidate "import" = Reserved Import
 fromCandidate "check" = Reserved Check
 fromCandidate "with" = Reserved With
+fromCandidate "when" = Reserved When
+fromCandidate "fun" = Reserved Fun
 fromCandidate s = Ident s

@@ -13,6 +13,7 @@ import Prettyprinter.Render.Terminal
 import Specstrom.Evaluator
 import Specstrom.Lexer
 import Specstrom.Parser
+import Specstrom.Syntax
 
 prettyPos :: Position -> Doc AnsiStyle
 prettyPos (f, l, c) = pretty f <> ":" <> pretty l <> ":" <> pretty c
@@ -40,7 +41,9 @@ prettyParseError (ModuleNotFound p n) = errorMessage p "module not found" [ident
 prettyParseError (MalformedSyntaxDeclaration p) = errorMessage p "malformed syntax declaration" []
 prettyParseError (SyntaxAlreadyDeclared n p) = errorMessage p "syntax already declared:" [ident n]
 prettyParseError (ExpectedPattern e) = errorMessage (exprPos e) "expected pattern, got:" [prettyExpr e]
+prettyParseError (ExpectedPattern' e) = errorMessage (exprPos e) "expected pattern, got:" [prettyExpr e]
 prettyParseError (ExpectedSemicolon p) = errorMessage p "expected semicolon." []
+prettyParseError (ExpectedSemicolonOrWhen p) = errorMessage p "expected semicolon or 'when'." []
 prettyParseError (ExpectedEquals p) = errorMessage p "expected equals sign." []
 prettyParseError (ExpectedModuleName p) = errorMessage p "expected module name." []
 prettyParseError (ExpectedWith p) = errorMessage p "expected 'with'." []
@@ -61,6 +64,8 @@ prettyToken :: Token -> Doc AnsiStyle
 prettyToken (Ident s) = ident s
 prettyToken (Reserved Define) = keyword "="
 prettyToken (Reserved Let) = keyword "let"
+prettyToken (Reserved Fun) = keyword "fun"
+prettyToken (Reserved When) = keyword "when"
 prettyToken (Reserved Check) = keyword "check"
 prettyToken (Reserved With) = keyword "with"
 prettyToken (Reserved Import) = keyword "import"
@@ -78,15 +83,13 @@ prettyToken Dot = "."
 prettyToken EOF = "EOF"
 
 prettyBind :: Bind -> Doc AnsiStyle
-prettyBind (Bind n _p ps bs) =
-  keyword "let" <+> prettyExpr (unpeelAps (var' n) (map (var' . fst) ps))
+prettyBind (Bind bp bs) =
+  keyword "let" <+> prettyBindPattern bp
     <+> nest
       3
       ( keyword "=" <> softline
           <> (prettyBody bs <> keyword ";")
       )
-  where
-    var' = Var undefined
 
 prettyAll :: [TopLevel] -> Doc AnsiStyle
 prettyAll = vcat . map prettyToplevel
@@ -97,7 +100,7 @@ prettyGlob = hsep . map prettyGlobTerm
     prettyGlobTerm = hcat . map (maybe "*" ident)
 
 prettyToplevel :: TopLevel -> Doc AnsiStyle
-prettyToplevel (Properties _p g1 g2) = keyword "check" <+> prettyGlob g1 <+> keyword "with" <+> prettyGlob g2 <> keyword ";"
+prettyToplevel (Properties _p g1 g2 g3) = keyword "check" <+> prettyGlob g1 <+> keyword "with" <+> prettyGlob g2 <+> keyword "when" <+> prettyExpr g3 <> keyword ";"
 prettyToplevel (Binding b) = prettyBind b
 prettyToplevel (Imported i bs) = keyword "import" <+> literal (pretty i) <> keyword ";" <> line <> indent 2 (prettyAll bs)
 
@@ -115,7 +118,26 @@ prettyLit (SelectorLit s) = literal ("`" <> pretty s <> "`")
 prettyLit (IntLit s) = literal (pretty (show s))
 prettyLit (FloatLit s) = literal (pretty (show s))
 
-prettyExpr :: Expr -> Doc AnsiStyle
+
+patternToExpr :: Pattern -> Expr TempExpr
+patternToExpr (VarP p n) = Var n p
+
+bindPatternToExpr :: BindPattern -> Expr TempExpr
+bindPatternToExpr (FunP n p ps) = unpeelAps (Var p n) (map patternToExpr ps)
+bindPatternToExpr (Direct p) = patternToExpr p
+
+class PrettyPattern a where 
+  prettyPattern :: a -> Doc AnsiStyle
+
+instance PrettyPattern Pattern where 
+  prettyPattern p = prettyExpr (patternToExpr p)
+instance PrettyPattern TempExpr where
+  prettyPattern (E e) = prettyExpr e
+
+prettyBindPattern :: BindPattern -> Doc AnsiStyle
+prettyBindPattern p = prettyExpr (bindPatternToExpr p)
+
+prettyExpr :: (PrettyPattern p) => Expr p -> Doc AnsiStyle
 prettyExpr trm = renderTerm True trm
   where
     renderTerm outer t
@@ -124,9 +146,12 @@ prettyExpr trm = renderTerm True trm
         Literal _p l -> prettyLit l
         Projection e pr -> renderTerm False e <> projection ("." <> pr)
         App {} -> mempty -- Handled by peelAps
+        Lam _ n e ->
+          (if outer then id else parens) $
+            "fun" <+> prettyPattern n <> "." <+> prettyExpr e
         Freeze _ n e b ->
           (if outer then id else parens) $
-            "freeze" <+> prettyExpr n <+> "=" <+> prettyExpr e <> "." <+> prettyExpr b
+            "freeze" <+> prettyPattern n <+> "=" <+> prettyExpr e <> "." <+> prettyExpr b
       | (Var _ n, args) <- peelAps t [],
         Text.length (Text.filter (== '_') n) == length args =
         (if outer then id else parens) $ hsep $ infixTerms n args
@@ -135,11 +160,11 @@ prettyExpr trm = renderTerm True trm
           hsep $
             renderTerm False x : map (renderTerm False) args
 
-    infixTerms :: Text -> [Expr] -> [Doc AnsiStyle]
+    infixTerms :: (PrettyPattern p) => Text -> [Expr p] -> [Doc AnsiStyle]
     infixTerms str [] = if Text.null str then [] else [ident str]
     infixTerms (Text.uncons -> Just ('_', str)) (x : xs) = renderTerm False x : infixTerms str xs
     infixTerms str args | (first, rest) <- Text.span (/= '_') str = ident first : infixTerms rest args
-
+{-
 prettyEvalError :: EvalError -> Doc AnsiStyle
 prettyEvalError = \case
   ScopeError pos name -> errorMessage pos "name not in scope" [pretty name]
@@ -239,7 +264,7 @@ prettyFormula p = \case
   Absurd -> "false"
   LocFormula _name _pos f -> prettyFormula p f
   FreezeIn _pos name e f -> parensIf (p >= 0) (keyword "freeze" <+> pretty name <+> keyword "=" <+> prettyFormulaExpr 0 e <+> keyword "." <> prettyFormula 0 f)
-
+-}
 parensIf :: Bool -> Doc ann -> Doc ann
 parensIf True = parens . align
 parensIf False = id

@@ -5,296 +5,237 @@ module Specstrom.Evaluator where
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Text (Text)
-import Specstrom.Lexer (Position)
-import Specstrom.Parser
-
-data Op
-  = Equals
-  | NotEquals
-  | Plus
-  | Times
-  | Divide
-  | Modulo
-  | Less
-  | LessEq
-  | Greater
-  | GreaterEq
-  | AndOp
-  | OrOp
-  | NotOp
-  | ImpliesOp
-  | UntilOp
-  | AlwaysOp
-  | EventuallyOp
-  | NextOp
-  | MkAccessor
-  -- others?
-  deriving (Show, Eq)
-
-data FormulaExpr a
-  = LocExpr Name Position (FormulaExpr a)
-  | Accessor a
-  | Op Op [FormulaExpr a]
-  | Constant IValue
-  | FreezeVar Name Position
-  deriving (Show)
-
-data Formula a
-  = Atomic (FormulaExpr a)
-  | Until (Formula a) (Formula a)
-  | Not (Formula a)
-  | And (Formula a) (Formula a)
-  | Or (Formula a) (Formula a)
-  | Implies (Formula a) (Formula a)
-  | Always (Formula a)
-  | Eventually (Formula a)
-  | Next (Formula a)
-  | Trivial
-  | Absurd
-  | LocFormula Name Position (Formula a)
-  | FreezeIn Position Name (FormulaExpr a) (Formula a)
-  deriving (Show)
-
-type Accessor = Text
+import Specstrom.Lexer (Position, dummyPosition)
+import Data.IORef
+import Specstrom.Syntax
+import Control.Monad(zipWithM)
 
 type Env = M.Map Name Value
+type State = M.Map Name [Value]
 
-data Value
-  = Independent IValue
-  | StateDependent (S.Set Accessor) (FormulaExpr Accessor)
-  | Formula (S.Set Accessor) (Formula Accessor)
-  | Closure (Maybe (Name, Position)) Env [(Name, Position)] Body
-  | PartialOp Op [Value]
-  deriving (Show)
+data Thunk = T Env (Expr Pattern) (IORef (Maybe Value))
 
-data IValue
-  = LitVal Lit
-  | BoolVal Bool
-  | Null
-  deriving (Show, Eq)
+data Strength = AssumeTrue | AssumeFalse | Demand deriving (Show)
 
-data EvalError
-  = ScopeError Position Text
-  | ModuloOnFloats Double Double
-  | NotAFunction Value
-  | BinaryOpOnInvalidTypes Op Value Value
-  | UnaryOpOnInvalidTypes Op Value
-  | FreezeLHSNotVar Position
-  | FreezeRHSNotValue Position
-  | FreezeInNotFormula Position
-  | VariableAlreadyDefined Name Position
-  deriving (Show)
+data PrimOp 
+  -- unary
+  = NextF 
+  | NextT 
+  | NextD 
+  | Always 
+  | Not 
+  -- binary
+  | And 
+  | Or 
+  | Equals 
+  -- ternary
+  | IfThenElse 
+  deriving (Show, Eq, Ord)
 
-initialEnv :: Env
-initialEnv =
-  M.fromList
-    [ ("true", Independent $ BoolVal True),
-      ("false", Independent $ BoolVal False),
-      ("null", Independent $ Null),
-      ("_==_", PartialOp Equals []),
-      ("_!=_", PartialOp NotEquals []),
-      ("_+_", PartialOp Plus []),
-      ("_*_", PartialOp Times []),
-      ("_/_", PartialOp Divide []),
-      ("_%_", PartialOp Modulo []),
-      ("_<_", PartialOp Less []),
-      ("_<=_", PartialOp LessEq []),
-      ("_>_", PartialOp Greater []),
-      ("_>=_", PartialOp GreaterEq []),
-      ("_&&_", PartialOp AndOp []),
-      ("_||_", PartialOp OrOp []),
-      ("not_", PartialOp NotOp []),
-      ("_==>_", PartialOp ImpliesOp []),
-      ("_until_", PartialOp UntilOp []),
-      ("always_", PartialOp AlwaysOp []),
-      ("eventually_", PartialOp EventuallyOp []),
-      ("next_", PartialOp NextOp []),
-      ("access", PartialOp MkAccessor [])
-    ]
+basicEnv :: Env
+basicEnv = M.fromList 
+  [ ("true", Trivial ),
+    ("false", Absurd ),
+    ("null", Null),
+    ("nextT_", Op NextT []), 
+    ("nextF_", Op NextF []), 
+    ("next_", Op NextD []), 
+    ("not_", Op Not []),
+    ("_&&_", Op And []),
+    ("_||_", Op Or  []),
+    ("_==_", Op Equals []),
+    ("if_then_else_", Op IfThenElse [])
+  ]
 
-extend :: Env -> (Name, Position) -> Value -> Either EvalError Env
-extend env (n, p) v
-  | n `elem` M.keys env = Left $ VariableAlreadyDefined n p
-  | otherwise = Right $ M.insert n v env
 
-evaluate :: Env -> Body -> Either EvalError Value
-evaluate g (Local (Bind f p ps b1) b2) = do
-  v1 <- evalBind g ps b1
-  g' <- extend g (f, p) v1
-  evaluate g' b2
-evaluate g (Done e) = evalExpr g e
+isUnary :: PrimOp -> Bool
+isUnary = (<= Not)
 
-evalBind :: Env -> [(Name, Position)] -> Body -> Either EvalError Value
-evalBind g [] b = evaluate g b
-evalBind g xs b = Right $ Closure Nothing g xs b
+isBinary :: PrimOp -> Bool 
+isBinary x = not (isUnary x) && x <= Equals
 
-evalExpr :: Env -> Expr -> Either EvalError Value
-evalExpr g (Var p s) = case M.lookup s g of
-  Just (StateDependent as e) -> Right $ StateDependent as (LocExpr s p e)
-  Just (Formula as f) -> Right $ Formula as (LocFormula s p f)
-  Just (Closure Nothing env as b) -> Right $ Closure (Just (s, p)) env as b
-  Just v -> Right $ v
-  Nothing -> Left $ ScopeError p s
-evalExpr g (App e1 e2) = do v1 <- evalExpr g e1; v2 <- evalExpr g e2; app v1 v2
-evalExpr g (Freeze p (Var p' n) e2 e3) = do
-  v1 <- evalExpr g e2
-  g' <- extend g (n, p') (StateDependent S.empty (FreezeVar n p))
-  v2 <- evalExpr g' e3
-  makeFreeze v1 v2
+
+
+data Residual
+  = Next Strength Thunk
+  | Conjunction Residual Residual
+  | Disjunction Residual Residual
+
+data Value 
+    -- function values
+  = Closure (Name, Position, Int) Env [Pattern] Body
+  | Op PrimOp [Value]
+  -- thunks (not returned by false)
+  | Thunk Thunk
+  | Frozen State Thunk
+  -- Residual formulae
+  | Residual Residual
+  -- Values
+  | Trivial | Absurd | Null
+  | Object (M.Map Name Value)
+  | List [Value]
+  | LitVal Lit
+
+data EvalError = Error String
+type Eval = IO
+
+evaluateBody :: Env -> Body -> Eval Value
+evaluateBody g (Local b r) = evaluateBind g b >>= \g' -> evaluateBody g' r
+evaluateBody g (Done e) = Thunk <$> newThunk g e
+
+newThunk :: Env -> Expr Pattern -> Eval Thunk
+newThunk g e = T g e <$> newIORef Nothing
+
+evaluateBind :: Env -> Bind -> Eval Env
+evaluateBind g (Bind (Direct (VarP n p)) e) = M.insert n <$> evaluateBody g e <*> pure g
+evaluateBind g (Bind (FunP n p pats) e) = pure (M.insert n (Closure (n,p,0) g pats e) g)
+
+withPatterns :: Pattern -> Value -> Env -> Eval Env
+withPatterns (VarP n p) v g = pure (M.insert n v g)
+
+delayedEvaluate :: State -> Env -> Expr Pattern -> Eval Value
+-- note that any call to "evaluate" here must not in turn call "force" or we will get dangerous strictness.
+delayedEvaluate s g v@(Var{}) = evaluate s g v
+delayedEvaluate s g v@(Literal{}) = evaluate s g v
+delayedEvaluate s g v@(Lam{}) = evaluate s g v
+delayedEvaluate s g e = Thunk <$> newThunk g e
+
+evaluate :: State -> Env -> Expr Pattern -> Eval Value
+evaluate s g (Projection e t) = do 
+  v' <- force s =<< evaluate s g e
+  case v' of
+    List (Object m:_) | Just v <- M.lookup t m -> pure v
+    Object m | Just v <- M.lookup t m -> pure v
+    _ -> error "TODO proper error"
+evaluate s g (Var p t) = case M.lookup t g of 
+  Just v -> pure v
+  Nothing -> error "Impossible: variable not found in environment"
+evaluate s g (App e1 e2) = do 
+  v <- force s =<< evaluate s g e1
+  v2 <- delayedEvaluate s g e2 -- TODO avoid thunking everything when safe
+  case v of
+    Op o [] -> if isUnary o then unaryOp o s v2
+               else pure (Op o [v2])
+    Op o [v1] -> if isBinary o then binaryOp o s v1 v2
+                 else pure (Op o [v1,v2])
+    Op o [v1,v1'] -> ternaryOp o s v1 v1' v2
+    Closure (n,p,ai) g' [pat] body -> do
+      g'' <- withPatterns pat v2 g'
+      evaluateBody g'' body -- If we want backtraces, add (n,p,ai) to a stack while running this
+    Closure (n,p,ai) g' (pat:pats) body -> do
+      g'' <- withPatterns pat v2 g'
+      pure (Closure (n,p,ai+1) g'' pats body)
+evaluate s g (Literal p (SelectorLit l)) = case M.lookup l s of 
+  Nothing -> error "Can't find it in the state (analysis failed?)"
+  Just ls -> pure (List ls)
+evaluate s g (Literal p l) = pure (LitVal l)
+evaluate s g (Lam p pat e) = pure (Closure ("fun",p,0) g [pat] (Done e))
+evaluate s g (Freeze p pat e1 e2) = do 
+  v1 <- Frozen s <$> newThunk g e1
+  g' <- withPatterns pat v1 g
+  evaluate s g' e2
+
+
+forceThunk :: Thunk -> State -> Eval Value 
+forceThunk (T g e r) s = do
+  x <- readIORef r
+  case x of 
+    Nothing -> do
+      v <- force s =<< evaluate s g e
+      writeIORef r (Just v)
+      pure v
+    Just v -> pure v    
+
+force :: State -> Value -> Eval Value
+force _ (Frozen s' t) = forceThunk t s' 
+force s (Thunk t) = forceThunk t s
+force s v = pure v
+
+ternaryOp :: PrimOp -> State -> Value -> Value -> Value -> Eval Value
+ternaryOp IfThenElse s v1 v2 v3 = do
+  v1' <- force s v1
+  case v1' of 
+    Trivial -> pure v2
+    Absurd -> pure v3
+    _ -> error "Expected boolean in if condition"
+ 
+
+areEqual :: State -> Value -> Value -> Eval Bool
+areEqual s v1 v2 = do 
+  v1' <-  force s v1
+  v2' <- force s v2
+  areEqual' v1' v2'
   where
-    makeFreeze (StateDependent as t) (Formula as' f) = Right $ Formula (as `S.union` as') $ FreezeIn p n t f
-    makeFreeze (Independent t) (Formula as' f) = makeFreeze (StateDependent S.empty (Constant t)) (Formula as' f)
-    makeFreeze t (StateDependent as f) = makeFreeze t (Formula as (Atomic f))
-    makeFreeze t (Independent f) = makeFreeze t (StateDependent S.empty (Constant f))
-    makeFreeze _t (Closure {}) = Left $ FreezeInNotFormula p
-    makeFreeze _t (PartialOp {}) = Left $ FreezeInNotFormula p
-    makeFreeze _t _u = Left $ FreezeRHSNotValue p
-evalExpr _g (Freeze p _ _ _) = Left $ FreezeLHSNotVar p
-evalExpr _g (Literal _p l) = Right $ Independent $ LitVal l
+    areEqual' :: Value -> Value -> Eval Bool
+    areEqual' (Closure{}) _ = error "Cannot compare functions for equality"
+    areEqual' _ (Closure{}) = error "Cannot compare functions for equality"
+    areEqual' (Op{}) _ = error "Cannot compare functions for equality"
+    areEqual' _ (Op{}) = error "Cannot compare functions for equality"
+    areEqual' (Residual{}) _ = error "Cannot compare temporal formulae for equality"
+    areEqual' _ (Residual{}) = error "Cannot compare temporal formulae for equality"
+    areEqual' Trivial Trivial = pure True
+    areEqual' Absurd Absurd = pure True
+    areEqual' Null Null = pure True
+    areEqual' (List as) (List bs) | length as == length bs = and <$> zipWithM (areEqual s) as bs 
+    areEqual' (Object as) (Object bs) = undefined -- for now
+    areEqual' _ _ = pure False
+binaryOp :: PrimOp -> State -> Value -> Value -> Eval Value
+binaryOp And s v1 v2 = do
+  v1' <- force s v1
+  case v1' of 
+    Absurd -> pure Absurd
+    Trivial -> force s v2
+    Residual r -> do 
+       v2' <- force s v2
+       case v2' of 
+         Absurd -> pure Absurd
+         Trivial -> pure (Residual r)
+         Residual r' -> pure (Residual (Conjunction r r'))
+         _ -> error "And expects formulae"
+    _ -> error "And expects formulae"
+binaryOp Or s v1 v2 = do
+  v1' <- force s v1
+  case v1' of 
+    Trivial -> pure Trivial
+    Absurd -> force s v2
+    Residual r -> do 
+       v2' <- force s v2
+       case v2' of 
+         Trivial -> pure Trivial
+         Absurd -> pure (Residual r)
+         Residual r' -> pure (Residual (Disjunction r r'))
+         _ -> error "Or expects formulae"
+    _ -> error "Or expects formulae"
+binaryOp Equals s v1 v2 = areEqual s v1 v2 >>= \b -> if b then pure Trivial else pure Absurd
 
-app :: Value -> Value -> Either EvalError Value
-app (PartialOp o [v1]) v2
-  | o `elem` [Equals, NotEquals] = binaryEqOp o v1 v2
-  | o `elem` [Plus, Times, Divide, Modulo] = binaryArithOp o v1 v2
-  | o `elem` [Less, LessEq, Greater, GreaterEq] = binaryComparisonOp o v1 v2
-  | o `elem` [AndOp, OrOp, ImpliesOp] = binaryBooleanOp o v1 v2
-  | o `elem` [UntilOp] = binaryTemporalOp o v1 v2
-app (PartialOp o []) v
-  | o `elem` [NotOp] = unaryBooleanOp o v
-  | o `elem` [AlwaysOp, EventuallyOp, NextOp] = unaryTemporalOp o v
-  | o `elem` [MkAccessor] = unarySelectorOp o v
-app (PartialOp o vs) v2 = Right $ PartialOp o (vs ++ [v2])
-app (Closure pos g [n] b) v2 = do
-  g' <- extend g n v2
-  r <- evaluate g' b
-  case pos of
-    Nothing -> pure r
-    Just (n', p) -> do
-      case r of
-        Formula as f -> Right $ Formula as (LocFormula n' p f)
-        StateDependent as t -> Right $ StateDependent as (LocExpr n' p t)
-        t -> Right $ t
-app (Closure p g (n : ns) b) v2 = do
-  g' <- extend g n v2
-  Right $ Closure p g' ns b
-app v1 _v2 = Left $ NotAFunction v1
-
-binaryEqOp :: Op -> Value -> Value -> Either EvalError Value
-binaryEqOp o (Independent (LitVal (IntLit i))) (Independent (LitVal (FloatLit j))) =
-  binaryEqOp o (Independent (LitVal (FloatLit (fromIntegral i)))) (Independent (LitVal (FloatLit j)))
-binaryEqOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (IntLit j))) =
-  binaryEqOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (FloatLit (fromIntegral j))))
-binaryEqOp o (Independent v1) (Independent v2) = Right $ Independent (BoolVal (funFor o v1 v2))
+unaryOp :: PrimOp -> State -> Value -> Eval Value
+unaryOp Always s v@(Thunk (T g e _)) = do
+  v' <- force s v
+  case v' of
+    Absurd -> pure Absurd
+    Trivial -> do 
+      residual <- Next AssumeTrue <$> newThunk g e
+      pure (Residual residual)
+    Residual r -> do 
+      residual <- Next AssumeTrue <$> newThunk g e
+      pure (Residual (Conjunction r residual))
+    _ -> error "Always expects formula"
+unaryOp Not s v = do
+  v' <- force s v
+  case v' of 
+    Absurd -> pure Trivial
+    Trivial -> pure Absurd
+    Residual f -> Residual <$> negateResidual f
+    _ -> error "Not expects boolean"
   where
-    funFor Equals = (==)
-    funFor NotEquals = (/=)
-binaryEqOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `S.union` a2) $ Op o [e1, e2]
-binaryEqOp o (StateDependent a1 e1) (Independent v2) = Right $ StateDependent a1 $ Op o [e1, Constant v2]
-binaryEqOp o (Independent v1) (StateDependent a2 e2) = Right $ StateDependent a2 $ Op o [Constant v1, e2]
-binaryEqOp o v1 v2 = Left $ BinaryOpOnInvalidTypes o v1 v2
+    negateResidual (Conjunction a b) = Disjunction <$> negateResidual a <*> negateResidual b
+    negateResidual (Disjunction a b) = Conjunction <$> negateResidual a <*> negateResidual b
+    negateResidual (Next st (T g e v)) = do 
+      let st' = case st of AssumeTrue -> AssumeFalse; AssumeFalse -> AssumeTrue; Demand -> Demand;
+      Next st' <$> newThunk g (App (Var dummyPosition "not_") e)      
+unaryOp NextF s (Thunk t) = pure (Residual (Next AssumeFalse t))
+unaryOp NextT s (Thunk t) = pure (Residual (Next AssumeTrue t))
+unaryOp NextD s (Thunk t) = pure (Residual (Next Demand t))
+unaryOp _ _ _ = error "impossible" 
 
-binaryArithOp :: Op -> Value -> Value -> Either EvalError Value
-binaryArithOp o (Independent (LitVal (IntLit i))) (Independent (LitVal (IntLit j))) =
-  Right $ Independent (LitVal (IntLit (intFunFor o i j)))
-  where
-    intFunFor Plus = (+)
-    intFunFor Times = (*)
-    intFunFor Divide = div
-    intFunFor Modulo = mod
-binaryArithOp Modulo (Independent (LitVal (FloatLit i))) (Independent (LitVal (FloatLit j))) =
-  Left $ ModuloOnFloats i j
-binaryArithOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (FloatLit j))) =
-  Right $ Independent (LitVal (FloatLit (floatFunFor o i j)))
-  where
-    floatFunFor Plus = (+)
-    floatFunFor Times = (*)
-    floatFunFor Divide = (/)
-binaryArithOp o (Independent (LitVal (IntLit i))) (Independent (LitVal (FloatLit j))) =
-  binaryArithOp o (Independent (LitVal (FloatLit (fromIntegral i)))) (Independent (LitVal (FloatLit j)))
-binaryArithOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (IntLit j))) =
-  binaryArithOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (FloatLit (fromIntegral j))))
-binaryArithOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `S.union` a2) $ Op o [e1, e2]
-binaryArithOp o (StateDependent a1 e1) (Independent v2) = Right $ StateDependent a1 $ Op o [e1, Constant v2]
-binaryArithOp o (Independent v1) (StateDependent a2 e2) = Right $ StateDependent a2 $ Op o [Constant v1, e2]
-binaryArithOp o v1 v2 = Left $ BinaryOpOnInvalidTypes o v1 v2
 
-compareFunFor :: Ord a => Op -> a -> a -> Bool
-compareFunFor Less = (<)
-compareFunFor LessEq = (<=)
-compareFunFor Greater = (>)
-compareFunFor GreaterEq = (>=)
-
-binaryComparisonOp :: Op -> Value -> Value -> Either EvalError Value
-binaryComparisonOp o (Independent (LitVal (IntLit i))) (Independent (LitVal (IntLit j))) =
-  Right $ Independent (BoolVal (compareFunFor o i j))
-binaryComparisonOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (FloatLit j))) =
-  Right $ Independent (BoolVal (compareFunFor o i j))
-binaryComparisonOp o (Independent (LitVal (IntLit i))) (Independent (LitVal (FloatLit j))) =
-  binaryComparisonOp o (Independent (LitVal (FloatLit (fromIntegral i)))) (Independent (LitVal (FloatLit j)))
-binaryComparisonOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (IntLit j))) =
-  binaryComparisonOp o (Independent (LitVal (FloatLit i))) (Independent (LitVal (FloatLit (fromIntegral j))))
-binaryComparisonOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `S.union` a2) $ Op o [e1, e2]
-binaryComparisonOp o (StateDependent a1 e1) (Independent v2) = Right $ StateDependent a1 $ Op o [e1, Constant v2]
-binaryComparisonOp o (Independent v1) (StateDependent a2 e2) = Right $ StateDependent a2 $ Op o [Constant v1, e2]
-binaryComparisonOp o v1 v2 = Left $ BinaryOpOnInvalidTypes o v1 v2
-
-formulaFor :: Bool -> Formula a
-formulaFor True = Trivial
-formulaFor False = Absurd
-
-binaryBooleanOp :: Op -> Value -> Value -> Either EvalError Value
-binaryBooleanOp o (Independent (BoolVal v1)) (Independent (BoolVal v2)) =
-  Right $ Independent (BoolVal (boolFunFor o v1 v2))
-  where
-    boolFunFor AndOp = (&&)
-    boolFunFor OrOp = (||)
-    boolFunFor ImpliesOp = (\x y -> not x || y)
-binaryBooleanOp o (StateDependent a1 e1) (StateDependent a2 e2) = Right $ StateDependent (a1 `S.union` a2) $ Op o [e1, e2]
-binaryBooleanOp o (StateDependent a1 e1) (Independent v2) = Right $ StateDependent a1 $ Op o [e1, Constant v2]
-binaryBooleanOp o (Independent v1) (StateDependent a2 e2) = Right $ StateDependent a2 $ Op o [Constant v1, e2]
-binaryBooleanOp o (Formula a1 f1) (Formula a2 f2) = Right $ Formula (a1 `S.union` a2) (formulaFunFor o f1 f2)
-  where
-    formulaFunFor AndOp = And
-    formulaFunFor OrOp = Or
-    formulaFunFor ImpliesOp = Implies
-binaryBooleanOp o (Formula a1 f1) (StateDependent a2 f2) = binaryBooleanOp o (Formula a1 f1) (Formula a2 (Atomic f2))
-binaryBooleanOp o (StateDependent a1 f1) (Formula a2 f2) = binaryBooleanOp o (Formula a1 (Atomic f1)) (Formula a2 f2)
-binaryBooleanOp o (Independent (BoolVal v1)) (Formula a2 f2) = binaryBooleanOp o (Formula S.empty (formulaFor v1)) (Formula a2 f2)
-binaryBooleanOp o (Formula a1 f1) (Independent (BoolVal v2)) = binaryBooleanOp o (Formula a1 f1) (Formula S.empty (formulaFor v2))
-binaryBooleanOp o v1 v2 = Left $ BinaryOpOnInvalidTypes o v1 v2
-
-binaryTemporalOp :: Op -> Value -> Value -> Either EvalError Value
-binaryTemporalOp o v1 (Independent (BoolVal v2)) =
-  binaryTemporalOp o v1 (Formula S.empty (formulaFor v2))
-binaryTemporalOp o (Independent (BoolVal v1)) v2 =
-  binaryTemporalOp o (Formula S.empty (formulaFor v1)) v2
-binaryTemporalOp o (StateDependent a1 e1) (StateDependent a2 e2) =
-  binaryTemporalOp o (Formula a1 (Atomic e1)) (Formula a2 (Atomic e2))
-binaryTemporalOp o (Formula a1 f1) (Formula a2 f2) = Right $ Formula (a1 `S.union` a2) (formulaFunFor o f1 f2)
-  where
-    formulaFunFor UntilOp = Until
-binaryTemporalOp o (Formula a1 f1) (StateDependent a2 f2) = binaryTemporalOp o (Formula a1 f1) (Formula a2 (Atomic f2))
-binaryTemporalOp o (StateDependent a1 f1) (Formula a2 f2) = binaryTemporalOp o (Formula a1 (Atomic f1)) (Formula a2 f2)
-binaryTemporalOp o v1 v2 = Left $ BinaryOpOnInvalidTypes o v1 v2
-
-unaryBooleanOp :: Op -> Value -> Either EvalError Value
-unaryBooleanOp o (Independent (BoolVal v)) = Right $ Independent (BoolVal (funFor o v))
-  where
-    funFor NotOp = not
-unaryBooleanOp o (StateDependent a1 e1) = Right $ StateDependent a1 $ Op o [e1]
-unaryBooleanOp _o (Formula a1 f1) = Right $ Formula a1 (Not f1)
-unaryBooleanOp o v = Left $ UnaryOpOnInvalidTypes o v
-
-unaryTemporalOp :: Op -> Value -> Either EvalError Value
-unaryTemporalOp o (Independent (BoolVal v)) = unaryTemporalOp o (Formula S.empty (formulaFor v))
-unaryTemporalOp o (StateDependent a v) = unaryTemporalOp o (Formula a (Atomic v))
-unaryTemporalOp o (Formula a f) = Right $ Formula a (funFor o f)
-  where
-    funFor NextOp = Next
-    funFor AlwaysOp = Always
-    funFor EventuallyOp = Eventually
-unaryTemporalOp o v = Left $ UnaryOpOnInvalidTypes o v
-
-unarySelectorOp :: Op -> Value -> Either EvalError Value
-unarySelectorOp _o (Independent (LitVal (SelectorLit a))) = Right $ StateDependent (S.singleton a) (Accessor a)
-unarySelectorOp o v = Left $ UnaryOpOnInvalidTypes o v

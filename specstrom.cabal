@@ -27,6 +27,7 @@ common shared
                      , directory
                      , pipes
                      , pipes-parse
+                     , monad-gen
   -- TODO: -Werror=incomplete-patterns -Wredundant-constraints
   ghc-options:         -Wall 
   default-language:    Haskell2010
@@ -42,6 +43,10 @@ library
                      , Specstrom.Parser 
                      , Specstrom.PrettyPrinter
                      , Specstrom.StreamingVerifier
+                     , Specstrom.Analysis
+                     , Specstrom.Dependency
+                     , Specstrom.Syntax
+
 
 
 executable specstrom
