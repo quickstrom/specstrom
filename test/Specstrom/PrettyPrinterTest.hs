@@ -4,13 +4,13 @@
 
 module Specstrom.PrettyPrinterTest where
 
-import Control.Monad.Trans.Except (except, withExceptT, runExceptT)
+import Control.Monad.Trans.Except (except, runExceptT, withExceptT)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc (Doc, defaultLayoutOptions, layoutPretty, unAnnotate)
 import Data.Text.Prettyprint.Doc.Render.Text (renderStrict)
 import GHC.Stack (HasCallStack, withFrozenCallStack)
-import Hedgehog (evalIO, MonadTest, Property, annotate, checkParallel, discover, failure, forAll, property, (===))
+import Hedgehog (MonadTest, Property, annotate, checkParallel, discover, evalIO, failure, forAll, property, (===))
 import qualified Specstrom.Gen as Gen
 import Specstrom.Lexer (dummyPosition, lexer)
 import Specstrom.Parser (builtIns, parseTopLevel)

@@ -77,7 +77,6 @@ data TopLevel
   | Imported Text [TopLevel]
   deriving (Eq, Show)
 
-
 class MapPosition a where
   mapPosition :: (Position -> Position) -> a -> a
 

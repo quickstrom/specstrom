@@ -9,7 +9,7 @@ import qualified Data.Text as Text
 import Hedgehog (Gen)
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import Specstrom.Lexer (dummyPosition, Position)
+import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax (Expr (..), Lit (..), Name, Pattern)
 
 name :: Gen Name
@@ -30,7 +30,7 @@ literal =
 
 -- | * Expr
 literalExpr :: Gen (Expr Pattern)
-literalExpr = Literal <$> pure dummyPosition  <*> literal
+literalExpr = Literal <$> pure dummyPosition <*> literal
 
 boolExpr :: Gen (Expr Pattern)
 boolExpr =
