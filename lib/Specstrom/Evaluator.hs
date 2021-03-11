@@ -31,23 +31,32 @@ data PrimOp
   | Equals
   | -- ternary
     IfThenElse
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Enum, Bounded)
+
+primOpVar :: PrimOp -> Name
+primOpVar op = case op of
+  NextF -> "nextF_"
+  NextT -> "nextT_"
+  NextD -> "next_"
+  Always -> "always_"
+  Not -> "not_"
+  And -> "_&&_"
+  Or -> "_||_"
+  Equals -> "_==_"
+  IfThenElse -> "if_then_else_"
 
 basicEnv :: Env
 basicEnv =
-  M.fromList
-    [ ("true", Trivial),
-      ("false", Absurd),
-      ("null", Null),
-      ("nextT_", Op NextT []),
-      ("nextF_", Op NextF []),
-      ("next_", Op NextD []),
-      ("not_", Op Not []),
-      ("_&&_", Op And []),
-      ("_||_", Op Or []),
-      ("_==_", Op Equals []),
-      ("if_then_else_", Op IfThenElse [])
-    ]
+  M.fromList (values <> primOps)
+  where
+    values =
+      [ ("true", Trivial),
+        ("false", Absurd),
+        ("null", Null)
+      ]
+    primOps =
+      [ (primOpVar op, Op op []) | op <- enumFromTo minBound maxBound
+      ]
 
 isUnary :: PrimOp -> Bool
 isUnary = (<= Not)

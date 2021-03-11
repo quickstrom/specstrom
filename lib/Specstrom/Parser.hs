@@ -56,20 +56,20 @@ builtIns =
     (first holey)
     [ [ ("if_then_else_", RightAssoc)
       ],
-      --[ ("_==>_", RightAssoc)
-      --],
+      [ ("_==>_", RightAssoc)
+      ],
       [("_||_", RightAssoc)],
       [("_&&_", RightAssoc)],
-      --      [("_until_", RightAssoc)],
+      [("_until_", RightAssoc)],
       [ ("not_", RightAssoc),
         ("always_", RightAssoc),
         ("nextT_", RightAssoc),
         ("nextF_", RightAssoc),
-        ("next_", RightAssoc)
-        --        ("eventually_", RightAssoc)
+        ("next_", RightAssoc),
+        ("eventually_", RightAssoc)
       ],
-      [ ("_==_", NonAssoc) --,
-      --        ("_!=_", NonAssoc)
+      [ ("_==_", NonAssoc),
+        ("_!=_", NonAssoc)
       ]
     ]
 
@@ -94,24 +94,24 @@ loadModule search p n t = do
       case lexer (x, 1, 1) contents of
         Left e -> throwError $ LexerFailure e
         Right toks -> do
-          (t', inc) <- parseToplevel search t toks
+          (t', inc) <- parseTopLevel search t toks
           pure (t', inc)
 
-parseToplevel :: [FilePath] -> Table -> [(Position, Token)] -> ExceptT ParseError IO (Table, [TopLevel])
-parseToplevel search t ((p, Reserved Import) : ts) = case ts of
+parseTopLevel :: [FilePath] -> Table -> [(Position, Token)] -> ExceptT ParseError IO (Table, [TopLevel])
+parseTopLevel search t ((p, Reserved Import) : ts) = case ts of
   ((_, Ident n) : ts') -> case ts' of
     ((_, Semi) : ts'') -> do
       (t', inc) <- loadModule search p n t
-      fmap (Imported n inc :) <$> parseToplevel search t' ts''
+      fmap (Imported n inc :) <$> parseTopLevel search t' ts''
     ((p', _) : _) -> throwError $ ExpectedSemicolon p'
   ((p', _) : _) -> throwError $ ExpectedModuleName p'
-parseToplevel search t ((p, Reserved Syntax) : ts) = do
+parseTopLevel search t ((p, Reserved Syntax) : ts) = do
   (ts', t') <- wrap (parseSyntax t p ts)
-  parseToplevel search t' ts'
-parseToplevel search t ((p, Reserved Let) : ts) = do
+  parseTopLevel search t' ts'
+parseTopLevel search t ((p, Reserved Let) : ts) = do
   (rest, b) <- wrap (parseBind t p ts)
-  fmap (Binding b :) <$> parseToplevel search t rest
-parseToplevel search t ((p, Reserved Check) : ts) = do
+  fmap (Binding b :) <$> parseTopLevel search t rest
+parseTopLevel search t ((p, Reserved Check) : ts) = do
   (rest, g1) <- wrap (parseGlob ts)
   case rest of
     ((_, Reserved With) : ts') -> do
@@ -120,14 +120,14 @@ parseToplevel search t ((p, Reserved Check) : ts) = do
         ((_, Reserved When) : ts'') -> do
           (rest'', g3) <- wrap (parseExpressionTo Semi t ts'')
           case rest'' of
-            ((_, Semi) : rest''') -> fmap (Properties p g1 g2 g3 :) <$> parseToplevel search t rest'''
+            ((_, Semi) : rest''') -> fmap (Properties p g1 g2 g3 :) <$> parseTopLevel search t rest'''
             ((p', _) : _) -> throwError $ ExpectedSemicolon p
-        ((_, Semi) : rest'') -> fmap (Properties p g1 g2 undefined :) <$> parseToplevel search t rest'' --TODO add default
+        ((_, Semi) : rest'') -> fmap (Properties p g1 g2 undefined :) <$> parseTopLevel search t rest'' --TODO add default
         ((p', _) : _) -> throwError $ ExpectedSemicolonOrWhen p'
     ((p', _) : _) -> throwError $ ExpectedWith p'
-parseToplevel search t [] = pure (t, [])
-parseToplevel search t [(p, EOF)] = pure (t, [])
-parseToplevel search t ((p, tok) : ts) = throwError $ TrailingGarbage p tok
+parseTopLevel search t [] = pure (t, [])
+parseTopLevel search t [(p, EOF)] = pure (t, [])
+parseTopLevel search t ((p, tok) : ts) = throwError $ TrailingGarbage p tok
 
 parseBind :: Table -> Position -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Bind)
 parseBind t p ts = do

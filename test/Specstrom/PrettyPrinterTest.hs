@@ -1,44 +1,40 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Specstrom.PrettyPrinterTest where
 
-import Data.Bifunctor (Bifunctor (first))
+import Control.Monad.Trans.Except (except, withExceptT, runExceptT)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc (Doc, defaultLayoutOptions, layoutPretty, unAnnotate)
 import Data.Text.Prettyprint.Doc.Render.Text (renderStrict)
 import GHC.Stack (HasCallStack, withFrozenCallStack)
-import Hedgehog (MonadTest, Property, annotate, annotateShow, checkParallel, discover, failure, forAll, property, (===))
-import Specstrom.Evaluator (Value, evaluate, initialEnv)
+import Hedgehog (evalIO, MonadTest, Property, annotate, checkParallel, discover, failure, forAll, property, (===))
 import qualified Specstrom.Gen as Gen
-import Specstrom.Lexer (lexer)
-import Specstrom.Parser (Body (Done), builtIns, parseBindingBody)
-import Specstrom.PrettyPrinter (prettyEvalError, prettyLexerError, prettyParseError, prettyValue)
+import Specstrom.Lexer (dummyPosition, lexer)
+import Specstrom.Parser (builtIns, parseTopLevel)
+import Specstrom.PrettyPrinter (prettyAll, prettyLexerError, prettyParseError)
+import Specstrom.Syntax
 
-prop_prettyprint_eval_roundtrip :: Property
-prop_prettyprint_eval_roundtrip = property $ do
+prop_prettyprint_parse_roundtrip :: Property
+prop_prettyprint_parse_roundtrip = property $ do
   e <- forAll Gen.expr
-  v <- requireRight (eval (Done e))
-  let t = ppValue v
-  annotate (Text.unpack t)
-  e' <- requireRight (parse t)
-  annotateShow e'
-  v' <- requireRight (eval e')
-  annotateShow v'
-  t === ppValue v'
+  let t = [Binding (Bind (Direct (VarP "test" dummyPosition)) (Done e))]
+      pp = ppTopLevel t
+      clearPos = map (mapPosition (const dummyPosition))
+  annotate (Text.unpack pp)
+  t' <- requireRight =<< evalIO (parse pp)
+  t === clearPos t'
 
-parse :: Text -> Either (Doc ()) Body
-parse t = do
-  ts <- first (unAnnotate . prettyLexerError) (lexer ("test.spec", 1, 1) t)
-  (_, b) <- first (unAnnotate . prettyParseError) (parseBindingBody builtIns ts)
+parse :: Text -> IO (Either (Doc ()) [TopLevel])
+parse t = runExceptT $ do
+  ts <- withExceptT (unAnnotate . prettyLexerError) (except (lexer ("test.spec", 1, 1) t))
+  (_, b) <- withExceptT (unAnnotate . prettyParseError) (parseTopLevel [] builtIns ts)
   pure b
 
-eval :: Body -> Either (Doc ()) Value
-eval b = first (unAnnotate . prettyEvalError) (evaluate initialEnv b)
-
-ppValue :: Value -> Text
-ppValue v = renderStrict (layoutPretty defaultLayoutOptions (prettyValue v))
+ppTopLevel :: [TopLevel] -> Text
+ppTopLevel t = renderStrict (layoutPretty defaultLayoutOptions (prettyAll t))
 
 requireRight :: (HasCallStack, MonadTest m) => Either (Doc ()) a -> m a
 requireRight ma = withFrozenCallStack $ case ma of

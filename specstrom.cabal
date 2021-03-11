@@ -28,6 +28,7 @@ common shared
                      , pipes
                      , pipes-parse
                      , monad-gen
+                     , transformers
   -- TODO: -Werror=incomplete-patterns -Wredundant-constraints
   ghc-options:         -Wall 
   default-language:    Haskell2010
