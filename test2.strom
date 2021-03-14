@@ -1,2 +1,3 @@
 let test = access `accessor` until access `funky`;
-not access `blah` && next test until test;
+
+let prop = not access `blah` && next test until test;
