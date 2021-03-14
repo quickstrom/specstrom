@@ -100,7 +100,10 @@ prettyGlob = hsep . map prettyGlobTerm
     prettyGlobTerm = hcat . map (maybe "*" ident)
 
 prettyToplevel :: TopLevel -> Doc AnsiStyle
-prettyToplevel (Properties _p g1 g2 g3) = keyword "check" <+> prettyGlob g1 <+> keyword "with" <+> prettyGlob g2 <+> keyword "when" <+> prettyExpr g3 <> keyword ";"
+prettyToplevel (Properties _p g1 g2 g3) = 
+  keyword "check" <+> prettyGlob g1 <+> keyword "with" <+> prettyGlob g2 
+  <> maybe mempty ((space <>) . (keyword "when" <+>) . prettyExpr) g3
+  <> keyword ";"
 prettyToplevel (Binding b) = prettyBind b
 prettyToplevel (Imported i bs) = keyword "import" <+> literal (pretty i) <> keyword ";" <> line <> indent 2 (prettyAll bs)
 

@@ -120,9 +120,9 @@ parseTopLevel search t ((p, Reserved Check) : ts) = do
         ((_, Reserved When) : ts'') -> do
           (rest'', g3) <- wrap (parseExpressionTo Semi t ts'')
           case rest'' of
-            ((_, Semi) : rest''') -> fmap (Properties p g1 g2 g3 :) <$> parseTopLevel search t rest'''
+            ((_, Semi) : rest''') -> fmap (Properties p g1 g2 (Just g3) :) <$> parseTopLevel search t rest'''
             ((p', _) : _) -> throwError $ ExpectedSemicolon p
-        ((_, Semi) : rest'') -> fmap (Properties p g1 g2 undefined :) <$> parseTopLevel search t rest'' --TODO add default
+        ((_, Semi) : rest'') -> fmap (Properties p g1 g2 Nothing :) <$> parseTopLevel search t rest'' --TODO add default
         ((p', _) : _) -> throwError $ ExpectedSemicolonOrWhen p'
     ((p', _) : _) -> throwError $ ExpectedWith p'
 parseTopLevel search t [] = pure (t, [])

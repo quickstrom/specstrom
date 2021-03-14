@@ -73,7 +73,7 @@ data Body = Local Bind Body | Done (Expr Pattern)
 
 data TopLevel
   = Binding Bind
-  | Properties Position Glob Glob (Expr Pattern)
+  | Properties Position Glob Glob (Maybe (Expr Pattern))
   | Imported Text [TopLevel]
   deriving (Eq, Show)
 
@@ -106,5 +106,5 @@ instance MapPosition Bind where
 instance MapPosition TopLevel where
   mapPosition f expr = case expr of
     Binding bind -> Binding (mapPosition f bind)
-    Properties pos g1 g2 expr -> Properties (f pos) g1 g2 (mapPosition f expr)
+    Properties pos g1 g2 expr -> Properties (f pos) g1 g2 (fmap (mapPosition f) expr)
     Imported name ts -> Imported name (map (mapPosition f) ts)
