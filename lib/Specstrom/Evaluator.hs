@@ -222,7 +222,6 @@ binaryOp Or s v1 v2 = do
     _ -> error "Or expects formulae"
 binaryOp Equals s v1 v2 = areEqual s v1 v2 >>= \b -> if b then pure Trivial else pure Absurd
 
-
 unaryOp :: PrimOp -> State -> Value -> Eval Value
 unaryOp Always s v@(Thunk (T g e _)) = do
   v' <- force s v
@@ -253,14 +252,13 @@ unaryOp NextT s (Thunk t) = pure (Residual (Next AssumeTrue t))
 unaryOp NextD s (Thunk t) = pure (Residual (Next Demand t))
 unaryOp _ _ _ = error "impossible"
 
-
 -- The output value will be Trivial if the formula is now true, Absurd if false,
 -- Or another Residual if still requiring more states.
 -- Any other value is presumably a type error.
 step :: Residual -> State -> Eval Value
 step (Next _ t) s = forceThunk t s
-step (Conjunction r1 r2) s =  binaryOp And s <$> step r1 s <*> step r2 s
-step (Disjunction r1 r2) s =  binaryOp Or s <$> step r1 s <*> step r2 s
+step (Conjunction r1 r2) s = binaryOp And s <$> step r1 s <*> step r2 s
+step (Disjunction r1 r2) s = binaryOp Or s <$> step r1 s <*> step r2 s
 
 stop :: Residual -> Eval Bool
 stop (Next s t) = case s of
@@ -269,4 +267,3 @@ stop (Next s t) = case s of
   Demand -> error "Cannot stop, require more states"
 stop (Conjunction r1 r2) = (&&) <$> stop r1 <*> stop r2
 stop (Disjunction r1 r2) = (||) <$> stop r1 <*> stop r2
-
