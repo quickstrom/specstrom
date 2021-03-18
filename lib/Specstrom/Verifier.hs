@@ -9,10 +9,10 @@ module Specstrom.Verifier where
 import Control.Monad (foldM)
 import Data.Foldable (Foldable (fold))
 import qualified Data.Map as M
-import Specstrom.Evaluator (force, evaluateBind, Env, basicEnv, State, Value (..), step, stop)
-import Specstrom.Syntax (TopLevel(..))
 import qualified Data.Text as Text
 import Data.Traversable (for)
+import Specstrom.Evaluator (Env, State, Value (..), basicEnv, evaluateBind, force, step, stop)
+import Specstrom.Syntax (TopLevel (..))
 
 type Trace = [State]
 
@@ -39,16 +39,17 @@ checkProps initialEnv = \case
       loop initialEnv mempty val
   _ -> pure []
   where
-    loop env currentState val = force currentState val >>= \case
-      Trivial -> pure (Definitely True)
-      Absurd -> pure (Definitely False)
-      Residual r ->
-        case stop r of
-          Just v -> pure (Probably v)
-          Nothing -> do
-            putStrLn "Getting another state to continue with residual formula"
-            let nextState = mempty -- TODO: get state
-            loop env nextState =<< step r currentState
-      v -> do
-        putStrLn ("Unexpected value: " <> show v)
-        pure (Probably False)
+    loop env currentState val =
+      force currentState val >>= \case
+        Trivial -> pure (Definitely True)
+        Absurd -> pure (Definitely False)
+        Residual r ->
+          case stop r of
+            Just v -> pure (Probably v)
+            Nothing -> do
+              putStrLn "Getting another state to continue with residual formula"
+              let nextState = mempty -- TODO: get state
+              loop env nextState =<< step r currentState
+        v -> do
+          putStrLn ("Unexpected value: " <> show v)
+          pure (Probably False)

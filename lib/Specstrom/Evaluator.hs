@@ -2,14 +2,14 @@
 
 module Specstrom.Evaluator where
 
-import Control.Monad (zipWithM, join, MonadPlus (mzero))
+import Control.Monad (MonadPlus (mzero), join, zipWithM)
 import Data.IORef
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Text (Text)
+import qualified Data.Text as Text
 import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax
-import qualified Data.Text as Text
 
 type Env = M.Map Name Value
 
