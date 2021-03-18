@@ -29,7 +29,7 @@ isEvent Loaded = True
 isEvent (Changed n) = True 
 isEvent _ = False
 
-data Action = A BaseAction (Maybe Int) 
+data Action = A BaseAction (Maybe Int) deriving (Show)
 
 data PrimOp
   = -- unary
