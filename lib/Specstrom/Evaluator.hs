@@ -252,13 +252,38 @@ unaryOp NextT s (Thunk t) = pure (Residual (Next AssumeTrue t))
 unaryOp NextD s (Thunk t) = pure (Residual (Next Demand t))
 unaryOp _ _ _ = error "impossible"
 
+resetThunk :: Thunk -> Eval Thunk
+resetThunk (T e exp ior) = do 
+  writeIORef ior Nothing
+  (\e' -> T e' exp ior) <$> traverse resetThunks e
+
+resetThunks :: Value -> Eval Value
+resetThunks (Closure a e b c) = (\e' -> Closure a e' b c) <$> traverse resetThunks e
+resetThunks (Op o vs) = Op o <$> traverse resetThunks vs
+resetThunks (Thunk t) = Thunk <$> resetThunk t
+resetThunks (Frozen s t) = pure $ Frozen s t -- should be safe? Never need to re-evaluate frozen stuff.
+resetThunks (Residual r) = pure $ Residual r -- that all gets cleared out later
+resetThunks (Object o) = Object <$> traverse resetThunks o
+resetThunks (List o) = List <$> traverse resetThunks o
+resetThunks (Absurd) = pure Absurd
+resetThunks (Trivial) = pure Trivial
+resetThunks (Null) = pure Null
+resetThunks (LitVal l) = pure $ LitVal l
+
+
 -- The output value will be Trivial if the formula is now true, Absurd if false,
 -- Or another Residual if still requiring more states.
 -- Any other value is presumably a type error.
 step :: Residual -> State -> Eval Value
-step (Next _ t) s = forceThunk t s
-step (Conjunction r1 r2) s = binaryOp And s <$> step r1 s <*> step r2 s
-step (Disjunction r1 r2) s = binaryOp Or s <$> step r1 s <*> step r2 s
+step (Next _ t) s = resetThunk t >>= \t' -> forceThunk t' s
+step (Conjunction r1 r2) s = do 
+  r1' <- step r1 s 
+  r2' <- step r2 s
+  binaryOp And s r1' r2' 
+step (Disjunction r1 r2) s = do
+  r1' <- step r1 s 
+  r2' <- step r2 s
+  binaryOp Or s r1' r2'
 
 stop :: Residual -> Eval Bool
 stop (Next s t) = case s of
