@@ -27,7 +27,7 @@ builtIns :: AnalysisEnv
 builtIns =
   M.fromList $
     zip values (repeat (Value mempty))
-      ++ [ ("click!", toAnnotation (\(Value b) -> Value (project "disabled" b)))]
+      ++ [("click!", toAnnotation (\(Value b) -> Value (project "disabled" b)))]
       ++ zip binOps (repeat $ toAnnotation merge)
       ++ zip unOps (repeat $ toAnnotation (id :: Annotation -> Annotation))
       ++ [ ("if_then_else_", toAnnotation (\(Value b) t e -> (merge t e) `unionDep` b))

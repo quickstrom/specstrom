@@ -54,13 +54,13 @@ builtIns :: [[(Holey Text, Associativity)]]
 builtIns =
   (map . map)
     (first holey)
-    [ [ ("if_then_else_", RightAssoc) 
+    [ [ ("if_then_else_", RightAssoc)
       ],
       [ ("_==>_", RightAssoc)
       ],
-      [ ("_||_", RightAssoc)],
-      [ ("_&&_", RightAssoc)],
-      [ ("_until_", RightAssoc)],
+      [("_||_", RightAssoc)],
+      [("_&&_", RightAssoc)],
+      [("_until_", RightAssoc)],
       [ ("not_", RightAssoc),
         ("always_", RightAssoc),
         ("nextT_", RightAssoc),
@@ -238,8 +238,8 @@ grammar table = mdo
       [ [ ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)
         ],
         [ ([Nothing, Just (isToken (Reserved When) "when"), Nothing], LeftAssoc),
-          ([Nothing, Just (identToken "timeout"), Nothing], LeftAssoc) 
-        ],      
+          ([Nothing, Just (identToken "timeout"), Nothing], LeftAssoc)
+        ],
         [([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)]
       ]
         ++ map (map $ first $ map $ fmap identToken) table
