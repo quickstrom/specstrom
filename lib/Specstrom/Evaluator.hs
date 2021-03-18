@@ -253,7 +253,7 @@ unaryOp NextD s (Thunk t) = pure (Residual (Next Demand t))
 unaryOp _ _ _ = error "impossible"
 
 resetThunk :: Thunk -> Eval Thunk
-resetThunk (T e exp ior) = do 
+resetThunk (T e exp ior) = do
   writeIORef ior Nothing
   (\e' -> T e' exp ior) <$> traverse resetThunks e
 
@@ -270,18 +270,17 @@ resetThunks (Trivial) = pure Trivial
 resetThunks (Null) = pure Null
 resetThunks (LitVal l) = pure $ LitVal l
 
-
 -- The output value will be Trivial if the formula is now true, Absurd if false,
 -- Or another Residual if still requiring more states.
 -- Any other value is presumably a type error.
 step :: Residual -> State -> Eval Value
 step (Next _ t) s = resetThunk t >>= \t' -> forceThunk t' s
-step (Conjunction r1 r2) s = do 
-  r1' <- step r1 s 
+step (Conjunction r1 r2) s = do
+  r1' <- step r1 s
   r2' <- step r2 s
-  binaryOp And s r1' r2' 
+  binaryOp And s r1' r2'
 step (Disjunction r1 r2) s = do
-  r1' <- step r1 s 
+  r1' <- step r1 s
   r2' <- step r2 s
   binaryOp Or s r1' r2'
 
