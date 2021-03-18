@@ -1,0 +1,63 @@
+#+TITLE: Specstrom
+#+SUBTITLE: Verification CLI Protocol
+#+HTML_HEAD_EXTRA: <style type="text/css">td code {white-space: nowrap; }</style>
+
+* Protocol
+  
+** Processes
+   
+There are two processes involved in the protocol:
+
+- Interpreter ::
+
+  The program that drives the verification process, which includes:
+
+  - parsing and evaluating the specification
+  - requesting events, actions, and states from the /Executor/
+
+  Normally this process is implemented by Specstrom.
+- Executor :: 
+  
+  The program initiating the verification process, and performs the
+  real-world effects, feeding information to the /Interpreter/. This
+  includes:
+
+  - installing state observers and recording /Events/
+  - querying and responding with /States/
+  - performing /Actions/
+
+  When testing web applications, this process is implemented by Quickstrom.
+
+** Messages
+   
+| Message ID  | Arguments                                 | Sender      | Description                                                                                                                       |
+|-------------+-------------------------------------------+-------------+-----------------------------------------------------------------------------------------------------------------------------------|
+| ~start~     | ~propertyName : String~                   | Interpreter | Request a new session be started by the Executor.                                                                                 |
+| ~end~       |                                           | Interpreter | Request the current session be ended by the Executor.                                                                             |
+| ~monitor~   | ~selectors : Set Selector~                | Interpreter | Instructs the Executor to install state change observers for the given selectors. These must be installed throughout the session. |
+| ~query~     | ~dependencies : Set Dependency~           | Interpreter | Request an atomic state read based on the given dependencies.                                                                     |
+| ~action~    | ~action : Action Element~ ~version : Int~ | Interpreter | Request the Executor performs the given action, iff version matches local version.                                                |
+| ~performed~ | ~state : State~                           | Executor    | Notify the Interpreter that an action was performed, along with the subsequent state.                                             |
+| ~event~     | ~event : Event Element~ ~state : State~   | Executor    | Notify the Interpreter about an event that occurred, along with the subsequent state.                                             |
+| ~stale~     |                                           | Executor    | Reject the request to perform an action, due to version mismatch.                                                                 |
+| ~result~    | ~results : [(String, Result)]~            |             |                                                                                                                                   |
+
+Types to be defined:
+
+- ~Dependency~
+- ~Element~
+- ~State~
+- ~Action~
+- ~Result~
+
+** Message Passing
+
+Messages are sent JSON-encoded on stdio streams, one line per
+message. The Executor should run the Interpreter program as a
+subprocess and connect to its streams, where streams are used as
+follows:
+
+- stdout :: Messages sent by the Interpreter to the Executor.
+- stdin :: Messages sent by the Executor to the Interpreter.
+- stderr :: /Currently not used/
+
