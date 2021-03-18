@@ -30,22 +30,21 @@ There are two processes involved in the protocol:
 
 ** Messages
    
-| Message ID  | Arguments                                 | Sender      | Description                                                                                                                       |
-|-------------+-------------------------------------------+-------------+-----------------------------------------------------------------------------------------------------------------------------------|
-| ~start~     | ~propertyName : String~                   | Interpreter | Request a new session be started by the Executor.                                                                                 |
-| ~end~       |                                           | Interpreter | Request the current session be ended by the Executor.                                                                             |
-| ~monitor~   | ~selectors : Set Selector~                | Interpreter | Instructs the Executor to install state change observers for the given selectors. These must be installed throughout the session. |
-| ~query~     | ~dependencies : Set Dependency~           | Interpreter | Request an atomic state read based on the given dependencies.                                                                     |
-| ~action~    | ~action : Action Element~ ~version : Int~ | Interpreter | Request the Executor performs the given action, iff version matches local version.                                                |
-| ~performed~ | ~state : State~                           | Executor    | Notify the Interpreter that an action was performed, along with the subsequent state.                                             |
-| ~event~     | ~event : Event Element~ ~state : State~   | Executor    | Notify the Interpreter about an event that occurred, along with the subsequent state.                                             |
-| ~stale~     |                                           | Executor    | Reject the request to perform an action, due to version mismatch.                                                                 |
-| ~result~    | ~results : [(String, Result)]~            |             |                                                                                                                                   |
+| Message ID  | Arguments                                                                          | Sender      | Description                                                                                                     |
+|-------------+------------------------------------------------------------------------------------+-------------+-----------------------------------------------------------------------------------------------------------------|
+| ~start~     | ~propertyName : String~ ~dependencies : Set Dependency~ ~observers : Set Observer~ | Interpreter | Request a new session be started by the Executor. Also specifies which selectors to install event observers for |
+| ~end~       |                                                                                    | Interpreter | Request the current session be ended by the Executor.                                                           |
+| ~action~    | ~action : Action Element~ ~version : Int~                                          | Interpreter | Request the Executor performs the given action, iff version matches local version.                              |
+| ~performed~ | ~state : State~                                                                    | Executor    | Notify the Interpreter that an action was performed, along with the subsequent state.                           |
+| ~event~     | ~event : Event Element~ ~state : State~                                            | Executor    | Notify the Interpreter about an event that occurred, along with the subsequent state.                           |
+| ~stale~     |                                                                                    | Executor    | Reject the request to perform an action, due to version mismatch.                                               |
+| ~result~    | ~results : [(String, Result)]~                                                     |             |                                                                                                                 |
 
 Types to be defined:
 
-- ~Dependency~
-- ~Element~
+- ~Dependency~ (selector and the element states required)
+- ~Observer~ (selector and DOM event)
+- ~Element~ (element state and ref)
 - ~State~
 - ~Action~
 - ~Result~
