@@ -27,14 +27,15 @@ builtIns :: AnalysisEnv
 builtIns =
   M.fromList $
     zip values (repeat (Value mempty))
+      ++ [ ("click!", toAnnotation (\(Value b) -> Value (project "disabled" b)))]
       ++ zip binOps (repeat $ toAnnotation merge)
       ++ zip unOps (repeat $ toAnnotation (id :: Annotation -> Annotation))
       ++ [ ("if_then_else_", toAnnotation (\(Value b) t e -> (merge t e) `unionDep` b))
          ]
   where
-    binOps = ["_==_", "_&&_", "_||_"] -- "_until_","_!=_","_==>_"]
-    unOps = ["not_", "always_", "next_", "nextT_", "nextF_"] -- "eventually_"]
-    values = ["true", "false", "null"]
+    binOps = ["_==_", "_&&_", "_||_", "_when_", "_timeout_"] -- "_until_","_!=_","_==>_"]
+    unOps = ["not_", "always_", "next_", "nextT_", "nextF_", "changed?"] -- "eventually_"]
+    values = ["true", "false", "null", "loaded?", "noop!"]
 
 merge :: Annotation -> Annotation -> Annotation
 merge (Value a) (Function f b) = Function f (a <> b)
