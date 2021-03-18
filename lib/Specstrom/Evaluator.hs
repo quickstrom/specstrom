@@ -326,6 +326,7 @@ binaryOp TimeoutAct s v1 v2 = do
   case v1 of
     Action (A act Nothing) -> pure (Action (A act (Just t)))
     Action (A _ (Just _)) -> error "Action already has a timeout"
+    List vs -> List <$> traverse (\x -> binaryOp TimeoutAct s x v2') vs
     _ -> error "Timeout expects an action"
 
 resetThunk :: Thunk -> Eval Thunk
