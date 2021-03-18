@@ -1,3 +1,5 @@
-let test = access `accessor` until access `funky`;
+let test = `accessor` until `funky`;
 
-let prop = not access `blah` && next test until test;
+let prop = not `blah` && next test until test;
+
+check prop with *;

@@ -2,7 +2,7 @@
 
 module Specstrom.Evaluator where
 
-import Control.Monad (zipWithM)
+import Control.Monad (zipWithM, join, MonadPlus (mzero))
 import Data.IORef
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -263,13 +263,13 @@ unaryOp _ _ _ = error "impossible"
 -- Any other value is presumably a type error.
 step :: Residual -> State -> Eval Value
 step (Next _ t) s = forceThunk t s
-step (Conjunction r1 r2) s = binaryOp And s <$> step r1 s <*> step r2 s
-step (Disjunction r1 r2) s = binaryOp Or s <$> step r1 s <*> step r2 s
+step (Conjunction r1 r2) s = join (binaryOp And s <$> step r1 s <*> step r2 s)
+step (Disjunction r1 r2) s = join (binaryOp Or s <$> step r1 s <*> step r2 s)
 
-stop :: Residual -> Eval Bool
+stop :: Residual -> Maybe Bool
 stop (Next s t) = case s of
   AssumeTrue -> pure True
   AssumeFalse -> pure False
-  Demand -> error "Cannot stop, require more states"
+  Demand -> mzero
 stop (Conjunction r1 r2) = (&&) <$> stop r1 <*> stop r2
 stop (Disjunction r1 r2) = (||) <$> stop r1 <*> stop r2
