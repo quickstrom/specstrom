@@ -6,8 +6,8 @@
 
 let unchanged x  = freeze a = x. next (x == a); 
 
-let buttonText = access `.play-pause`;
-let timeDisplayText = access `.time-display`;
+let buttonText = `.play-pause`.textContent;
+let timeDisplayText = `.time-display`.textContent;
 
 let playing = 
    let pauseString = "pause";  // just demonstrating local bindings

@@ -19,7 +19,7 @@ extra-source-files:  CHANGELOG.md
 
 common shared
   build-depends:       aeson
-                     , base >=4.13 && <4.14
+                     , base >=4.13 && <5
                      , containers
                      , prettyprinter
                      , text
@@ -48,6 +48,7 @@ library
                      , Specstrom.Analysis
                      , Specstrom.Dependency
                      , Specstrom.Syntax
+                     , Specstrom.Verifier
 
 
 
