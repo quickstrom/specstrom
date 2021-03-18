@@ -2,19 +2,23 @@
 
 module Specstrom.Evaluator where
 
-import Control.Monad (zipWithM)
+import Control.Monad (zipWithM, join, MonadPlus (mzero))
 import Data.IORef
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Text (Text)
 import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax
+import qualified Data.Text as Text
 
 type Env = M.Map Name Value
 
 type State = M.Map Name [Value]
 
 data Thunk = T Env (Expr Pattern) (IORef (Maybe Value))
+
+instance Show Thunk where
+  show _ = "<thunk>"
 
 data Strength = AssumeTrue | AssumeFalse | Demand deriving (Show)
 
@@ -68,6 +72,7 @@ data Residual
   = Next Strength Thunk
   | Conjunction Residual Residual
   | Disjunction Residual Residual
+  deriving (Show)
 
 data Value
   = -- function values
@@ -85,6 +90,7 @@ data Value
   | Object (M.Map Name Value)
   | List [Value]
   | LitVal Lit
+  deriving (Show)
 
 data EvalError = Error String
 
@@ -120,7 +126,7 @@ evaluate s g (Projection e t) = do
     _ -> error "TODO proper error"
 evaluate s g (Var p t) = case M.lookup t g of
   Just v -> pure v
-  Nothing -> error "Impossible: variable not found in environment"
+  Nothing -> error ("Impossible: variable '" <> Text.unpack t <> "' not found in environment")
 evaluate s g (App e1 e2) = do
   v <- force s =<< evaluate s g e1
   v2 <- delayedEvaluate s g e2 -- TODO avoid thunking everything when safe
@@ -141,7 +147,7 @@ evaluate s g (App e1 e2) = do
       g'' <- withPatterns pat v2 g'
       pure (Closure (n, p, ai + 1) g'' pats body)
 evaluate s g (Literal p (SelectorLit l)) = case M.lookup l s of
-  Nothing -> error "Can't find it in the state (analysis failed?)"
+  Nothing -> error ("Can't find '" <> Text.unpack l <> "' in the state (analysis failed?)")
   Just ls -> pure (List ls)
 evaluate s g (Literal p l) = pure (LitVal l)
 evaluate s g (Lam p pat e) = pure (Closure ("fun", p, 0) g [pat] (Done e))
@@ -284,10 +290,10 @@ step (Disjunction r1 r2) s = do
   r2' <- step r2 s
   binaryOp Or s r1' r2'
 
-stop :: Residual -> Eval Bool
+stop :: Residual -> Maybe Bool
 stop (Next s t) = case s of
   AssumeTrue -> pure True
   AssumeFalse -> pure False
-  Demand -> error "Cannot stop, require more states"
+  Demand -> mzero
 stop (Conjunction r1 r2) = (&&) <$> stop r1 <*> stop r2
 stop (Disjunction r1 r2) = (||) <$> stop r1 <*> stop r2
