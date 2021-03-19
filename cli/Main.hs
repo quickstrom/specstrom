@@ -7,10 +7,10 @@ import Data.Bifunctor (first)
 import Data.Text (Text, pack)
 import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty, line)
 import Prettyprinter.Render.Terminal (renderIO)
+import qualified Specstrom.Checker as Checker
 import Specstrom.Parser
 import Specstrom.PrettyPrinter
 import Specstrom.Syntax
-import qualified Specstrom.Checker as Checker
 import System.Environment
 import System.Exit
 import System.IO (hPutStrLn, stderr, stdout)
