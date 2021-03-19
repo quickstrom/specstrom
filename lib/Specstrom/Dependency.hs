@@ -1,11 +1,12 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Specstrom.Dependency where
 
+import qualified Data.Aeson as JSON
 import qualified Data.Map as M
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import qualified Data.Aeson as JSON
 
 newtype Dep = Dep (M.Map Text [[Text]])
   deriving (Show, Eq, Generic, JSON.FromJSON, JSON.ToJSON)

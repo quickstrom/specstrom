@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
@@ -7,34 +9,32 @@
 {-# OPTIONS_GHC -Wno-deferred-type-errors #-}
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
 module Specstrom.Verifier where
 
+import qualified Control.Concurrent.Async as Async
 import Control.Concurrent.STM (TQueue, atomically, newTQueueIO, readTQueue, tryReadTQueue, writeTQueue)
 import Control.Monad (foldM, unless)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.State (MonadTrans (lift))
-import Control.Monad.Trans.Writer (runWriterT, tell, WriterT)
+import Control.Monad.Trans.Writer (WriterT, runWriterT, tell)
+import qualified Data.Aeson as JSON
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Foldable (Foldable (fold, foldl'))
-import qualified Data.Scientific as Scientific
+import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
+import qualified Data.Scientific as Scientific
 import qualified Data.Text as Text
 import Data.Traversable (for)
+import qualified Data.Vector as Vector
+import GHC.Generics (Generic)
 import Numeric.Natural (Natural)
 import qualified Specstrom.Analysis as Analysis
 import Specstrom.Dependency (Dep (Dep))
 import qualified Specstrom.Evaluator as Evaluator
 import Specstrom.Syntax (TopLevel (..))
-import System.IO (stderr, hPutStrLn, isEOF)
-import qualified Control.Concurrent.Async as Async
-import qualified Data.Aeson as JSON
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy.Char8 as LBS
-import Control.Monad.IO.Class (MonadIO (liftIO))
-import Data.Functor (($>))
-import GHC.Generics (Generic)
 import qualified Specstrom.Syntax as Syntax
-import qualified Data.Vector as Vector
+import System.IO (hPutStrLn, isEOF, stderr)
 
 type Trace = [TraceElement]
 
@@ -53,7 +53,7 @@ data InterpreterMessage
   = Start Dep
   | End
   | RequestAction Evaluator.Action
-  | Done Result 
+  | Done Result
   deriving (Generic, JSON.ToJSON, JSON.FromJSON)
 
 data ExecutorMessage
@@ -190,9 +190,9 @@ checkPropOn input output _env dep initialFormula = do
           run ReadingQueue {formula, currentState, stateVersion}
 
 toEvaluatorState :: State -> Evaluator.State
-toEvaluatorState = fmap (fmap toEvaluatorValue) 
+toEvaluatorState = fmap (fmap toEvaluatorValue)
 
-toEvaluatorValue  :: JSON.Value -> Evaluator.Value
+toEvaluatorValue :: JSON.Value -> Evaluator.Value
 toEvaluatorValue = \case
   JSON.String s -> Evaluator.LitVal (Syntax.StringLit s)
   JSON.Object o -> Evaluator.Object (fmap toEvaluatorValue o)

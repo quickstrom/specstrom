@@ -1,17 +1,17 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
 module Specstrom.Evaluator where
 
 import Control.Monad (MonadPlus (mzero), zipWithM)
-import Data.IORef
+import qualified Data.Aeson as JSON
 import qualified Data.HashMap.Strict as M
+import Data.IORef
 import qualified Data.Text as Text
+import GHC.Generics (Generic)
 import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax
-import qualified Data.Aeson as JSON
-import GHC.Generics (Generic)
 
 type Env = M.HashMap Name Value
 
@@ -24,7 +24,7 @@ instance Show Thunk where
 
 data Strength = AssumeTrue | AssumeFalse | Demand deriving (Show)
 
-data BaseAction = Click Name | Noop | Loaded | Changed Name 
+data BaseAction = Click Name | Noop | Loaded | Changed Name
   deriving (Show, Eq, Generic, JSON.FromJSON, JSON.ToJSON)
 
 isEvent :: BaseAction -> Bool
