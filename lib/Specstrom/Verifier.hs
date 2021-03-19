@@ -1,9 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
-<<<<<<< HEAD
-=======
 {-# LANGUAGE DuplicateRecordFields #-}
->>>>>>> 45f7920 (Allow nested dependency fields in objects)
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
@@ -54,13 +51,8 @@ data Result = Result {valid :: Validity, trace :: Trace}
 data InterpreterMessage
   = Start {dependencies :: Dep}
   | End
-<<<<<<< HEAD
-  | RequestAction Evaluator.Action
-  | Done Result
-=======
   | RequestAction {action :: Evaluator.Action}
   | Done {result :: Result}
->>>>>>> 45f7920 (Allow nested dependency fields in objects)
   deriving (Generic, JSON.ToJSON, JSON.FromJSON)
 
 data ExecutorMessage
