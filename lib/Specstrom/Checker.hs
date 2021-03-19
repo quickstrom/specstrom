@@ -8,7 +8,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 
-module Specstrom.Verifier where
+module Specstrom.Checker where
 
 import qualified Control.Concurrent.Async as Async
 import Control.Concurrent.STM (TQueue, atomically, newTQueueIO, readTQueue, tryReadTQueue, writeTQueue)
@@ -29,7 +29,7 @@ import qualified Data.Vector as Vector
 import GHC.Generics (Generic)
 import Numeric.Natural (Natural)
 import qualified Specstrom.Analysis as Analysis
-import Specstrom.Dependency (Dep (Dep))
+import Specstrom.Dependency (Dep)
 import qualified Specstrom.Evaluator as Evaluator
 import Specstrom.Syntax (TopLevel (..))
 import qualified Specstrom.Syntax as Syntax
