@@ -285,7 +285,7 @@ unaryOp Not s v = do
 unaryOp NextF s (Thunk t) = pure (Residual (Next AssumeFalse t))
 unaryOp NextT s (Thunk t) = pure (Residual (Next AssumeTrue t))
 unaryOp NextD s (Thunk t) = pure (Residual (Next Demand t))
-unaryOp _ _ _ = error "impossible"
+unaryOp op _ arg = error ("Impossible unary operation " <> show op <> " on: " <> show arg)
 
 binaryOp :: PrimOp -> State -> Value -> Value -> Eval Value
 binaryOp And s v1 v2 = do

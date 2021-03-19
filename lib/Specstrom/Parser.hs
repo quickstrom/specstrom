@@ -6,7 +6,6 @@ module Specstrom.Parser where
 
 import Control.Applicative
 import Control.Arrow (first)
-import Control.Monad (filterM, guard)
 import Control.Monad.Except
 import Data.List (intersperse, nub, (\\))
 import Data.List.NonEmpty (NonEmpty ((:|)))
@@ -17,7 +16,7 @@ import qualified Data.Text.IO as Text
 import Specstrom.Lexer
 import Specstrom.Syntax
 import System.Directory (doesFileExist)
-import System.FilePath (FilePath, (<.>), (</>))
+import System.FilePath ((<.>), (</>))
 import Text.Earley
 import Text.Earley.Mixfix
 
@@ -74,10 +73,10 @@ builtIns =
     ]
 
 parseGlob :: [(Position, Token)] -> Either ParseError ([(Position, Token)], Glob)
-parseGlob ((p, Ident n) : rest) = do
+parseGlob ((_p, Ident n) : rest) = do
   fmap (asGlobTerm n :) <$> parseGlob rest
   where
-    asGlobTerm n = filter (/= Just "") $ intersperse Nothing (map Just (splitOn "*" n))
+    asGlobTerm _n = filter (/= Just "") $ intersperse Nothing (map Just (splitOn "*" n))
 parseGlob rest = Right (rest, [])
 
 wrap :: Either ParseError a -> ExceptT ParseError IO a

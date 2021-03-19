@@ -30,11 +30,11 @@ builtIns =
       ++ [("click!", toAnnotation (\(Value b) -> Value (project "disabled" b)))]
       ++ zip binOps (repeat $ toAnnotation merge)
       ++ zip unOps (repeat $ toAnnotation (id :: Annotation -> Annotation))
-      ++ [ ("if_then_else_", toAnnotation (\(Value b) t e -> (merge t e) `unionDep` b))
+      ++ [ ("if_then_else_", toAnnotation (\(Value b) t e -> merge t e `unionDep` b))
          ]
   where
-    binOps = ["_==_", "_&&_", "_||_", "_when_", "_timeout_"] -- "_until_","_!=_","_==>_"]
-    unOps = ["not_", "always_", "next_", "nextT_", "nextF_", "changed?"] -- "eventually_"]
+    binOps = ["_==_", "_&&_", "_||_", "_when_", "_timeout_", "_until_", "_!=_", "_==>_"]
+    unOps = ["not_", "always_", "next_", "nextT_", "nextF_", "changed?", "eventually_"]
     values = ["true", "false", "null", "loaded?", "noop!"]
 
 merge :: Annotation -> Annotation -> Annotation
@@ -91,4 +91,4 @@ analyseExpr g (Lam _ pat e) = Function f mempty
       let new = M.fromList (zip (patternVars pat) (repeat a))
           g' = M.union g new
        in analyseExpr g' e
-analyseExpr _ _ = error "impossible"
+analyseExpr _ expr = error ("Impossible, can't analyse: " <> show expr)
