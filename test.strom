@@ -8,10 +8,11 @@ let unchanged x  = freeze a = x. next (x == a);
 
 let buttonText = `.play-pause`.textContent;
 let timeDisplayText = `.time-display`.textContent;
+let display = `.time-display`.css.display;
 
 let playing = 
    let pauseString = "pause";  // just demonstrating local bindings
-   buttonText == pauseString;  // No more maybe, we just have null for that
+   buttonText == pauseString && display == "block";  // No more maybe, we just have null for that
 
 let paused = 
    syntax _isPlay 7; //Also demonstrating local syntax

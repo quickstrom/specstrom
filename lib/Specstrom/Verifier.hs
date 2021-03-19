@@ -1,13 +1,15 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+<<<<<<< HEAD
+=======
+{-# LANGUAGE DuplicateRecordFields #-}
+>>>>>>> 45f7920 (Allow nested dependency fields in objects)
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# OPTIONS_GHC -Wno-deferred-type-errors #-}
-{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Specstrom.Verifier where
 
@@ -50,10 +52,15 @@ data Result = Result {valid :: Validity, trace :: Trace}
   deriving (Show, Generic, JSON.ToJSON, JSON.FromJSON)
 
 data InterpreterMessage
-  = Start Dep
+  = Start {dependencies :: Dep}
   | End
+<<<<<<< HEAD
   | RequestAction Evaluator.Action
   | Done Result
+=======
+  | RequestAction {action :: Evaluator.Action}
+  | Done {result :: Result}
+>>>>>>> 45f7920 (Allow nested dependency fields in objects)
   deriving (Generic, JSON.ToJSON, JSON.FromJSON)
 
 data ExecutorMessage

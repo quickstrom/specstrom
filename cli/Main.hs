@@ -5,15 +5,12 @@ module Main where
 import Control.Monad.Except (runExceptT)
 import Data.Bifunctor (first)
 import Data.Text (Text, pack)
-import qualified Data.Text.IO as Text
 import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty, line)
 import Prettyprinter.Render.Terminal (renderIO)
-import Specstrom.Evaluator
-import Specstrom.Lexer
 import Specstrom.Parser
 import Specstrom.PrettyPrinter
 import Specstrom.Syntax
-import Specstrom.Verifier
+import qualified Specstrom.Verifier as Verifier
 import System.Environment
 import System.Exit
 import System.IO (hPutStrLn, stderr, stdout)
@@ -38,5 +35,5 @@ main =
       renderIO stdout (layoutPretty defaultLayoutOptions (prettyAll ts <> line))
     ["check", f] -> do
       ts <- load (pack f)
-      print =<< checkAll ts
+      print =<< Verifier.checkAll ts
     _ -> hPutStrLn stderr "Usage: specstrom (format|check) MODULE-NAME"
