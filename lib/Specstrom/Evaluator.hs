@@ -1,19 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module Specstrom.Evaluator where
 
-import Control.Monad (MonadPlus (mzero), join, zipWithM)
+import Control.Monad (MonadPlus (mzero), zipWithM)
 import Data.IORef
-import qualified Data.Map as M
-import qualified Data.Set as S
-import Data.Text (Text)
+import qualified Data.HashMap.Strict as M
 import qualified Data.Text as Text
 import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax
+import qualified Data.Aeson as JSON
+import GHC.Generics (Generic)
 
-type Env = M.Map Name Value
+type Env = M.HashMap Name Value
 
-type State = M.Map Name [Value]
+type State = M.HashMap Name [Value]
 
 data Thunk = T Env (Expr Pattern) (IORef (Maybe Value))
 
@@ -22,14 +24,16 @@ instance Show Thunk where
 
 data Strength = AssumeTrue | AssumeFalse | Demand deriving (Show)
 
-data BaseAction = Click Name | Noop | Loaded | Changed Name deriving (Show, Eq)
+data BaseAction = Click Name | Noop | Loaded | Changed Name 
+  deriving (Show, Eq, Generic, JSON.FromJSON, JSON.ToJSON)
 
 isEvent :: BaseAction -> Bool
 isEvent Loaded = True
 isEvent (Changed n) = True
 isEvent _ = False
 
-data Action = A BaseAction (Maybe Int) deriving (Show)
+data Action = A BaseAction (Maybe Int)
+  deriving (Show, Eq, Generic, JSON.FromJSON, JSON.ToJSON)
 
 data PrimOp
   = -- unary
@@ -108,7 +112,7 @@ data Value
     Trivial
   | Absurd
   | Null
-  | Object (M.Map Name Value)
+  | Object (M.HashMap Name Value)
   | List [Value]
   | LitVal Lit
   deriving (Show)

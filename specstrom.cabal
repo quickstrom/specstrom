@@ -19,17 +19,21 @@ extra-source-files:  CHANGELOG.md
 
 common shared
   build-depends:       aeson
+                     , async
                      , base >=4.13 && <5
+                     , bytestring
                      , containers
                      , prettyprinter
                      , text
                      , mtl
                      , filepath
                      , directory
-                     , pipes
-                     , pipes-parse
                      , monad-gen
+                     , scientific
+                     , stm
                      , transformers
+                     , vector
+                     , unordered-containers
   -- TODO: -Werror=incomplete-patterns -Wredundant-constraints
   ghc-options:         -Wall 
   default-language:    Haskell2010
@@ -44,7 +48,6 @@ library
                      , Specstrom.Lexer 
                      , Specstrom.Parser 
                      , Specstrom.PrettyPrinter
-                     , Specstrom.StreamingVerifier
                      , Specstrom.Analysis
                      , Specstrom.Dependency
                      , Specstrom.Syntax
@@ -69,5 +72,4 @@ test-suite specstrom-test
   build-depends:       hedgehog
                      , specstrom
   other-modules:       Specstrom.PrettyPrinterTest
-                     , Specstrom.StreamingVerifierTest
                      , Specstrom.Gen

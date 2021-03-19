@@ -1,55 +1,215 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# OPTIONS_GHC -Wno-deferred-type-errors #-}
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module Specstrom.Verifier where
 
-import Control.Monad (foldM)
-import Data.Foldable (Foldable (fold))
-import qualified Data.Map as M
+import Control.Concurrent.STM (TQueue, atomically, newTQueueIO, readTQueue, tryReadTQueue, writeTQueue)
+import Control.Monad (foldM, unless)
+import Control.Monad.State (MonadTrans (lift))
+import Control.Monad.Trans.Writer (runWriterT, tell, WriterT)
+import Data.Foldable (Foldable (fold, foldl'))
+import qualified Data.Scientific as Scientific
+import qualified Data.HashMap.Strict as M
 import qualified Data.Text as Text
 import Data.Traversable (for)
-import Specstrom.Evaluator (Env, State, Value (..), basicEnv, evaluateBind, force, step, stop)
+import Numeric.Natural (Natural)
+import qualified Specstrom.Analysis as Analysis
+import Specstrom.Dependency (Dep (Dep))
+import qualified Specstrom.Evaluator as Evaluator
 import Specstrom.Syntax (TopLevel (..))
+import System.IO (stderr, hPutStrLn, isEOF)
+import qualified Control.Concurrent.Async as Async
+import qualified Data.Aeson as JSON
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy.Char8 as LBS
+import Control.Monad.IO.Class (MonadIO (liftIO))
+import Data.Functor (($>))
+import GHC.Generics (Generic)
+import qualified Specstrom.Syntax as Syntax
+import qualified Data.Vector as Vector
 
-type Trace = [State]
+type Trace = [TraceElement]
 
-data Result = Definitely Bool | Probably Bool
-  deriving (Eq, Show)
+type State = M.HashMap Syntax.Name [JSON.Value]
 
-check :: [TopLevel] -> IO [Result]
-check ts = do
-  env <- foldM toEnv basicEnv ts
-  fold <$> traverse (checkProps env) ts
+data TraceElement = TraceAction Evaluator.Action | TraceState State
+  deriving (Show, Generic, JSON.ToJSON, JSON.FromJSON)
+
+data Validity = Definitely Bool | Probably Bool
+  deriving (Show, Generic, JSON.ToJSON, JSON.FromJSON)
+
+data Result = Result {valid :: Validity, trace :: Trace}
+  deriving (Show, Generic, JSON.ToJSON, JSON.FromJSON)
+
+data InterpreterMessage
+  = Start Dep
+  | End
+  | RequestAction Evaluator.Action
+  | Done Result 
+  deriving (Generic, JSON.ToJSON, JSON.FromJSON)
+
+data ExecutorMessage
+  = Performed State
+  | Event Evaluator.BaseAction State
+  | Stale
+  deriving (Generic, JSON.ToJSON, JSON.FromJSON)
+
+checkAll :: [TopLevel] -> IO [Result]
+checkAll ts = do
+  env <- foldM toEnv Evaluator.basicEnv ts
+  let analysisEnv = foldl' toAnalysisEnv Analysis.builtIns ts
+  fold <$> traverse (checkProps env analysisEnv) ts
   where
-    toEnv :: Env -> TopLevel -> IO Env
+    toEnv :: Evaluator.Env -> TopLevel -> IO Evaluator.Env
     toEnv env = \case
-      Binding b -> evaluateBind env b
-      Imported _ ts' -> (env <>) <$> foldM toEnv env ts'
+      Binding b -> Evaluator.evaluateBind env b
+      Imported _ ts' -> foldM toEnv env ts'
       Properties {} -> pure env
+    toAnalysisEnv :: Analysis.AnalysisEnv -> TopLevel -> Analysis.AnalysisEnv
+    toAnalysisEnv env = \case
+      Binding b -> Analysis.analyseBind env b
+      Imported _ ts' -> foldl' toAnalysisEnv env ts'
+      Properties {} -> env
 
-checkProps :: Env -> TopLevel -> IO [Result]
-checkProps initialEnv = \case
+checkProps :: Evaluator.Env -> Analysis.AnalysisEnv -> TopLevel -> IO [Result]
+checkProps initialEnv analysisEnv = \case
   Properties _ _propGlob _ _ -> do
     let props = M.toList (M.filterWithKey (\k _ -> "prop" `Text.isPrefixOf` k) initialEnv)
     for props $ \(name, val) -> do
+      dep <- Analysis.depOf <$> maybe (fail "Property dependencies not available") pure (M.lookup name analysisEnv)
       putStrLn ("Checking property: " <> Text.unpack name)
-      loop initialEnv mempty val
+      checkProp initialEnv dep val
   _ -> pure []
+
+data InterpreterState
+  = Initial {formula :: Evaluator.Value}
+  | AwaitingInitialEvent {expectedEvent :: Evaluator.BaseAction, formula :: Evaluator.Value}
+  | ReadingQueue {formula :: Evaluator.Value, currentState :: State, stateVersion :: Natural}
+  | AwaitingPerformed {action :: Evaluator.Action, formula :: Evaluator.Value, currentState :: State, stateVersion :: Natural}
+
+type Interpret = WriterT Trace IO
+
+logErr :: MonadIO m => String -> m ()
+logErr = liftIO . hPutStrLn stderr
+
+checkProp :: Evaluator.Env -> Dep -> Evaluator.Value -> IO Result
+checkProp env dep initialFormula = do
+  input <- newTQueueIO
+  output <- newTQueueIO
+  Async.withAsync (readInput input) $ \inputDone ->
+    Async.withAsync (writeOutput output) $ \result -> do
+      checkPropOn input output env dep initialFormula
+      Async.wait inputDone
+      Async.wait result
+
+readInput :: TQueue ExecutorMessage -> IO ()
+readInput input = do
+  eof <- isEOF
+  unless eof $ do
+    line <- getLine
+    case JSON.eitherDecodeStrict (BS.pack line) of
+      Left err -> logErr ("Input message parsing failed: " <> err)
+      Right msg -> atomically (writeTQueue input msg)
+    readInput input
+
+writeOutput :: TQueue InterpreterMessage -> IO Result
+writeOutput output = do
+  let write msg = LBS.putStrLn (JSON.encode msg)
+  atomically (readTQueue output) >>= \case
+    Done result -> write (Done result) $> result
+    msg -> write msg >> writeOutput output
+
+checkPropOn :: TQueue ExecutorMessage -> TQueue InterpreterMessage -> Evaluator.Env -> Dep -> Evaluator.Value -> IO ()
+checkPropOn input output _env dep initialFormula = do
+  (valid, trace) <- runWriterT (run Initial {formula = initialFormula})
+  send (Done (Result valid trace))
   where
-    loop env currentState val =
-      force currentState val >>= \case
-        Trivial -> pure (Definitely True)
-        Absurd -> pure (Definitely False)
-        Residual r ->
-          case stop r of
-            Just v -> pure (Probably v)
-            Nothing -> do
-              putStrLn "Getting another state to continue with residual formula"
-              let nextState = mempty -- TODO: get state
-              loop env nextState =<< step r currentState
-        v -> do
-          putStrLn ("Unexpected value: " <> show v)
-          pure (Probably False)
+    send :: MonadIO m => InterpreterMessage -> m ()
+    send msg = liftIO (atomically (writeTQueue output msg))
+
+    receive :: MonadIO m => m ExecutorMessage
+    receive = liftIO (atomically (readTQueue input))
+
+    tryReceive :: MonadIO m => m (Maybe ExecutorMessage)
+    tryReceive = liftIO (atomically (tryReadTQueue input))
+
+    run :: InterpreterState -> Interpret Validity
+    run Initial {formula} = do
+      send (Start dep)
+      let expectedEvent = Evaluator.Loaded
+      run AwaitingInitialEvent {expectedEvent, formula}
+    run AwaitingInitialEvent {expectedEvent, formula} = do
+      msg <- receive
+      case msg of
+        Performed _state -> error "Was not expecting an action to be performed"
+        Event event firstState -> do
+          unless (event == expectedEvent) $
+            logErr ("Initial event mismatch: " <> show event <> " =/ " <> show expectedEvent)
+          tell [TraceAction (Evaluator.A event Nothing), TraceState firstState]
+          run ReadingQueue {formula = formula, currentState = firstState, stateVersion = 0}
+        Stale -> error "Was not expecting a stale when awaiting initial event."
+    run ReadingQueue {formula, currentState, stateVersion} =
+      ifResidual currentState formula $ \r -> do
+        msg <- tryReceive
+        case msg of
+          Just (Performed _nextState) -> error "Was not awaiting a performed action"
+          Just (Event event nextState) -> do
+            nextFormula <- lift (Evaluator.step r (toEvaluatorState currentState))
+            tell [TraceAction (Evaluator.A event Nothing), TraceState nextState]
+            run ReadingQueue {formula = nextFormula, currentState, stateVersion = succ stateVersion}
+          Just Stale -> error "Was not expecting a stale"
+          Nothing ->
+            case Evaluator.stop r of
+              Just v -> pure (Probably v)
+              Nothing -> do
+                let action = Evaluator.A (Evaluator.Click "foo") Nothing -- TODO: pick action from spec based on current state
+                send (RequestAction action)
+                run AwaitingPerformed {action, formula, currentState, stateVersion}
+    run AwaitingPerformed {action, formula, currentState, stateVersion} = do
+      msg <- receive
+      case msg of
+        Performed nextState ->
+          run ReadingQueue {formula, currentState = nextState, stateVersion = succ stateVersion}
+        Event event nextState -> do
+          tell [TraceAction (Evaluator.A event Nothing), TraceState nextState]
+          logErr ("Interrupted by event while awaiting " <> show action <> " to be performed. Awaiting the corresponding 'stale'.")
+          -- NOTE: we could go directly to ReadingQueue here but as
+          -- long as we have the Stale message, we might as well await
+          -- it.
+          run AwaitingPerformed {action, formula, currentState, stateVersion}
+        Stale -> do
+          logErr ("Got stale while awaiting " <> show action <> " to be performed.")
+          run ReadingQueue {formula, currentState, stateVersion}
+
+toEvaluatorState :: State -> Evaluator.State
+toEvaluatorState = fmap (fmap toEvaluatorValue) 
+
+toEvaluatorValue  :: JSON.Value -> Evaluator.Value
+toEvaluatorValue = \case
+  JSON.String s -> Evaluator.LitVal (Syntax.StringLit s)
+  JSON.Object o -> Evaluator.Object (fmap toEvaluatorValue o)
+  JSON.Array a -> Evaluator.List (Vector.toList (fmap toEvaluatorValue a))
+  JSON.Number n -> case Scientific.floatingOrInteger n of
+    Left n' -> Evaluator.LitVal (Syntax.FloatLit n')
+    Right n' -> Evaluator.LitVal (Syntax.IntLit n')
+  JSON.Bool True -> Evaluator.Trivial
+  JSON.Bool False -> Evaluator.Absurd
+  JSON.Null -> Evaluator.Null
+
+ifResidual :: State -> Evaluator.Value -> (Evaluator.Residual -> Interpret Validity) -> Interpret Validity
+ifResidual state formula f =
+  lift (Evaluator.force (toEvaluatorState state) formula) >>= \case
+    Evaluator.Trivial -> pure (Definitely True)
+    Evaluator.Absurd -> pure (Definitely False)
+    Evaluator.Residual r -> f r
+    v -> do
+      logErr ("Unexpected value: " <> show v)
+      pure (Probably False)

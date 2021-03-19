@@ -3,11 +3,11 @@
 
 module Specstrom.Analysis where
 
-import qualified Data.Map as M
+import qualified Data.HashMap.Strict as M
 import Specstrom.Dependency
 import Specstrom.Syntax
 
-type AnalysisEnv = M.Map Name Annotation
+type AnalysisEnv = M.HashMap Name Annotation
 
 data Annotation = Value Dep | Function (Annotation -> Annotation) Dep
 

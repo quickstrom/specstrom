@@ -38,7 +38,7 @@ There are two processes involved in the protocol:
 | ~performed~ | ~state : State~                                                                    | Executor    | Notify the Interpreter that an action was performed, along with the subsequent state.                           |
 | ~event~     | ~event : Event Element~ ~state : State~                                            | Executor    | Notify the Interpreter about an event that occurred, along with the subsequent state.                           |
 | ~stale~     |                                                                                    | Executor    | Reject the request to perform an action, due to version mismatch.                                               |
-| ~result~    | ~results : [(String, Result)]~                                                     |             |                                                                                                                 |
+| ~result~    | ~results : [(String, Result)]~                                                     | Interpreter | Report the final result of check all properties.                                                                |
 
 Types to be defined:
 
