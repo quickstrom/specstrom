@@ -1,16 +1,14 @@
-
-
-{-# LANGUAGE DeriveTraversable #-}
-
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Specstrom.Syntax where
 
-import Data.Text (Text)
-import Specstrom.Lexer (Position)
-import GHC.Generics (Generic)
-import Data.Hashable (Hashable)
 import qualified Data.Aeson as JSON
+import Data.Hashable (Hashable)
+import Data.Text (Text)
+import GHC.Generics (Generic)
+import Specstrom.Lexer (Position)
 
 newtype Selector = Selector Text
   deriving (Show, Eq, Ord, Generic, Hashable, JSON.FromJSON, JSON.ToJSON, JSON.FromJSONKey, JSON.ToJSONKey)
