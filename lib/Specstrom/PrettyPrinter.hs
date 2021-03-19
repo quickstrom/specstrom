@@ -117,7 +117,7 @@ prettyBody (Done e) = prettyExpr e
 prettyLit :: Lit -> Doc AnsiStyle
 prettyLit (CharLit s) = literal (pretty (show s))
 prettyLit (StringLit s) = literal (pretty (show s))
-prettyLit (SelectorLit s) = literal ("`" <> pretty s <> "`")
+prettyLit (SelectorLit (Selector s)) = literal ("`" <> pretty s <> "`")
 prettyLit (IntLit s) = literal (pretty (show s))
 prettyLit (FloatLit s) = literal (pretty (show s))
 

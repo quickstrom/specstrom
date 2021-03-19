@@ -38,7 +38,7 @@ import System.IO (hPutStrLn, isEOF, stderr)
 
 type Trace = [TraceElement]
 
-type State = M.HashMap Syntax.Name [JSON.Value]
+type State = M.HashMap Syntax.Selector [JSON.Value]
 
 data TraceElement = TraceAction Evaluator.Action | TraceState State
   deriving (Show, Generic, JSON.ToJSON, JSON.FromJSON)
@@ -146,16 +146,18 @@ checkPropOn input output _env dep initialFormula = do
       send (Start dep)
       let expectedEvent = Evaluator.Loaded
       run AwaitingInitialEvent {expectedEvent, formula}
-    run AwaitingInitialEvent {expectedEvent, formula} = do
+    run s@AwaitingInitialEvent {expectedEvent, formula} = do
       msg <- receive
       case msg of
-        Performed _state -> error "Was not expecting an action to be performed"
+        Performed _state -> error "Was not expecting an action to be performed. Trace must begin with an initial event."
         Event event firstState -> do
           unless (event == expectedEvent) $
             logErr ("Initial event mismatch: " <> show event <> " =/ " <> show expectedEvent)
           tell [TraceAction (Evaluator.A event Nothing), TraceState firstState]
           run ReadingQueue {formula = formula, currentState = firstState, stateVersion = 0}
-        Stale -> error "Was not expecting a stale when awaiting initial event."
+        Stale -> do
+          logErr "Was not expecting a stale when awaiting initial event."
+          run s
     run ReadingQueue {formula, currentState, stateVersion} =
       ifResidual currentState formula $ \r -> do
         msg <- tryReceive

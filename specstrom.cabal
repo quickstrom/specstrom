@@ -25,6 +25,7 @@ common shared
                      , containers
                      , prettyprinter
                      , text
+                     , hashable
                      , mtl
                      , filepath
                      , directory

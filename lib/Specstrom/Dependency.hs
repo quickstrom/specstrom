@@ -7,8 +7,9 @@ import qualified Data.Aeson as JSON
 import qualified Data.Map as M
 import Data.Text (Text)
 import GHC.Generics (Generic)
+import Specstrom.Syntax (Selector)
 
-newtype Dep = Dep (M.Map Text [[Text]])
+newtype Dep = Dep (M.Map Selector [[Text]])
   deriving (Show, Eq, Generic, JSON.FromJSON, JSON.ToJSON)
 
 instance Semigroup Dep where
@@ -20,5 +21,5 @@ instance Monoid Dep where
 project :: Text -> Dep -> Dep
 project t (Dep m) = Dep (fmap (map (++ [t])) m)
 
-dep :: Text -> Dep
+dep :: Selector -> Dep
 dep t = Dep (M.fromList [(t, [[]])])

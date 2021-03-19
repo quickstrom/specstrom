@@ -1,18 +1,26 @@
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE DeriveFunctor #-}
+
+
 {-# LANGUAGE DeriveTraversable #-}
 
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Specstrom.Syntax where
 
 import Data.Text (Text)
 import Specstrom.Lexer (Position)
+import GHC.Generics (Generic)
+import Data.Hashable (Hashable)
+import qualified Data.Aeson as JSON
+
+newtype Selector = Selector Text
+  deriving (Show, Eq, Ord, Generic, Hashable, JSON.FromJSON, JSON.ToJSON, JSON.FromJSONKey, JSON.ToJSONKey)
 
 data Lit
   = IntLit Int
   | FloatLit Double
   | StringLit Text
   | CharLit Char
-  | SelectorLit Text
+  | SelectorLit Selector
   deriving (Show, Eq)
 
 data Expr p
@@ -29,8 +37,7 @@ peelAps (App x y) acc = peelAps x (y : acc)
 peelAps v acc = (v, acc)
 
 unpeelAps :: Expr p -> [Expr p] -> Expr p
-unpeelAps e (x : xs) = unpeelAps (App e x) xs
-unpeelAps e [] = e
+unpeelAps e xs = foldl App e xs
 
 exprPos :: Expr p -> Position
 exprPos (Var p _) = p
