@@ -1,0 +1,3 @@
+let prop = not (nextF `foo`.disabled) && `bar`.disabled || `baz`.disabled;
+
+check prop with *;
