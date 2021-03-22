@@ -53,6 +53,7 @@ library
                      , Specstrom.Analysis
                      , Specstrom.Dependency
                      , Specstrom.Syntax
+                     , Specstrom.TypeInf
 
 
 

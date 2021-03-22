@@ -11,6 +11,7 @@ import qualified Specstrom.Checker as Checker
 import Specstrom.Parser
 import Specstrom.PrettyPrinter
 import Specstrom.Syntax
+import Specstrom.TypeInf
 import System.Environment
 import System.Exit
 import System.IO (hPutStrLn, stderr, stdout)
@@ -25,7 +26,11 @@ load f = do
     Left err -> do
       renderIO stderr (layoutPretty defaultLayoutOptions (err <> line))
       exitFailure
-    Right (_, ts) -> pure ts
+    Right (_, ts) -> 
+      case inferTopLevels builtInTypes ts of 
+        Left te -> renderIO stderr (layoutPretty defaultLayoutOptions (prettyTypeError te <> line)) >> exitFailure
+        Right _ -> pure ts 
+      
 
 main :: IO ()
 main =
