@@ -26,11 +26,10 @@ load f = do
     Left err -> do
       renderIO stderr (layoutPretty defaultLayoutOptions (err <> line))
       exitFailure
-    Right (_, ts) -> 
-      case inferTopLevels builtInTypes ts of 
+    Right (_, ts) ->
+      case inferTopLevels builtInTypes ts of
         Left te -> renderIO stderr (layoutPretty defaultLayoutOptions (prettyTypeError te <> line)) >> exitFailure
-        Right _ -> pure ts 
-      
+        Right _ -> pure ts
 
 main :: IO ()
 main =

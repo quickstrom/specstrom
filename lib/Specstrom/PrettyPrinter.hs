@@ -13,8 +13,8 @@ import Prettyprinter.Render.Terminal
 import Specstrom.Evaluator
 import Specstrom.Lexer
 import Specstrom.Parser
-import Specstrom.TypeInf
 import Specstrom.Syntax
+import Specstrom.TypeInf
 
 prettyPos :: Position -> Doc AnsiStyle
 prettyPos (f, l, c) = pretty f <> ":" <> pretty l <> ":" <> pretty c
@@ -28,7 +28,7 @@ errorMessageNoPos s extra =
   annotate (bold <> color Red) s <> line <> indent 2 (vcat extra)
 
 prettyTypeError :: (Position, [TypeErrorBit]) -> Doc AnsiStyle
-prettyTypeError (p, (StrE s:rest)) = errorMessage p (pretty s) (map prettyTyBit rest)
+prettyTypeError (p, (StrE s : rest)) = errorMessage p (pretty s) (map prettyTyBit rest)
 prettyTypeError (p, rest) = errorMessage p "Type error" (map prettyTyBit rest)
 
 prettyTyBit :: TypeErrorBit -> Doc AnsiStyle
