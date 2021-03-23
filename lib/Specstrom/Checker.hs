@@ -21,6 +21,7 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Foldable (Foldable (fold, foldl'))
 import Data.Functor (($>))
+import Data.Maybe (isNothing)
 import qualified Data.HashMap.Strict as M
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as Text
@@ -89,9 +90,8 @@ checkProps initialEnv analysisEnv = \case
   _ -> pure []
 
 data InterpreterState
-  = AwaitingInitialEvent {expectedEvent :: Evaluator.Value, formula :: Evaluator.Value}
-  | ReadingQueue {formula :: Evaluator.Value, currentState :: State, stateVersion :: Natural}
-  | AwaitingPerformed {action :: Evaluator.Action, formula :: Evaluator.Value, currentState :: State, stateVersion :: Natural}
+  = AwaitingInitialEvent {expectedEvent :: Evaluator.Value, formulaValue :: Evaluator.Value}
+  | ReadingQueue {formula :: Evaluator.Residual, stateVersion :: Natural, sentAction :: Maybe Evaluator.Action}  
 
 type Interpret = WriterT Trace IO
 
@@ -128,7 +128,7 @@ writeOutput output = do
 checkPropOn :: TQueue ExecutorMessage -> TQueue InterpreterMessage -> Evaluator.Env -> Dep -> Evaluator.Value -> Evaluator.Value -> IO ()
 checkPropOn input output _env dep initialFormula expectedEv = do
   send (Start dep)
-  (valid, trace) <- runWriterT (run AwaitingInitialEvent {formula = initialFormula, expectedEvent = expectedEv})
+  (valid, trace) <- runWriterT (run AwaitingInitialEvent {formulaValue = initialFormula, expectedEvent = expectedEv })
   send (Done (Result valid trace))
   where
     send :: MonadIO m => InterpreterMessage -> m ()
@@ -140,59 +140,54 @@ checkPropOn input output _env dep initialFormula expectedEv = do
     tryReceive :: MonadIO m => m (Maybe ExecutorMessage)
     tryReceive = liftIO (atomically (tryReadTQueue input))
 
-    run :: InterpreterState -> Interpret Validity
-    run s@AwaitingInitialEvent {expectedEvent, formula} = do
+    run :: InterpreterState -> Interpret Validity    
+    run s@AwaitingInitialEvent {expectedEvent, formulaValue = formula} = do
       msg <- receive
       case msg of
         Performed _state -> error "Was not expecting an action to be performed. Trace must begin with an initial event."
         Event event firstState -> do
-          expected <- liftIO $ Evaluator.force (toEvaluatorState firstState) expectedEvent
-          case expected of
-            Evaluator.Action (Evaluator.A base _timeout) ->
-              if base == event
-                then do
-                  tell [TraceAction (Evaluator.A event Nothing), TraceState firstState]
-                  run ReadingQueue {formula = formula, currentState = firstState, stateVersion = 0}
-                else do
-                  -- maybe want to log this
-                  expectedEvent' <- liftIO $ Evaluator.resetThunks expectedEvent
-                  run (AwaitingInitialEvent {expectedEvent = expectedEvent', formula})
+          expected <- liftIO $ Evaluator.force (toEvaluatorState firstState) expectedEvent 
+          case expected of 
+            Evaluator.Action (Evaluator.A base _timeout) -> 
+              if base == event then do
+                tell [TraceAction (Evaluator.A event Nothing), TraceState firstState]
+                ifResidual firstState formula $ \r -> 
+                  run ReadingQueue {formula = r, stateVersion = 0, sentAction = Nothing}
+              else do
+                -- maybe want to log this
+                expectedEvent' <- liftIO $ Evaluator.resetThunks expectedEvent                
+                run (AwaitingInitialEvent {expectedEvent = expectedEvent', formulaValue = formula})
             _ -> error "Provided initial event is not an action"
         Stale -> do
           logErr "Was not expecting a stale when awaiting initial event."
           run s
-    run ReadingQueue {formula, currentState, stateVersion} =
-      ifResidual currentState formula $ \r -> do
-        msg <- tryReceive
+    run ReadingQueue {formula = r, stateVersion, sentAction} = do
+        msg <- if isNothing sentAction then tryReceive else Just <$> receive
         case msg of
-          Just (Performed _nextState) -> error "Was not awaiting a performed action"
+          Just (Performed nextState) -> case sentAction of 
+            Nothing -> error "Not expecting a performed"
+            Just act -> do 
+              nextFormula <- lift (Evaluator.step r (toEvaluatorState nextState))
+              tell [TraceAction act, TraceState nextState]
+              ifResidual nextState nextFormula $ \r' -> 
+                run ReadingQueue {formula = r', stateVersion = succ stateVersion, sentAction = Nothing}
           Just (Event event nextState) -> do
-            nextFormula <- lift (Evaluator.step r (toEvaluatorState currentState))
+            -- TODO: filter by available events
+            -- TODO: Handle timeouts
+            nextFormula <- lift (Evaluator.step r (toEvaluatorState nextState))
             tell [TraceAction (Evaluator.A event Nothing), TraceState nextState]
-            run ReadingQueue {formula = nextFormula, currentState, stateVersion = succ stateVersion}
-          Just Stale -> error "Was not expecting a stale"
+            ifResidual nextState nextFormula $ \r' -> 
+              run ReadingQueue {formula = r', stateVersion = succ stateVersion, sentAction = sentAction}            
+          Just Stale -> logErr "Got stale" >> run ReadingQueue { formula = r, stateVersion, sentAction = Nothing}
           Nothing ->
             case Evaluator.stop r of
               Just v -> pure (Probably v)
               Nothing -> do
-                let action = Evaluator.A (Evaluator.Click "foo") Nothing -- TODO: pick action from spec based on current state
+                let action = Evaluator.A (Evaluator.Click "foo") Nothing 
+                -- TODO: pick action from spec based on current state
+                -- TODO: handle timeouts
                 send (RequestAction action)
-                run AwaitingPerformed {action, formula, currentState, stateVersion}
-    run AwaitingPerformed {action, formula, currentState, stateVersion} = do
-      msg <- receive
-      case msg of
-        Performed nextState ->
-          run ReadingQueue {formula, currentState = nextState, stateVersion = succ stateVersion}
-        Event event nextState -> do
-          tell [TraceAction (Evaluator.A event Nothing), TraceState nextState]
-          logErr ("Interrupted by event while awaiting " <> show action <> " to be performed. Awaiting the corresponding 'stale'.")
-          -- NOTE: we could go directly to ReadingQueue here but as
-          -- long as we have the Stale message, we might as well await
-          -- it.
-          run AwaitingPerformed {action, formula, currentState, stateVersion}
-        Stale -> do
-          logErr ("Got stale while awaiting " <> show action <> " to be performed.")
-          run ReadingQueue {formula, currentState, stateVersion}
+                run ReadingQueue {formula = r, stateVersion, sentAction = Just action}
 
 toEvaluatorState :: State -> Evaluator.State
 toEvaluatorState = fmap (fmap toEvaluatorValue)
