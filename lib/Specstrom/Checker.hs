@@ -85,12 +85,11 @@ checkProps initialEnv analysisEnv = \case
     for props $ \(name, val) -> do
       dep <- Analysis.depOf <$> maybe (fail "Property dependencies not available") pure (M.lookup name analysisEnv)
       putStrLn ("Checking property: " <> Text.unpack name)
-      checkProp initialEnv dep val
+      checkProp initialEnv dep val (Evaluator.Action (Evaluator.A Evaluator.Loaded Nothing))
   _ -> pure []
 
 data InterpreterState
-  = Initial {formula :: Evaluator.Value}
-  | AwaitingInitialEvent {expectedEvent :: Evaluator.BaseAction, formula :: Evaluator.Value}
+  = AwaitingInitialEvent {expectedEvent :: Evaluator.Value, formula :: Evaluator.Value}
   | ReadingQueue {formula :: Evaluator.Value, currentState :: State, stateVersion :: Natural}
   | AwaitingPerformed {action :: Evaluator.Action, formula :: Evaluator.Value, currentState :: State, stateVersion :: Natural}
 
@@ -99,13 +98,13 @@ type Interpret = WriterT Trace IO
 logErr :: MonadIO m => String -> m ()
 logErr = liftIO . hPutStrLn stderr
 
-checkProp :: Evaluator.Env -> Dep -> Evaluator.Value -> IO Result
-checkProp env dep initialFormula = do
+checkProp :: Evaluator.Env -> Dep -> Evaluator.Value -> Evaluator.Value -> IO Result
+checkProp env dep initialFormula expectedEvent = do
   input <- newTQueueIO
   output <- newTQueueIO
   Async.withAsync (readInput input) $ \inputDone ->
     Async.withAsync (writeOutput output) $ \result -> do
-      checkPropOn input output env dep initialFormula
+      checkPropOn input output env dep initialFormula expectedEvent
       Async.wait inputDone
       Async.wait result
 
@@ -126,9 +125,10 @@ writeOutput output = do
     Done result -> write (Done result) $> result
     msg -> write msg >> writeOutput output
 
-checkPropOn :: TQueue ExecutorMessage -> TQueue InterpreterMessage -> Evaluator.Env -> Dep -> Evaluator.Value -> IO ()
-checkPropOn input output _env dep initialFormula = do
-  (valid, trace) <- runWriterT (run Initial {formula = initialFormula})
+checkPropOn :: TQueue ExecutorMessage -> TQueue InterpreterMessage -> Evaluator.Env -> Dep -> Evaluator.Value -> Evaluator.Value -> IO ()
+checkPropOn input output _env dep initialFormula expectedEv = do
+  send (Start dep)
+  (valid, trace) <- runWriterT (run AwaitingInitialEvent {formula = initialFormula, expectedEvent = expectedEv })
   send (Done (Result valid trace))
   where
     send :: MonadIO m => InterpreterMessage -> m ()
@@ -140,20 +140,23 @@ checkPropOn input output _env dep initialFormula = do
     tryReceive :: MonadIO m => m (Maybe ExecutorMessage)
     tryReceive = liftIO (atomically (tryReadTQueue input))
 
-    run :: InterpreterState -> Interpret Validity
-    run Initial {formula} = do
-      send (Start dep)
-      let expectedEvent = Evaluator.Loaded
-      run AwaitingInitialEvent {expectedEvent, formula}
+    run :: InterpreterState -> Interpret Validity    
     run s@AwaitingInitialEvent {expectedEvent, formula} = do
       msg <- receive
       case msg of
         Performed _state -> error "Was not expecting an action to be performed. Trace must begin with an initial event."
         Event event firstState -> do
-          unless (event == expectedEvent) $
-            logErr ("Initial event mismatch: " <> show event <> " =/ " <> show expectedEvent)
-          tell [TraceAction (Evaluator.A event Nothing), TraceState firstState]
-          run ReadingQueue {formula = formula, currentState = firstState, stateVersion = 0}
+          expected <- liftIO $ Evaluator.force (toEvaluatorState firstState) expectedEvent 
+          case expected of 
+            Evaluator.Action (Evaluator.A base _timeout) -> 
+              if base == event then do
+                tell [TraceAction (Evaluator.A event Nothing), TraceState firstState]
+                run ReadingQueue {formula = formula, currentState = firstState, stateVersion = 0}
+              else do
+                -- maybe want to log this
+                expectedEvent' <- liftIO $ Evaluator.resetThunks expectedEvent                
+                run (AwaitingInitialEvent {expectedEvent = expectedEvent', formula})
+            _ -> error "Provided initial event is not an action"
         Stale -> do
           logErr "Was not expecting a stale when awaiting initial event."
           run s
