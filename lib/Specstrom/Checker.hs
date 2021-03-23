@@ -128,7 +128,7 @@ writeOutput output = do
 checkPropOn :: TQueue ExecutorMessage -> TQueue InterpreterMessage -> Evaluator.Env -> Dep -> Evaluator.Value -> Evaluator.Value -> IO ()
 checkPropOn input output _env dep initialFormula expectedEv = do
   send (Start dep)
-  (valid, trace) <- runWriterT (run AwaitingInitialEvent {formula = initialFormula, expectedEvent = expectedEv })
+  (valid, trace) <- runWriterT (run AwaitingInitialEvent {formula = initialFormula, expectedEvent = expectedEv})
   send (Done (Result valid trace))
   where
     send :: MonadIO m => InterpreterMessage -> m ()
@@ -140,22 +140,23 @@ checkPropOn input output _env dep initialFormula expectedEv = do
     tryReceive :: MonadIO m => m (Maybe ExecutorMessage)
     tryReceive = liftIO (atomically (tryReadTQueue input))
 
-    run :: InterpreterState -> Interpret Validity    
+    run :: InterpreterState -> Interpret Validity
     run s@AwaitingInitialEvent {expectedEvent, formula} = do
       msg <- receive
       case msg of
         Performed _state -> error "Was not expecting an action to be performed. Trace must begin with an initial event."
         Event event firstState -> do
-          expected <- liftIO $ Evaluator.force (toEvaluatorState firstState) expectedEvent 
-          case expected of 
-            Evaluator.Action (Evaluator.A base _timeout) -> 
-              if base == event then do
-                tell [TraceAction (Evaluator.A event Nothing), TraceState firstState]
-                run ReadingQueue {formula = formula, currentState = firstState, stateVersion = 0}
-              else do
-                -- maybe want to log this
-                expectedEvent' <- liftIO $ Evaluator.resetThunks expectedEvent                
-                run (AwaitingInitialEvent {expectedEvent = expectedEvent', formula})
+          expected <- liftIO $ Evaluator.force (toEvaluatorState firstState) expectedEvent
+          case expected of
+            Evaluator.Action (Evaluator.A base _timeout) ->
+              if base == event
+                then do
+                  tell [TraceAction (Evaluator.A event Nothing), TraceState firstState]
+                  run ReadingQueue {formula = formula, currentState = firstState, stateVersion = 0}
+                else do
+                  -- maybe want to log this
+                  expectedEvent' <- liftIO $ Evaluator.resetThunks expectedEvent
+                  run (AwaitingInitialEvent {expectedEvent = expectedEvent', formula})
             _ -> error "Provided initial event is not an action"
         Stale -> do
           logErr "Was not expecting a stale when awaiting initial event."
