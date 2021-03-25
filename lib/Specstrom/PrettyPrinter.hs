@@ -94,6 +94,7 @@ prettyToken (SelectorLitTok str) = literal ("`" <> pretty str <> "`")
 prettyToken LParen = "("
 prettyToken RParen = ")"
 prettyToken Semi = ";"
+prettyToken Comma = ","
 prettyToken Dot = "."
 prettyToken EOF = "EOF"
 
@@ -174,9 +175,8 @@ prettyExpr trm = renderTerm True trm
         Text.length (Text.filter (== '_') n) == length args =
         (if outer then id else parens) $ hsep $ infixTerms n args
       | (x, args) <- peelAps t [] =
-        (if outer then id else parens) $
-          hsep $
-            renderTerm False x : map (renderTerm False) args
+--        (if outer then id else parens) $
+          renderTerm False x <> "(" <> hsep (punctuate comma $ map (renderTerm True) args) <> ")"
 
     infixTerms :: (PrettyPattern p) => Text -> [Expr p] -> [Doc AnsiStyle]
     infixTerms str [] = if Text.null str then [] else [ident str]

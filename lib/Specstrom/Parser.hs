@@ -226,13 +226,19 @@ grammar table = mdo
       ident
         <|> lparen *> expr <* rparen
   normalProj <- rule $ atom <|> Projection <$> normalProj <*> projection
+  argList <- 
+    rule $ 
+        (:) <$> normalApp <*> (isToken Comma "," *> argList <|> pure [])
+    <|> pure [] 
   normalApp <-
     rule $
       normalProj
-        <|> App <$> normalApp <*> normalProj
+        <|> app <$> normalApp <* lparen <*> argList <* rparen
   expr <- mixfixExpression tbl normalApp makeAp
   return expr
   where
+    app x [] = x
+    app f (x:xs) = app (App f x) xs
     tbl =
       [ [ ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)
         ],

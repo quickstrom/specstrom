@@ -4,7 +4,7 @@
 // All other syntax is user-definable using syntax-keywords using mix-fix operators.
 // Note that this means spaces between symbols and words is important. a&&b is not a && b!
 
-let unchanged x  = freeze a = x. next (x == a); 
+let unchanged(x)  = freeze a = x. next (x == a); 
 
 let buttonText = `.play-pause`.textContent;
 let timeDisplayText = `.time-display`.textContent;
@@ -20,17 +20,17 @@ let paused =
    buttonText isPlay;
 
 // bindings can take arguments.
-let transition a b = a && next b;
+let transition(a, b) = a && next b;
 
 syntax _~>_ 5;
-let a ~> b = transition a b;
+let a ~> b = transition(a, b);
 
 
-let play = paused ~> playing && unchanged timeDisplayText;
+let play = paused ~> playing && unchanged(timeDisplayText);
 
-let pause = playing ~> paused && unchanged timeDisplayText;
+let pause = playing ~> paused && unchanged(timeDisplayText);
 
-let tick = playing ~> playing && not unchanged timeDisplayText;
+let tick = playing ~> playing && not unchanged(timeDisplayText);
 
 let prop =  paused && always (play || pause || tick); // always always == always, I am just demonstrating the prefix syntax.
 
