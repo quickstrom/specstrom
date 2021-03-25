@@ -10,10 +10,10 @@
 
 module Specstrom.Checker where
 
-import qualified Control.Concurrent.Async as Async
-import Control.Concurrent.STM (TQueue, atomically, newTQueueIO, readTQueue, tryReadTQueue, writeTQueue, TVar, STM, registerDelay, check, readTVar)
 import Control.Applicative ((<|>))
-import Control.Monad (forM_, unless, (<=<), void)
+import qualified Control.Concurrent.Async as Async
+import Control.Concurrent.STM (STM, TQueue, TVar, atomically, check, newTQueueIO, readTQueue, readTVar, registerDelay, tryReadTQueue, writeTQueue)
+import Control.Monad (forM_, unless, void, (<=<))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.State (MonadTrans (lift))
 import Control.Monad.Trans.Writer (WriterT, runWriterT, tell)
@@ -62,59 +62,56 @@ data ExecutorMessage
   | Stale
   deriving (Generic, JSON.ToJSON, JSON.FromJSON)
 
-
 checkAll :: [TopLevel] -> IO ()
 checkAll = void . checkTopLevels [] Evaluator.basicEnv Analysis.builtIns
 
 checkTopLevels :: [Syntax.Name] -> Evaluator.Env -> Analysis.AnalysisEnv -> [TopLevel] -> IO ([Syntax.Name], Evaluator.Env, Analysis.AnalysisEnv)
 checkTopLevels currentModule evalEnv analysisEnv [] = pure (currentModule, evalEnv, analysisEnv)
-checkTopLevels currentModule evalEnv analysisEnv (tl:rest) = do
+checkTopLevels currentModule evalEnv analysisEnv (tl : rest) = do
   (currentModule', evalEnv', analysisEnv') <- checkTopLevel currentModule evalEnv analysisEnv tl
   checkTopLevels currentModule' evalEnv' analysisEnv' rest
 
 checkTopLevel :: [Syntax.Name] -> Evaluator.Env -> Analysis.AnalysisEnv -> TopLevel -> IO ([Syntax.Name], Evaluator.Env, Analysis.AnalysisEnv)
 checkTopLevel currentModule evalEnv analysisEnv = \case
-  Binding b@(Syntax.Bind pat _) -> do 
+  Binding b@(Syntax.Bind pat _) -> do
     evalEnv' <- Evaluator.evaluateBind evalEnv b
     let analysisEnv' = Analysis.analyseBind analysisEnv b
     pure (Syntax.bindPatternBoundVars pat ++ currentModule, evalEnv', analysisEnv')
-  Imported _ ts' -> do 
+  Imported _ ts' -> do
     (_, e', ae') <- checkTopLevels [] evalEnv analysisEnv ts'
     pure (currentModule, e', ae')
   Properties _ propGlob actsGlob initial -> do
-    let props = Syntax.expand currentModule propGlob 
+    let props = Syntax.expand currentModule propGlob
     let actNames = Syntax.expand currentModule actsGlob
-    acts <- mapM (\ nm -> maybe (fail "Action/event not found") pure (M.lookup nm evalEnv)) actNames
-    actDeps <- mapM (\ nm -> maybe (fail "Action/event dependencies not found") (pure . Analysis.depOf) (M.lookup nm analysisEnv)) actNames
-    forM_ props $ \name -> do 
+    acts <- mapM (\nm -> maybe (fail "Action/event not found") pure (M.lookup nm evalEnv)) actNames
+    actDeps <- mapM (\nm -> maybe (fail "Action/event dependencies not found") (pure . Analysis.depOf) (M.lookup nm analysisEnv)) actNames
+    forM_ props $ \name -> do
       val <- maybe (fail "Property not found") pure (M.lookup name evalEnv)
       dep <- Analysis.depOf <$> maybe (fail "Property dependencies not available") pure (M.lookup name analysisEnv)
       putStrLn ("Checking property: " <> Text.unpack name)
-      initial' <- case initial of 
+      initial' <- case initial of
         Just e -> liftIO $ Evaluator.Thunk <$> Evaluator.newThunk evalEnv e
         Nothing -> pure (Evaluator.Action (Evaluator.A Evaluator.Loaded Nothing))
-      rs <- checkProp evalEnv (mconcat (dep:actDeps)) val acts initial'
+      rs <- checkProp evalEnv (mconcat (dep : actDeps)) val acts initial'
       putStrLn (show rs)
     pure (currentModule, evalEnv, analysisEnv)
 
 data InterpreterState
-  = AwaitingInitialEvent 
+  = AwaitingInitialEvent
   | ReadingQueue {formula :: Evaluator.Residual, stateVersion :: Natural, lastState :: State, sentAction :: SentAction}
 
 type Interpret = WriterT Trace IO
 
-
 -- Read the next value from a TQueue or timeout
 readTQueueTimeout :: Int -> TQueue a -> IO (Maybe a)
 readTQueueTimeout timeout q = do
-    delay <- registerDelay timeout
-    atomically $
-          Just <$> readTQueue q
+  delay <- registerDelay timeout
+  atomically $
+    Just <$> readTQueue q
       <|> Nothing <$ fini delay
-  where 
+  where
     fini :: TVar Bool -> STM ()
     fini = check <=< readTVar
-
 
 logErr :: MonadIO m => String -> m ()
 logErr = liftIO . hPutStrLn stderr
@@ -145,7 +142,6 @@ writeOutput output = do
   atomically (readTQueue output) >>= \case
     Done result -> write (Done result) $> result
     msg -> write msg >> writeOutput output
-
 
 data SentAction = None | Sent Evaluator.Action | WaitingTimeout Int
 
@@ -180,12 +176,13 @@ checkPropOn input output _env dep initialFormula actions expectedEvent = do
                 then do
                   tell [TraceAction (Evaluator.A event timeout), TraceState firstState]
                   ifResidual firstState initialFormula $ \r ->
-                    run ReadingQueue {
-                      formula = r, 
-                      stateVersion = 0, 
-                      lastState = firstState, 
-                      sentAction = case timeout of Nothing -> None; Just i -> WaitingTimeout i
-                    }
+                    run
+                      ReadingQueue
+                        { formula = r,
+                          stateVersion = 0,
+                          lastState = firstState,
+                          sentAction = case timeout of Nothing -> None; Just i -> WaitingTimeout i
+                        }
                 else do
                   -- maybe want to log this
                   _ <- liftIO $ Evaluator.resetThunks expectedEvent
@@ -202,30 +199,32 @@ checkPropOn input output _env dep initialFormula actions expectedEvent = do
             nextFormula <- lift (Evaluator.step r (toEvaluatorState nextState))
             tell [TraceAction act, TraceState nextState]
             ifResidual nextState nextFormula $ \r' ->
-              run ReadingQueue {
-                formula = r', 
-                stateVersion = succ stateVersion,  
-                lastState = nextState, 
-                sentAction = case timeout of Nothing -> None; Just i -> WaitingTimeout i
-              }
+              run
+                ReadingQueue
+                  { formula = r',
+                    stateVersion = succ stateVersion,
+                    lastState = nextState,
+                    sentAction = case timeout of Nothing -> None; Just i -> WaitingTimeout i
+                  }
           _ -> error "Not expecting a performed"
         Just (Event event nextState) -> do
           actvals <- liftIO $ mapM (Evaluator.force (toEvaluatorState nextState) <=< Evaluator.resetThunks) actions
           let acts = catMaybes $ flip map actvals $ \v -> case v of Evaluator.Action a -> Just a; _ -> Nothing
           let matches = filter (\(Evaluator.A a _) -> a == event) acts
-          case matches of 
+          case matches of
             [] -> run ReadingQueue {formula = r, stateVersion, lastState, sentAction}
-            act@(Evaluator.A _ timeout):_ -> do
+            act@(Evaluator.A _ timeout) : _ -> do
               -- TODO: Handle timeouts
               nextFormula <- lift (Evaluator.step r (toEvaluatorState nextState))
               tell [TraceAction act, TraceState nextState]
               ifResidual nextState nextFormula $ \r' ->
-                run ReadingQueue {
-                  formula = r', 
-                  stateVersion = succ stateVersion, 
-                  lastState = nextState, 
-                  sentAction = case timeout of Nothing -> None; Just i -> WaitingTimeout i
-                }
+                run
+                  ReadingQueue
+                    { formula = r',
+                      stateVersion = succ stateVersion,
+                      lastState = nextState,
+                      sentAction = case timeout of Nothing -> None; Just i -> WaitingTimeout i
+                    }
         Just Stale -> logErr "Got stale" >> run ReadingQueue {formula = r, stateVersion, lastState, sentAction}
         Nothing ->
           case Evaluator.stop r of
@@ -233,7 +232,7 @@ checkPropOn input output _env dep initialFormula actions expectedEvent = do
             Nothing -> do
               actvals <- liftIO $ mapM (Evaluator.force (toEvaluatorState lastState) <=< Evaluator.resetThunks) actions
               let acts = catMaybes $ flip map actvals $ \v -> case v of Evaluator.Action a@(Evaluator.A b _) | not (Evaluator.isEvent b) -> Just a; _ -> Nothing
-              case acts of 
+              case acts of
                 [] -> error "Ran out of actions to do!"
                 _ -> do
                   let len = length acts
