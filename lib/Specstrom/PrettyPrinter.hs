@@ -14,6 +14,7 @@ import Specstrom.Evaluator
 import Specstrom.Lexer
 import Specstrom.Parser
 import Specstrom.Syntax
+import Specstrom.TypeInf
 
 prettyPos :: Position -> Doc AnsiStyle
 prettyPos (f, l, c) = pretty f <> ":" <> pretty l <> ":" <> pretty c
@@ -25,6 +26,20 @@ errorMessage p s extra =
 errorMessageNoPos :: Doc AnsiStyle -> [Doc AnsiStyle] -> Doc AnsiStyle
 errorMessageNoPos s extra =
   annotate (bold <> color Red) s <> line <> indent 2 (vcat extra)
+
+prettyTypeError :: (Position, [TypeErrorBit]) -> Doc AnsiStyle
+prettyTypeError (p, (StrE s : rest)) = errorMessage p (pretty s) (map prettyTyBit rest)
+prettyTypeError (p, rest) = errorMessage p "Type error" (map prettyTyBit rest)
+
+prettyTyBit :: TypeErrorBit -> Doc AnsiStyle
+prettyTyBit (StrE s) = pretty s
+prettyTyBit (TypeE t) = prettyType t
+prettyTyBit (VarNameE s) = ident s
+
+prettyType :: Type -> Doc AnsiStyle
+prettyType (Arrow t1 t2) = parens (prettyType t1 <+> keyword "->" <+> prettyType t2)
+prettyType (Value) = keyword "@"
+prettyType (TyVar n) = ident n
 
 prettyLexerError :: LexerError -> Doc AnsiStyle
 prettyLexerError (InvalidIntLit p s) = errorMessage p "invalid integer literal:" [pretty s]

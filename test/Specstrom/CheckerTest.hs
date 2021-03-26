@@ -33,10 +33,6 @@ prop_check_produces_result = property $ do
   (interpreterRecv, interpreterSend) <- Channel.newChannel
   (executorRecv, executorSend) <- Channel.newChannel
   let send = Channel.send executorSend
-      recvAll :: MonadIO m => m ()
-      recvAll = do
-        msg <- Channel.tryReceive interpreterRecv
-        if Maybe.isNothing msg then pure () else recvAll
   results <- evalIO $
     Async.withAsync (Checker.checkAll executorRecv interpreterSend ts) $ \checker -> do
       let performActions =
@@ -44,17 +40,14 @@ prop_check_produces_result = property $ do
               Protocol.RequestAction {} -> Channel.send executorSend (Protocol.Performed state) >> performActions
               msg -> putStrLn ("Unreceiving: " <> show msg) >> Channel.unreceive interpreterRecv msg
           runSession = do
-            Protocol.Start{} <- Channel.receive interpreterRecv
-            send (Protocol.Event Evaluator.Loaded state)
-            performActions
             Channel.receive interpreterRecv >>= \case
-              Protocol.End{} -> pure ()
-              msg -> error ("Unexpected msg after actions: " <> show msg)
-          runSessions = do
-            Channel.receive interpreterRecv >>= \case
-              Protocol.Done{} -> pure ()
-              msg -> Channel.unreceive interpreterRecv msg >> runSession
-      runSessions
+                Protocol.Start{} -> do
+                  send (Protocol.Event Evaluator.Loaded state)
+                  performActions
+                Protocol.End{} -> runSession
+                Protocol.Done{} -> pure ()
+                msg -> error ("Unexpected: " <> show msg)
+      runSession
       Async.waitCatch checker
   annotateShow results
   assert (isRight results)

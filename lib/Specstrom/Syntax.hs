@@ -7,6 +7,7 @@ module Specstrom.Syntax where
 import qualified Data.Aeson as JSON
 import Data.Hashable (Hashable)
 import Data.Text (Text)
+import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Specstrom.Lexer (Position)
 
@@ -50,6 +51,25 @@ type Name = Text
 type Glob = [GlobTerm]
 
 type GlobTerm = [Maybe Text]
+
+asName :: GlobTerm -> Either Name GlobTerm
+asName [Just t] = Left t
+asName t = Right t
+
+matches :: Text -> GlobTerm -> Bool
+matches t [] = T.null t
+matches t (Nothing : rest) = matchStar t
+  where
+    matchStar t' = matches t' rest || matchStar (T.tail t')
+matches t (Just u : rest) = case T.stripPrefix u t of
+  Nothing -> False
+  Just t' -> matches t' rest
+
+expand :: [Name] -> Glob -> [Name]
+expand names g =
+  g >>= \x -> case asName x of
+    Left n -> [n]
+    Right g -> filter (flip matches g) names
 
 data BindPattern
   = Direct Pattern
