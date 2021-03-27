@@ -75,6 +75,7 @@ test-suite specstrom-test
   hs-source-dirs:      test
   -- other-extensions:
   build-depends:       hedgehog
+                     , silently
                      , specstrom
   other-modules:       Specstrom.PrettyPrinterTest
                      , Specstrom.CheckerTest

@@ -1,3 +1,8 @@
-let prop = not (nextF `foo`.disabled) && `bar`.disabled || `baz`.disabled;
 
-check prop with *;
+let disable! = click!(`button`);
+
+let active = not (`foo`.disabled && `bar`.disabled);
+
+let prop = active && next (not active);
+
+check prop with disable!;

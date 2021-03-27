@@ -16,6 +16,7 @@ import qualified Specstrom.Checker.Protocol as Protocol
 import qualified Specstrom.Dependency as Dependency
 import Specstrom.Lexer (dummyPosition)
 import Specstrom.Syntax (Expr (..), Lit (..), Name, Pattern, Selector (..))
+import Data.Traversable (for)
 
 name :: Gen Name
 name = ("n" <>) . Text.pack . show @Int <$> Gen.integral (Range.linear 1 100)
@@ -71,11 +72,18 @@ expr =
 
 -- * Dep
 
-depSchema :: Dependency.DepSchema -> Gen JSON.Value
-depSchema (Dependency.DepSchema fields)
+elementState :: Dependency.DepSchema -> Gen JSON.Value
+elementState (Dependency.DepSchema fields)
   | HashMap.null fields = JSON.Bool <$> Gen.bool
-  | otherwise = JSON.Object <$> traverse depSchema fields
+  | otherwise = JSON.Object <$> traverse elementState fields
+
+ref :: Gen Text
+ref = Gen.element ["e1", "e2", "e3"]
 
 state :: Dependency.Dep -> Gen Protocol.State
 state (Dependency.Dep bySelector) =
-  traverse (Gen.list (Range.linear 1 10) . depSchema) bySelector
+  for bySelector $ \schema -> do
+    Gen.list (Range.linear 1 10) $ do
+      r <- ref
+      JSON.Object es <- elementState schema
+      pure (JSON.Object (es <> HashMap.singleton "ref" (JSON.String r)))

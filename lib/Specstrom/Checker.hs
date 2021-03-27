@@ -33,6 +33,7 @@ import Specstrom.Syntax (TopLevel (..))
 import qualified Specstrom.Syntax as Syntax
 import System.IO (hPutStrLn, isEOF, stderr)
 import System.Random (randomRIO)
+import Debug.Trace (traceShowM)
 
 checkAllStdio :: [TopLevel] -> IO ()
 checkAllStdio ts = do
@@ -113,6 +114,7 @@ checkProp :: Receive ExecutorMessage -> Send InterpreterMessage -> Evaluator.Env
 checkProp input output _env dep initialFormula actions expectedEvent = do
   send output (Start dep)
   (valid, trace) <- runWriterT (run AwaitingInitialEvent)
+  send output End
   pure (Result valid trace)
   where
     run :: InterpreterState -> Interpret m Validity
@@ -184,6 +186,7 @@ checkProp input output _env dep initialFormula actions expectedEvent = do
             Nothing -> do
               actvals <- liftIO $ mapM (Evaluator.force (toEvaluatorState lastState) <=< Evaluator.resetThunks) actions
               let acts = catMaybes $ flip map actvals $ \v -> case v of Evaluator.Action a@(Evaluator.A b _) | not (Evaluator.isEvent b) -> Just a; _ -> Nothing
+              error (show actvals)
               case acts of
                 [] -> error "Ran out of actions to do!"
                 _ -> do
@@ -209,8 +212,9 @@ toEvaluatorValue = \case
   JSON.Null -> Evaluator.Null
 
 ifResidual :: State -> Evaluator.Value -> (Evaluator.Residual -> Interpret m Validity) -> Interpret m Validity
-ifResidual state formula f =
-  liftIO (Evaluator.force (toEvaluatorState state) formula) >>= \case
+ifResidual state formula f = do
+  formula' <- liftIO (Evaluator.force (toEvaluatorState state) formula)
+  case formula' of
     Evaluator.Trivial -> pure (Definitely True)
     Evaluator.Absurd -> pure (Definitely False)
     Evaluator.Residual r -> f r
