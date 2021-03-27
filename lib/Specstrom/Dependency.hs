@@ -1,12 +1,10 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Specstrom.Dependency where
 
 import qualified Data.Aeson as JSON
 import qualified Data.HashMap.Strict as M
-import Data.Text (Text)
 import GHC.Generics (Generic)
 import Specstrom.Syntax (Name, Selector)
 

@@ -1,8 +1,10 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Specstrom.Analysis where
 
+import Data.Foldable (foldl')
 import qualified Data.HashMap.Strict as M
 import Specstrom.Dependency
 import Specstrom.Syntax
@@ -92,3 +94,12 @@ analyseExpr g (Lam _ pat e) = Function f mempty
           g' = M.union g new
        in analyseExpr g' e
 analyseExpr _ expr = error ("Impossible, can't analyse: " <> show expr)
+
+analyseTopLevels :: [TopLevel] -> AnalysisEnv
+analyseTopLevels = foldl' toAnalysisEnv builtIns
+  where
+    toAnalysisEnv :: AnalysisEnv -> TopLevel -> AnalysisEnv
+    toAnalysisEnv env = \case
+      Binding b -> analyseBind env b
+      Imported _ ts' -> foldl' toAnalysisEnv env ts'
+      Properties {} -> env

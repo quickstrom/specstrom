@@ -275,7 +275,7 @@ unaryOp Not s v = do
     Absurd -> pure Trivial
     Trivial -> pure Absurd
     Residual f -> Residual <$> negateResidual f
-    _ -> error "Not expects boolean"
+    _ -> error ("Not expects boolean, got: " <> show v')
   where
     negateResidual (Conjunction a b) = Disjunction <$> negateResidual a <*> negateResidual b
     negateResidual (Disjunction a b) = Conjunction <$> negateResidual a <*> negateResidual b

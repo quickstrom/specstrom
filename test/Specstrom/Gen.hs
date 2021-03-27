@@ -4,19 +4,24 @@
 
 module Specstrom.Gen where
 
+import qualified Data.Aeson as JSON
+import qualified Data.HashMap.Strict as HashMap
 import Data.Text (Text)
 import qualified Data.Text as Text
+import qualified Data.Vector as Vector
 import Hedgehog (Gen)
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import Specstrom.Lexer (Position, dummyPosition)
-import Specstrom.Syntax (Expr (..), Lit (..), Name, Pattern)
+import qualified Specstrom.Checker.Protocol as Protocol
+import qualified Specstrom.Dependency as Dependency
+import Specstrom.Lexer (dummyPosition)
+import Specstrom.Syntax (Expr (..), Lit (..), Name, Pattern, Selector (..))
 
 name :: Gen Name
 name = ("n" <>) . Text.pack . show @Int <$> Gen.integral (Range.linear 1 100)
 
-selector :: Gen Text
-selector = ("sel-" <>) <$> Gen.text (Range.linear 1 10) Gen.alphaNum
+selector :: Gen Selector
+selector = Selector . ("sel-" <>) <$> Gen.text (Range.linear 1 10) Gen.alphaNum
 
 literal :: Gen Lit
 literal =
@@ -63,3 +68,14 @@ expr =
       Gen.subterm2 expr expr (App . App (Var dummyPosition "_||_")),
       Gen.subterm2 expr expr (App . App (Var dummyPosition "_==>_"))
     ]
+
+-- * Dep
+
+depSchema :: Dependency.DepSchema -> Gen JSON.Value
+depSchema (Dependency.DepSchema fields)
+  | HashMap.null fields = JSON.Bool <$> Gen.bool
+  | otherwise = JSON.Object <$> traverse depSchema fields
+
+state :: Dependency.Dep -> Gen Protocol.State
+state (Dependency.Dep bySelector) =
+  traverse (Gen.list (Range.linear 1 10) . depSchema) bySelector

@@ -206,6 +206,7 @@ parseExpressionTo terminator t ts =
         ([one], _) -> (ts',) <$> traverse (\(E e) -> patFromExpr' e) one
         ([], r) -> case unconsumed r of
           ((p, t') : _) -> Left (ExpectedGot p (expected r) t')
+          [] -> error ("Expected: " <> show (expected r))
         (e : es, _r) -> Left (ExpressionAmbiguous (e :| es))
 
 grammar :: Table -> Grammar r (Prod r Text (Position, Token) (Expr TempExpr))

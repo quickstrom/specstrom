@@ -46,7 +46,9 @@ library
   hs-source-dirs:      lib
   build-depends:       Earley
                      , prettyprinter-ansi-terminal
-  exposed-modules:     Specstrom.Checker
+  exposed-modules:     Specstrom.Channel
+                     , Specstrom.Checker
+                     , Specstrom.Checker.Protocol 
                      , Specstrom.Evaluator 
                      , Specstrom.Lexer 
                      , Specstrom.Parser 
@@ -75,4 +77,5 @@ test-suite specstrom-test
   build-depends:       hedgehog
                      , specstrom
   other-modules:       Specstrom.PrettyPrinterTest
+                     , Specstrom.CheckerTest
                      , Specstrom.Gen
