@@ -39,5 +39,5 @@ main =
       renderIO stdout (layoutPretty defaultLayoutOptions (prettyAll ts <> line))
     ["check", f] -> do
       ts <- load (pack f)
-      print =<< Checker.checkAllStdio ts
+      Checker.checkAll ts
     _ -> hPutStrLn stderr "Usage: specstrom (format|check) MODULE-NAME"

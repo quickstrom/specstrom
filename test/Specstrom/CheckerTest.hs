@@ -35,19 +35,17 @@ prop_check_produces_result = property $ do
   let send = Channel.send executorSend
   results <- evalIO $
     Async.withAsync (Checker.checkAll executorRecv interpreterSend ts) $ \checker -> do
-      let performActions =
+      let runSessions = do
             Channel.receive interpreterRecv >>= \case
-              Protocol.RequestAction {} -> Channel.send executorSend (Protocol.Performed state) >> performActions
-              msg -> putStrLn ("Unreceiving: " <> show msg) >> Channel.unreceive interpreterRecv msg
-          runSession = do
-            Channel.receive interpreterRecv >>= \case
+                Protocol.RequestAction {} -> do
+                  Channel.send executorSend (Protocol.Performed state)
+                  runSessions
                 Protocol.Start{} -> do
                   send (Protocol.Event Evaluator.Loaded state)
-                  performActions
-                Protocol.End{} -> runSession
+                  runSessions
+                Protocol.End{} -> runSessions
                 Protocol.Done{} -> pure ()
-                msg -> error ("Unexpected: " <> show msg)
-      runSession
+      runSessions
       Async.waitCatch checker
   annotateShow results
   assert (isRight results)

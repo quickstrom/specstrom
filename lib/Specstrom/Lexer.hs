@@ -24,6 +24,7 @@ data Token
   | LParen
   | RParen
   | Semi
+  | Comma
   | Dot
   | EOF
   deriving (Show, Eq)
@@ -73,7 +74,7 @@ readLiteral' delimiter rest =
         _ -> Nothing
 
 reserved :: Char -> Bool
-reserved c = isSpace c || c `elem` ("();." :: [Char])
+reserved c = isSpace c || c `elem` ("();,." :: [Char])
 
 lexer :: Position -> Text -> Either LexerError [(Position, Token)]
 lexer p t
@@ -109,6 +110,7 @@ lexer p t
     Just ('(', cs) -> ((p, LParen) :) <$> lexer (nextCol p) cs
     Just (')', cs) -> ((p, RParen) :) <$> lexer (nextCol p) cs
     Just (';', cs) -> ((p, Semi) :) <$> lexer (nextCol p) cs
+    Just (',', cs) -> ((p, Comma) :) <$> lexer (nextCol p) cs
     Just ('.', cs) ->
       let (candidate, rest) = Text.break reserved cs
        in if Text.null candidate

@@ -35,6 +35,7 @@ common shared
                      , transformers
                      , vector
                      , unordered-containers
+                     , random
   -- TODO: -Werror=incomplete-patterns -Wredundant-constraints
   ghc-options:         -Wall 
   default-language:    Haskell2010
@@ -76,4 +77,5 @@ test-suite specstrom-test
   build-depends:       hedgehog
                      , specstrom
   other-modules:       Specstrom.PrettyPrinterTest
+                     , Specstrom.CheckerTest
                      , Specstrom.Gen

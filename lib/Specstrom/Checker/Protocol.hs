@@ -8,6 +8,7 @@ import qualified Data.Aeson as JSON
 import qualified Specstrom.Evaluator as Evaluator
 import GHC.Generics (Generic)
 import Specstrom.Dependency (Dep)
+
 type Trace = [TraceElement]
 
 type State = M.HashMap Syntax.Selector [JSON.Value]
