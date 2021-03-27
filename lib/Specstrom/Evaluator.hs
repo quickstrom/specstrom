@@ -41,9 +41,9 @@ data PrimOp
   | NextT
   | NextD
   | Always
-  | Not
   | ClickAct
   | ChangedAct
+  | Not
   | -- binary
     And
   | Or
@@ -367,6 +367,7 @@ resetThunk (T e exp ior) = do
 
 resetThunks :: Value -> Eval Value
 resetThunks (Closure a e b c) = (\e' -> Closure a e' b c) <$> traverse resetThunks e
+resetThunks (Action a) = pure (Action a)
 resetThunks (Op o vs) = Op o <$> traverse resetThunks vs
 resetThunks (Thunk t) = Thunk <$> resetThunk t
 resetThunks (Frozen s t) = pure $ Frozen s t -- should be safe? Never need to re-evaluate frozen stuff.
