@@ -1,3 +1,5 @@
-let prop = not (nextF `foo`.disabled) && `bar`.disabled || `baz`.disabled;
+import ltl;
+
+let prop = not (eventuallyN 10 `foo`.disabled) && `bar`.disabled || `baz`.disabled;
 
 check prop with *;
