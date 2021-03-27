@@ -7,13 +7,11 @@ module Specstrom.CheckerTest where
 
 import qualified Control.Concurrent.Async as Async
 import Control.Monad.Except (runExceptT)
-import Control.Monad.IO.Class (MonadIO)
 import Data.Either (isRight)
-import qualified Data.Maybe as Maybe
 import Data.Text (Text)
 import qualified Data.Text.Prettyprint.Doc as Doc
 import Data.Text.Prettyprint.Doc.Render.String
-import Hedgehog (Property, annotateShow, assert, checkParallel, discover, evalIO, failure, forAll, property, (===))
+import Hedgehog (Property, annotateShow, assert, checkParallel, discover, evalIO, forAll, property)
 import qualified Specstrom.Analysis as Analysis
 import qualified Specstrom.Channel as Channel
 import qualified Specstrom.Checker as Checker

@@ -11,7 +11,7 @@
 module Specstrom.Checker where
 
 import qualified Control.Concurrent.Async as Async
-import Control.Monad (forM_, unless, void, (<=<))
+import Control.Monad (unless, void, (<=<))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Writer (WriterT, runWriterT, tell)
 import qualified Data.Aeson as JSON
@@ -21,10 +21,8 @@ import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (catMaybes)
 import qualified Data.Scientific as Scientific
-import qualified Data.Text as Text
 import Data.Traversable (for)
 import qualified Data.Vector as Vector
-import GHC.Generics (Generic)
 import Numeric.Natural (Natural)
 import qualified Specstrom.Analysis as Analysis
 import Specstrom.Channel (Receive, Send, newChannel, receive, send, tryReceive, tryReceiveTimeout)
