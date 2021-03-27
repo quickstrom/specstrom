@@ -3,6 +3,4 @@ let eventuallyN(n, p) =
     then p || nextF (eventuallyN(0, p))
     else p || next (eventuallyN((n - 1), p));
 
-syntax eventually_ 7;
-
 let eventually n = eventuallyN(100, p);
