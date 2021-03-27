@@ -1,6 +1,6 @@
-let eventuallyN n p = 
+let eventuallyN(n, p) = 
     if n == 0 
-    then p || nextF (eventually 0 p)
-    else p || nextD (eventually (n - 1) p);
+    then p || nextF (eventuallyN(0, p))
+    else p || next (eventuallyN((n - 1), p));
 
-let eventually n = eventuallyN 100 p;
+let eventually n = eventuallyN(100, p);

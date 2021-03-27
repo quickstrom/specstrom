@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -7,11 +8,14 @@ module Specstrom.CheckerTest where
 
 import qualified Control.Concurrent.Async as Async
 import Control.Monad.Except (runExceptT)
-import Data.Either (isRight)
+import Control.Monad.IO.Class (MonadIO)
+import qualified Data.Aeson as JSON
 import Data.Text (Text)
 import qualified Data.Text.Prettyprint.Doc as Doc
 import Data.Text.Prettyprint.Doc.Render.String
-import Hedgehog (Property, annotateShow, assert, checkParallel, discover, evalIO, forAll, property)
+import Hedgehog (Property, annotateShow, checkParallel, discover, evalIO, forAll, property)
+import qualified Hedgehog.Gen as Gen
+import qualified Hedgehog.Range as Range
 import qualified Specstrom.Analysis as Analysis
 import qualified Specstrom.Channel as Channel
 import qualified Specstrom.Checker as Checker
@@ -21,32 +25,47 @@ import qualified Specstrom.Gen as Gen
 import qualified Specstrom.Parser as Parser
 import Specstrom.PrettyPrinter (prettyParseError)
 import qualified Specstrom.Syntax as Syntax
+import Control.Lens
+import Data.Aeson.Lens as JSON
 
 prop_check_produces_result :: Property
 prop_check_produces_result = property $ do
   ts <- evalIO (load "test/Specstrom/CheckerTest/next")
   let dep = foldMap Analysis.depOf (Analysis.analyseTopLevels ts)
   annotateShow dep
-  state <- forAll (Gen.state dep)
+  states <- forAll (Gen.list (Range.linear 2 10) (enableButtons <$> Gen.state dep))
   (interpreterRecv, interpreterSend) <- Channel.newChannel
   (executorRecv, executorSend) <- Channel.newChannel
-  let send = Channel.send executorSend
   results <- evalIO $
-    Async.withAsync (Checker.checkAll executorRecv interpreterSend ts) $ \checker -> do
-      let runSessions = do
-            Channel.receive interpreterRecv >>= \case
-              Protocol.RequestAction {} -> do
-                Channel.send executorSend (Protocol.Performed state)
-                runSessions
-              Protocol.Start {} -> do
-                send (Protocol.Event Evaluator.Loaded state)
-                runSessions
-              Protocol.End {} -> runSessions
-              Protocol.Done {} -> pure ()
-      runSessions
-      Async.waitCatch checker
+    Async.withAsync (Checker.checkAll executorRecv interpreterSend ts) $ \interpreter ->
+      Async.withAsync (runSessions interpreterRecv executorSend states) $ \executor -> do
+        Async.wait interpreter
+        Async.wait executor
   annotateShow results
-  assert (isRight results)
+
+enableButtons :: Protocol.State -> Protocol.State
+enableButtons = traverse . traverse . JSON._Object . at "disabled" .~ pure (JSON.Bool True)
+
+runSessions ::
+  MonadIO m =>
+  Channel.Receive Protocol.InterpreterMessage ->
+  Channel.Send Protocol.ExecutorMessage ->
+  [Protocol.State] ->
+  m [Protocol.Result]
+runSessions input output = go
+  where
+    go states = do
+      msg <- Channel.receive input
+      case (msg, states) of
+        (Protocol.RequestAction {}, s : ss) -> do
+          Channel.send output (Protocol.Performed s)
+          go ss
+        (Protocol.Start {}, s : ss) -> do
+          Channel.send output (Protocol.Event Evaluator.Loaded s)
+          go ss
+        (Protocol.End {}, _) -> go states
+        (Protocol.Done results, _) -> pure results
+        _ -> error ("Unexpected: " <> show (msg, states))
 
 load :: Text -> IO [Syntax.TopLevel]
 load f = do

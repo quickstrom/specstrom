@@ -8,6 +8,7 @@ import qualified Data.Aeson as JSON
 import qualified Data.HashMap.Strict as HashMap
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Data.Traversable (for)
 import qualified Data.Vector as Vector
 import Hedgehog (Gen)
 import qualified Hedgehog.Gen as Gen
@@ -71,11 +72,16 @@ expr =
 
 -- * Dep
 
-depSchema :: Dependency.DepSchema -> Gen JSON.Value
-depSchema (Dependency.DepSchema fields)
+elementState :: Dependency.DepSchema -> Gen JSON.Value
+elementState (Dependency.DepSchema fields)
   | HashMap.null fields = JSON.Bool <$> Gen.bool
-  | otherwise = JSON.Object <$> traverse depSchema fields
+  | otherwise = JSON.Object <$> traverse elementState fields
 
 state :: Dependency.Dep -> Gen Protocol.State
 state (Dependency.Dep bySelector) =
-  traverse (Gen.list (Range.linear 1 10) . depSchema) bySelector
+  flip HashMap.traverseWithKey bySelector $ \(Selector s) schema -> do
+    elements <- Gen.list (Range.linear 1 10) (elementState schema)
+    pure
+      [ JSON.Object (element <> HashMap.singleton "ref" (JSON.String (s <> "-" <> Text.pack (show i))))
+        | (i, JSON.Object element) <- zip [0 :: Int ..] elements
+      ]

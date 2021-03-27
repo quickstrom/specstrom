@@ -113,6 +113,7 @@ checkProp :: Receive ExecutorMessage -> Send InterpreterMessage -> Evaluator.Env
 checkProp input output _env dep initialFormula actions expectedEvent = do
   send output (Start dep)
   (valid, trace) <- runWriterT (run AwaitingInitialEvent)
+  send output End
   pure (Result valid trace)
   where
     run :: InterpreterState -> Interpret m Validity
@@ -209,8 +210,9 @@ toEvaluatorValue = \case
   JSON.Null -> Evaluator.Null
 
 ifResidual :: State -> Evaluator.Value -> (Evaluator.Residual -> Interpret m Validity) -> Interpret m Validity
-ifResidual state formula f =
-  liftIO (Evaluator.force (toEvaluatorState state) formula) >>= \case
+ifResidual state formula f = do
+  formula' <- liftIO (Evaluator.force (toEvaluatorState state) formula)
+  case formula' of
     Evaluator.Trivial -> pure (Definitely True)
     Evaluator.Absurd -> pure (Definitely False)
     Evaluator.Residual r -> f r

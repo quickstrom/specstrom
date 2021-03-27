@@ -41,15 +41,19 @@ data PrimOp
   | NextT
   | NextD
   | Always
-  | Not
   | ClickAct
   | ChangedAct
+  | Not
   | -- binary
     And
   | Or
   | Equals
   | WhenAct
   | TimeoutAct
+  | Addition
+  | Subtraction
+  | Multiplication
+  | Division
   | -- ternary
     IfThenElse
   deriving (Show, Eq, Ord, Enum, Bounded)
@@ -66,6 +70,10 @@ primOpVar op = case op of
   And -> "_&&_"
   Or -> "_||_"
   Equals -> "_==_"
+  Addition -> "_+_"
+  Subtraction -> "_-_"
+  Multiplication -> "_*_"
+  Division -> "_/_"
   IfThenElse -> "if_then_else_"
   ClickAct -> "click!"
   ChangedAct -> "changed?"
@@ -315,6 +323,8 @@ binaryOp Or s v1 v2 = do
         _ -> error "Or expects formulae"
     _ -> error "Or expects formulae"
 binaryOp Equals s v1 v2 = areEqual s v1 v2 >>= \b -> if b then pure Trivial else pure Absurd
+binaryOp Addition s v1 v2 = binaryNumOp s v1 v2 Addition
+binaryOp Subtraction s v1 v2 = binaryNumOp s v1 v2 Subtraction
 binaryOp WhenAct s v1 v2 = do
   v2' <- force s v2
   case v2' of
@@ -333,6 +343,23 @@ binaryOp TimeoutAct s v1 v2 = do
     List vs -> List <$> traverse (\x -> binaryOp TimeoutAct s x v2') vs
     _ -> error "Timeout expects an action"
 
+binaryNumOp :: State -> Value -> Value -> PrimOp -> IO Value
+binaryNumOp s v1 v2 op = do
+  v1' <- force s v1
+  v2' <- force s v2
+  case (v1', v2') of
+    (LitVal (IntLit i1), LitVal (IntLit i2)) 
+      | op == Division -> pure (LitVal (IntLit (i1 `div` i2))) 
+      | otherwise -> pure (LitVal (IntLit (numOp op i1 i2)))
+    (LitVal (FloatLit i1), LitVal (FloatLit i2)) 
+      | op == Division -> pure (LitVal (FloatLit (i1 / i2)))
+      | otherwise -> pure (LitVal (FloatLit (numOp op i1 i2)))
+    _ -> error (show op <> " expects matching numeric types, but got: " <> show v1 <> " and " <> show v2)
+  where
+    numOp Addition = (+)
+    numOp Subtraction = (-)
+    numOp Multiplication = (*)
+
 resetThunk :: Thunk -> Eval Thunk
 resetThunk (T e exp ior) = do
   writeIORef ior Nothing
@@ -340,6 +367,7 @@ resetThunk (T e exp ior) = do
 
 resetThunks :: Value -> Eval Value
 resetThunks (Closure a e b c) = (\e' -> Closure a e' b c) <$> traverse resetThunks e
+resetThunks (Action a) = pure (Action a)
 resetThunks (Op o vs) = Op o <$> traverse resetThunks vs
 resetThunks (Thunk t) = Thunk <$> resetThunk t
 resetThunks (Frozen s t) = pure $ Frozen s t -- should be safe? Never need to re-evaluate frozen stuff.
