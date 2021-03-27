@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -5,8 +7,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
+
 module Specstrom.Checker where
 
 import qualified Control.Concurrent.Async as Async
@@ -21,19 +22,19 @@ import qualified Data.HashMap.Strict as M
 import Data.Maybe (catMaybes)
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as Text
+import Data.Traversable (for)
 import qualified Data.Vector as Vector
 import GHC.Generics (Generic)
 import Numeric.Natural (Natural)
 import qualified Specstrom.Analysis as Analysis
+import Specstrom.Channel (Receive, Send, newChannel, receive, send, tryReceive, tryReceiveTimeout)
+import Specstrom.Checker.Protocol
 import Specstrom.Dependency (Dep)
 import qualified Specstrom.Evaluator as Evaluator
 import Specstrom.Syntax (TopLevel (..))
-import Specstrom.Checker.Protocol
 import qualified Specstrom.Syntax as Syntax
 import System.IO (hPutStrLn, isEOF, stderr)
 import System.Random (randomRIO)
-import Specstrom.Channel (Send, Receive, receive, send, tryReceive, tryReceiveTimeout, newChannel)
-import Data.Traversable (for)
 
 checkAllStdio :: [TopLevel] -> IO ()
 checkAllStdio ts = do
@@ -203,7 +204,7 @@ toEvaluatorValue = \case
   JSON.Object o -> Evaluator.Object (fmap toEvaluatorValue o)
   JSON.Array a -> Evaluator.List (Vector.toList (fmap toEvaluatorValue a))
   JSON.Number n -> case Scientific.floatingOrInteger n of
-    Left n'  -> Evaluator.LitVal (Syntax.FloatLit n')
+    Left n' -> Evaluator.LitVal (Syntax.FloatLit n')
     Right n' -> Evaluator.LitVal (Syntax.IntLit n')
   JSON.Bool True -> Evaluator.Trivial
   JSON.Bool False -> Evaluator.Absurd

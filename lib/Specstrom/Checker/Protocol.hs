@@ -1,13 +1,14 @@
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 module Specstrom.Checker.Protocol where
 
-import qualified Data.HashMap.Strict as M
-import qualified Specstrom.Syntax as Syntax
 import qualified Data.Aeson as JSON
-import qualified Specstrom.Evaluator as Evaluator
+import qualified Data.HashMap.Strict as M
 import GHC.Generics (Generic)
 import Specstrom.Dependency (Dep)
+import qualified Specstrom.Evaluator as Evaluator
+import qualified Specstrom.Syntax as Syntax
 
 type Trace = [TraceElement]
 
@@ -34,4 +35,3 @@ data ExecutorMessage
   | Event Evaluator.BaseAction State
   | Stale
   deriving (Show, Generic, JSON.ToJSON, JSON.FromJSON)
-

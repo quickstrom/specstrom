@@ -1,11 +1,12 @@
 module Specstrom.Channel (Receive, Send, newChannel, send, receive, tryReceive, tryReceiveTimeout, unreceive) where
 
-import Control.Concurrent.STM (TQueue, atomically, newTQueueIO, readTQueue, tryReadTQueue, writeTQueue, unGetTQueue, TVar, STM, check, readTVar, registerDelay)
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad ((<=<))
 import Control.Applicative ((<|>))
+import Control.Concurrent.STM (STM, TQueue, TVar, atomically, check, newTQueueIO, readTQueue, readTVar, registerDelay, tryReadTQueue, unGetTQueue, writeTQueue)
+import Control.Monad ((<=<))
+import Control.Monad.IO.Class (MonadIO, liftIO)
 
 newtype Receive a = Receive (TQueue a)
+
 newtype Send a = Send (TQueue a)
 
 newChannel :: MonadIO m => m (Receive a, Send a)
