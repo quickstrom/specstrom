@@ -70,12 +70,11 @@ builtIns =
       [ ("_==_", NonAssoc),
         ("_!=_", NonAssoc)
       ],
-      [ ("_-_", LeftAssoc)
-      , ("_+_", LeftAssoc)
-      ]
-      ,
-      [ ("_*_", LeftAssoc)
-      , ("_/_", LeftAssoc)
+      [ ("_-_", LeftAssoc),
+        ("_+_", LeftAssoc)
+      ],
+      [ ("_*_", LeftAssoc),
+        ("_/_", LeftAssoc)
       ]
     ]
 

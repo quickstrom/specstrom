@@ -348,10 +348,10 @@ binaryNumOp s v1 v2 op = do
   v1' <- force s v1
   v2' <- force s v2
   case (v1', v2') of
-    (LitVal (IntLit i1), LitVal (IntLit i2)) 
-      | op == Division -> pure (LitVal (IntLit (i1 `div` i2))) 
+    (LitVal (IntLit i1), LitVal (IntLit i2))
+      | op == Division -> pure (LitVal (IntLit (i1 `div` i2)))
       | otherwise -> pure (LitVal (IntLit (numOp op i1 i2)))
-    (LitVal (FloatLit i1), LitVal (FloatLit i2)) 
+    (LitVal (FloatLit i1), LitVal (FloatLit i2))
       | op == Division -> pure (LitVal (FloatLit (i1 / i2)))
       | otherwise -> pure (LitVal (FloatLit (numOp op i1 i2)))
     _ -> error (show op <> " expects matching numeric types, but got: " <> show v1 <> " and " <> show v2)

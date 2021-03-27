@@ -7,9 +7,11 @@
 module Specstrom.CheckerTest where
 
 import qualified Control.Concurrent.Async as Async
+import Control.Lens
 import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO)
 import qualified Data.Aeson as JSON
+import Data.Aeson.Lens as JSON
 import Data.Text (Text)
 import qualified Data.Text.Prettyprint.Doc as Doc
 import Data.Text.Prettyprint.Doc.Render.String
@@ -25,8 +27,6 @@ import qualified Specstrom.Gen as Gen
 import qualified Specstrom.Parser as Parser
 import Specstrom.PrettyPrinter (prettyParseError)
 import qualified Specstrom.Syntax as Syntax
-import Control.Lens
-import Data.Aeson.Lens as JSON
 
 prop_check_produces_result :: Property
 prop_check_produces_result = property $ do
