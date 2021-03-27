@@ -33,7 +33,6 @@ import Specstrom.Syntax (TopLevel (..))
 import qualified Specstrom.Syntax as Syntax
 import System.IO (hPutStrLn, isEOF, stderr)
 import System.Random (randomRIO)
-import Debug.Trace (traceShowM)
 
 checkAllStdio :: [TopLevel] -> IO ()
 checkAllStdio ts = do
@@ -186,7 +185,6 @@ checkProp input output _env dep initialFormula actions expectedEvent = do
             Nothing -> do
               actvals <- liftIO $ mapM (Evaluator.force (toEvaluatorState lastState) <=< Evaluator.resetThunks) actions
               let acts = catMaybes $ flip map actvals $ \v -> case v of Evaluator.Action a@(Evaluator.A b _) | not (Evaluator.isEvent b) -> Just a; _ -> Nothing
-              error (show actvals)
               case acts of
                 [] -> error "Ran out of actions to do!"
                 _ -> do

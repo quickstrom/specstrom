@@ -8,14 +8,12 @@ module Specstrom.CheckerTest where
 
 import qualified Control.Concurrent.Async as Async
 import Control.Monad.Except (runExceptT)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (MonadIO)
 import qualified Data.Aeson as JSON
-import Data.Either (isRight)
-import qualified Data.HashMap.Strict as HashMap
 import Data.Text (Text)
 import qualified Data.Text.Prettyprint.Doc as Doc
 import Data.Text.Prettyprint.Doc.Render.String
-import Hedgehog (Property, annotate, annotateShow, assert, checkParallel, discover, evalIO, forAll, property)
+import Hedgehog (Property, annotateShow, checkParallel, discover, evalIO, forAll, property)
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import qualified Specstrom.Analysis as Analysis
@@ -27,17 +25,15 @@ import qualified Specstrom.Gen as Gen
 import qualified Specstrom.Parser as Parser
 import Specstrom.PrettyPrinter (prettyParseError)
 import qualified Specstrom.Syntax as Syntax
-import qualified System.IO as IO
-import System.IO.Silently (capture)
-import qualified System.IO.Silently as Silently
+import Control.Lens
+import Data.Aeson.Lens as JSON
 
 prop_check_produces_result :: Property
 prop_check_produces_result = property $ do
   ts <- evalIO (load "test/Specstrom/CheckerTest/next")
   let dep = foldMap Analysis.depOf (Analysis.analyseTopLevels ts)
   annotateShow dep
-  let enabledButton = [(Syntax.Selector "button", [JSON.Object [("disabled", JSON.Bool False)]])]
-  states <- forAll (Gen.list (Range.linear 2 10) ((<> enabledButton) <$> Gen.state dep))
+  states <- forAll (Gen.list (Range.linear 2 10) (enableButtons <$> Gen.state dep))
   (interpreterRecv, interpreterSend) <- Channel.newChannel
   (executorRecv, executorSend) <- Channel.newChannel
   results <- evalIO $
@@ -46,6 +42,9 @@ prop_check_produces_result = property $ do
         Async.wait interpreter
         Async.wait executor
   annotateShow results
+
+enableButtons :: Protocol.State -> Protocol.State
+enableButtons = traverse . traverse . JSON._Object . at "disabled" .~ pure (JSON.Bool True)
 
 runSessions ::
   MonadIO m =>
