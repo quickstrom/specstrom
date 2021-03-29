@@ -33,6 +33,7 @@ import Specstrom.Syntax (TopLevel (..))
 import qualified Specstrom.Syntax as Syntax
 import System.IO (hPutStrLn, isEOF, stderr)
 import System.Random (randomRIO)
+import Control.Exception (BlockedIndefinitelyOnSTM(..), catch)
 
 checkAllStdio :: [TopLevel] -> IO ()
 checkAllStdio ts = do
@@ -40,9 +41,13 @@ checkAllStdio ts = do
   (executorRecv, executorSend) <- newChannel
   Async.withAsync (readStdinTo executorSend) $ \inputDone ->
     Async.withAsync (writeStdoutFrom interpreterRecv) $ \outputDone -> do
-      checkAll executorRecv interpreterSend ts
-      Async.wait inputDone
-      void (Async.wait outputDone)
+      Async.withAsync (checkAll executorRecv interpreterSend ts) $ \checkerDone -> do
+        Async.wait inputDone
+        -- TODO: add notion of channel being closed instead of relying on the STM exception
+        void (Async.wait outputDone) `catch` \case
+          BlockedIndefinitelyOnSTM{} -> fail "Checker failed due to premature end of input."
+        Async.wait checkerDone `catch` \case
+          BlockedIndefinitelyOnSTM{} -> fail "Checker failed due to premature end of input."
 
 checkAll :: Receive ExecutorMessage -> Send InterpreterMessage -> [TopLevel] -> IO ()
 checkAll input output ts = do
