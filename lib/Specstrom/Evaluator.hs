@@ -26,7 +26,7 @@ data Strength = AssumeTrue | AssumeFalse | Demand deriving (Show)
 
 -- data BaseAction = Click Name | Noop | Loaded | Changed Name
 --   deriving (Show, Eq, Generic, JSON.FromJSON, JSON.ToJSON)
--- 
+--
 -- isEvent :: BaseAction -> Bool
 -- isEvent Loaded = True
 -- isEvent (Changed n) = True
@@ -41,29 +41,29 @@ data PrimOp
   | NextT
   | NextD
   | Always
---  | ClickAct
---  | ChangedAct
-  | Not
+  | --  | ClickAct
+    --  | ChangedAct
+    Not
   | -- binary
     And
   | Or
   | Equals
   | WhenAct
---  | TimeoutAct
-  | Addition
+  | --  | TimeoutAct
+    Addition
   | Subtraction
   | Multiplication
   | Division
   | -- ternary
     IfThenElse
-    -- quad
-  | MkPrimAction
+  | -- quad
+    MkPrimAction
   deriving (Show, Eq, Ord, Enum, Bounded)
 
 primOpVar :: PrimOp -> Name
 primOpVar op = case op of
   WhenAct -> "_when_"
---  TimeoutAct -> "_timeout_"
+  --  TimeoutAct -> "_timeout_"
   NextF -> "nextF_"
   NextT -> "nextT_"
   NextD -> "next_"
@@ -78,11 +78,12 @@ primOpVar op = case op of
   Division -> "_/_"
   IfThenElse -> "if_then_else_"
   MkPrimAction -> "#act"
+
 --  ClickAct -> "click!"
 --  ChangedAct -> "changed?"
 
 emptyEnv :: Env
-emptyEnv = M.fromList [] 
+emptyEnv = M.fromList []
 
 basicEnv :: Env
 basicEnv =
@@ -92,8 +93,8 @@ basicEnv =
       [ ("true", Trivial),
         ("false", Absurd),
         ("null", Null)
---        ("noop!", Action (A Noop Nothing)),
---        ("loaded?", Action (A Loaded Nothing))
+        --        ("noop!", Action (A Noop Nothing)),
+        --        ("loaded?", Action (A Loaded Nothing))
       ]
     primOps =
       [ (primOpVar op, Op op []) | op <- enumFromTo minBound maxBound
@@ -165,7 +166,7 @@ delayedEvaluate s g e = Thunk <$> newThunk g e
 
 appAll :: State -> Value -> [Value] -> Eval Value
 appAll s v [] = pure v
-appAll s v (x:xs) = app s v x >>= \v' -> appAll s v' xs
+appAll s v (x : xs) = app s v x >>= \v' -> appAll s v' xs
 
 app :: State -> Value -> Value -> Eval Value
 app s v v2 =
@@ -178,9 +179,10 @@ app s v v2 =
       if isBinary o
         then binaryOp o s v1 v2
         else pure (Op o [v1, v2])
-    Op o [v1, v1'] | o /= MkPrimAction -> ternaryOp o s v1 v1' v2
-                   | otherwise -> pure (Op o [v1,v1',v2])
-    Op MkPrimAction [v11,v12,v13] -> makePrimAction s v11 v12 v13 v2
+    Op o [v1, v1']
+      | o /= MkPrimAction -> ternaryOp o s v1 v1' v2
+      | otherwise -> pure (Op o [v1, v1', v2])
+    Op MkPrimAction [v11, v12, v13] -> makePrimAction s v11 v12 v13 v2
     Action a args -> do
       v2' <- force s v2
       pure (Action a (args ++ [v2]))
@@ -233,15 +235,14 @@ force _ (Frozen s' t) = forceThunk t s'
 force s (Thunk t) = forceThunk t s
 force s v = pure v
 
-
 makePrimAction :: State -> Value -> Value -> Value -> Value -> Eval Value
-makePrimAction s v1 v2 v3 v4 = do 
+makePrimAction s v1 v2 v3 v4 = do
   v1' <- force s v1
   v2' <- force s v2
   v3' <- force s v3
   v4' <- force s v4
   -- no typechecking..
-  pure (Object (M.fromList [("id",v1'), ("event", v2'), ("args",v3'), ("timeout",v4')]))
+  pure (Object (M.fromList [("id", v1'), ("event", v2'), ("args", v3'), ("timeout", v4')]))
 
 ternaryOp :: PrimOp -> State -> Value -> Value -> Value -> Eval Value
 ternaryOp IfThenElse s v1 v2 v3 = do
@@ -371,6 +372,7 @@ binaryOp WhenAct s v1 v2 = do
     Trivial -> pure v1
     Absurd -> pure Null
     _ -> error "Expected boolean in when condition"
+
 {- binaryOp TimeoutAct s v1 v2 = do
   v1' <- force s v1
   v2' <- force s v2

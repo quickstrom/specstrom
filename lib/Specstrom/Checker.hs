@@ -16,15 +16,15 @@ import Control.Monad (unless, void, (<=<))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Writer (WriterT, runWriterT, tell)
 import qualified Data.Aeson as JSON
+import Data.Bifunctor (first, second)
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.Text as T
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (catMaybes)
 import qualified Data.Scientific as Scientific
+import qualified Data.Text as T
 import Data.Traversable (for)
-import Data.Bifunctor(first,second)
 import qualified Data.Vector as Vector
 import Numeric.Natural (Natural)
 import qualified Specstrom.Analysis as Analysis
@@ -32,11 +32,10 @@ import Specstrom.Channel (Receive, Send, newChannel, receive, send, tryReceive, 
 import Specstrom.Checker.Protocol
 import Specstrom.Dependency (Dep)
 import qualified Specstrom.Evaluator as Evaluator
-import Specstrom.Syntax (TopLevel (..), Name)
+import Specstrom.Syntax (Name, TopLevel (..))
 import qualified Specstrom.Syntax as Syntax
 import System.IO (hPutStrLn, isEOF, stderr)
 import System.Random (randomRIO)
-
 
 checkAllStdio :: [TopLevel] -> IO ()
 checkAllStdio ts = do
@@ -54,7 +53,7 @@ checkAllStdio ts = do
 
 checkAll :: Receive ExecutorMessage -> Send InterpreterMessage -> [TopLevel] -> IO ()
 checkAll input output ts = do
-  (_, _, _,_, rs) <- checkTopLevels input output ([],[]) Evaluator.basicEnv Evaluator.emptyEnv Analysis.builtIns [] ts
+  (_, _, _, _, rs) <- checkTopLevels input output ([], []) Evaluator.basicEnv Evaluator.emptyEnv Analysis.builtIns [] ts
   send output (Done rs)
 
 checkTopLevels :: Receive ExecutorMessage -> Send InterpreterMessage -> ([Syntax.Name], [Syntax.Name]) -> Evaluator.Env -> Evaluator.Env -> Analysis.AnalysisEnv -> [Result] -> [TopLevel] -> IO (([Syntax.Name], [Syntax.Name]), Evaluator.Env, Evaluator.Env, Analysis.AnalysisEnv, [Result])
@@ -63,15 +62,16 @@ checkTopLevels input output currentModule evalEnv actionEnv analysisEnv results 
   (currentModule', evalEnv', actionEnv', analysisEnv', results') <- checkTopLevel input output currentModule evalEnv actionEnv analysisEnv results tl
   checkTopLevels input output currentModule' evalEnv' actionEnv' analysisEnv' results' rest
 
-checkTopLevel :: Receive ExecutorMessage 
-              -> Send InterpreterMessage 
-              -> ([Syntax.Name], [Syntax.Name])
-              -> Evaluator.Env 
-              -> Evaluator.Env  -- action bodies
-              -> Analysis.AnalysisEnv 
-              -> [Result] 
-              -> TopLevel 
-              -> IO (([Syntax.Name], [Syntax.Name]), Evaluator.Env, Evaluator.Env, Analysis.AnalysisEnv, [Result])
+checkTopLevel ::
+  Receive ExecutorMessage ->
+  Send InterpreterMessage ->
+  ([Syntax.Name], [Syntax.Name]) ->
+  Evaluator.Env ->
+  Evaluator.Env -> -- action bodies
+  Analysis.AnalysisEnv ->
+  [Result] ->
+  TopLevel ->
+  IO (([Syntax.Name], [Syntax.Name]), Evaluator.Env, Evaluator.Env, Analysis.AnalysisEnv, [Result])
 checkTopLevel input output currentModule evalEnv actionEnv analysisEnv results = \case
   Binding b@(Syntax.Bind pat _) -> do
     evalEnv' <- Evaluator.evaluateBind evalEnv b
@@ -83,7 +83,7 @@ checkTopLevel input output currentModule evalEnv actionEnv analysisEnv results =
     let analysisEnv' = Analysis.analyseBind analysisEnv b
     pure (second (Syntax.bindPatternBoundVars pat ++) currentModule, evalEnv', actionEnv', analysisEnv', results)
   Imported _ ts' -> do
-    (_, e', acte', ae', results') <- checkTopLevels input output ([],[]) evalEnv actionEnv analysisEnv results ts'
+    (_, e', acte', ae', results') <- checkTopLevels input output ([], []) evalEnv actionEnv analysisEnv results ts'
     pure (currentModule, e', acte', ae', results')
   Properties _ propGlob actsGlob initial -> do
     let props = Syntax.expand (fst currentModule) propGlob
@@ -130,31 +130,29 @@ writeStdoutFrom output = do
 
 data SentAction = None | Sent (PrimAction, (Name, [Evaluator.Value])) | WaitingTimeout Int
 
-
-
 extractActions :: Maybe (Name, [Evaluator.Value]) -> Evaluator.Env -> Evaluator.State -> Evaluator.Value -> IO [(PrimAction, (Name, [Evaluator.Value]))]
 extractActions act actionEnv s v = do
   v' <- Evaluator.force s =<< Evaluator.resetThunks v
   let asBoolean Evaluator.Trivial = Just True
-      asBoolean Evaluator.Absurd  = Just False
+      asBoolean Evaluator.Absurd = Just False
       asBoolean _ = Nothing
       asInteger (Evaluator.LitVal (Syntax.IntLit i)) = Just i
       asInteger _ = Nothing
-  case v' of 
-    Evaluator.Action n args -> 
+  case v' of
+    Evaluator.Action n args ->
       case M.lookup n actionEnv of
-        Just v1 -> do          
+        Just v1 -> do
           r <- Evaluator.appAll s v1 args
-          map (second (const $ (n,args))) <$> extractActions (Just (n,args)) actionEnv s r
+          map (second (const $ (n, args))) <$> extractActions (Just (n, args)) actionEnv s r
         Nothing -> error $ "action not found"
-    Evaluator.Object mp -> case act of 
-      Just (n,args) -> 
+    Evaluator.Object mp -> case act of
+      Just (n, args) ->
         case (M.lookup "id" mp, M.lookup "event" mp, M.lookup "args" mp, M.lookup "timeout" mp) of
           (Just (Evaluator.LitVal (Syntax.StringLit aId)), Just aEvent, Just (Evaluator.List ls), t) | Just b <- asBoolean aEvent -> do
             let timeout = t >>= asInteger
             ls' <- mapM (toJSONValue s) ls
-            pure [(A aId b ls' timeout, (n,args))]
-          _ -> pure [] 
+            pure [(A aId b ls' timeout, (n, args))]
+          _ -> pure []
       Nothing -> pure []
     Evaluator.List ls -> concat <$> mapM (extractActions act actionEnv s) ls
     _ -> pure []
@@ -172,23 +170,25 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
       case msg of
         Performed _state -> error "Was not expecting an action to be performed. Trace must begin with an initial event."
         Event event firstState -> do
-          expectedPrims <- let f = extractActions Nothing actionEnv (toEvaluatorState firstState) in 
-            case expectedEvent of 
-              Just ev -> liftIO $ f ev
-              Nothing -> liftIO $ concat <$> mapM f actions
+          expectedPrims <-
+            let f = extractActions Nothing actionEnv (toEvaluatorState firstState)
+             in case expectedEvent of
+                  Just ev -> liftIO $ f ev
+                  Nothing -> liftIO $ concat <$> mapM f actions
           case filter (actionMatches event . fst) expectedPrims of
             [] -> run AwaitingInitialEvent
-            as -> do 
+            as -> do
               -- the `happened` variable should be map snd as a list of action values..
               tell [TraceAction (map fst as), TraceState firstState]
               let timeout = maximumTimeout (map fst as)
               ifResidual firstState initialFormula $ \r ->
-                run ReadingQueue
-                        { formula = r,
-                          stateVersion = 0,
-                          lastState = firstState,
-                          sentAction = case timeout of Nothing -> None; Just i -> WaitingTimeout i
-                        }
+                run
+                  ReadingQueue
+                    { formula = r,
+                      stateVersion = 0,
+                      lastState = firstState,
+                      sentAction = case timeout of Nothing -> None; Just i -> WaitingTimeout i
+                    }
         Stale -> do
           logErr "Was not expecting a stale when awaiting initial event."
           run s
@@ -241,7 +241,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
                   idx <- liftIO (randomRIO (0, len - 1))
                   let (primaction, action) = acts !! idx
                   send output (RequestAction primaction)
-                  run ReadingQueue {formula = r, stateVersion, lastState = lastState, sentAction = Sent (primaction, action) }
+                  run ReadingQueue {formula = r, stateVersion, lastState = lastState, sentAction = Sent (primaction, action)}
 
 toEvaluatorState :: State -> Evaluator.State
 toEvaluatorState = fmap (fmap toEvaluatorValue)
@@ -252,13 +252,14 @@ toJSONValue s v = do
   case v' of
     Evaluator.LitVal (Syntax.StringLit s) -> pure $ JSON.String s
     Evaluator.LitVal (Syntax.IntLit i) -> pure $ JSON.Number (fromIntegral i)
-    Evaluator.LitVal (Syntax.FloatLit i) -> pure $  JSON.Number (Scientific.fromFloatDigits i)
+    Evaluator.LitVal (Syntax.FloatLit i) -> pure $ JSON.Number (Scientific.fromFloatDigits i)
     Evaluator.Object o -> JSON.Object <$> traverse (toJSONValue s) o
     Evaluator.List o -> JSON.Array . Vector.fromList <$> traverse (toJSONValue s) o
     Evaluator.Trivial -> pure $ JSON.Bool True
-    Evaluator.Absurd ->  pure $ JSON.Bool False
+    Evaluator.Absurd -> pure $ JSON.Bool False
     Evaluator.Null -> pure JSON.Null
-    _              -> error "Cannot convert to JSON value"
+    _ -> error "Cannot convert to JSON value"
+
 toEvaluatorValue :: JSON.Value -> Evaluator.Value
 toEvaluatorValue = \case
   JSON.String s -> Evaluator.LitVal (Syntax.StringLit s)

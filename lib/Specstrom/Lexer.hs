@@ -133,5 +133,5 @@ fromCandidate "check" = Reserved Check
 fromCandidate "with" = Reserved With
 fromCandidate "when" = Reserved When
 fromCandidate "fun" = Reserved Fun
-fromCandidate "action" = Reserved Action 
+fromCandidate "action" = Reserved Action
 fromCandidate s = Ident s

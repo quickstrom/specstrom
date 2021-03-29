@@ -32,7 +32,7 @@ builtIns =
       ++ zip binOps (repeat $ toAnnotation merge)
       ++ zip unOps (repeat $ toAnnotation (id :: Annotation -> Annotation))
       ++ [ ("if_then_else_", toAnnotation (\(Value b) t e -> merge t e `unionDep` b)),
-           ("#act", toAnnotation (\(Value x1) (Value x2) (Value x3) (Value x4) -> Value (x1 <> x2 <> x3 <> x4)) )
+           ("#act", toAnnotation (\(Value x1) (Value x2) (Value x3) (Value x4) -> Value (x1 <> x2 <> x3 <> x4)))
          ]
   where
     binOps = ["_==_", "_&&_", "_||_", "_when_", "_until_", "_!=_", "_==>_"]

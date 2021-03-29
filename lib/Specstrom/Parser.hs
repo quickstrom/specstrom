@@ -263,8 +263,8 @@ grammar table = mdo
     mixfixParts =
       [ s | xs <- table, (ys, _) <- xs, Just s <- ys
       ]
-    lbrack = satisfy ((== LBrack) . snd) <?> "left bracket"  
-    rbrack = satisfy ((== RBrack) . snd) <?> "right bracket"  
+    lbrack = satisfy ((== LBrack) . snd) <?> "left bracket"
+    rbrack = satisfy ((== RBrack) . snd) <?> "right bracket"
     lparen = satisfy ((== LParen) . snd) <?> "left parenthesis"
     rparen = satisfy ((== RParen) . snd) <?> "right parenthesis"
     identToken s = isToken (Ident s) s
