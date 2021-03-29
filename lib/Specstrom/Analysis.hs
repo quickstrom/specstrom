@@ -16,7 +16,6 @@ data Annotation = Value Dep Dep | Function (Annotation -> Annotation) Dep
 class ToAnnotation a where
   toAnnotation :: a -> Annotation
 
-
 instance ToAnnotation Annotation where
   toAnnotation = id
 
@@ -41,7 +40,7 @@ builtIns =
 indirect :: Annotation -> Annotation
 indirect (Value a b) = Value mempty (a <> b)
 
-mergeDirect ::  Annotation -> Annotation -> Annotation
+mergeDirect :: Annotation -> Annotation -> Annotation
 mergeDirect (Value a _) (Function f b) = error "Impossible"
 mergeDirect (Function f a) (Value b _) = error "Impossible"
 mergeDirect (Value a c) (Value b d) = Value (a <> b) (c <> d)
