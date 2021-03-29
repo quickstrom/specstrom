@@ -14,7 +14,7 @@ import Specstrom.Syntax
 import Specstrom.TypeInf
 import System.Environment
 import System.Exit
-import System.IO (hPutStrLn, stderr, stdout)
+import System.IO (hPutStrLn, stderr, stdout, hSetBuffering, BufferMode (LineBuffering))
 
 searchPaths :: [FilePath]
 searchPaths = ["."]
@@ -39,5 +39,7 @@ main =
       renderIO stdout (layoutPretty defaultLayoutOptions (prettyAll ts <> line))
     ["check", f] -> do
       ts <- load (pack f)
+      hSetBuffering stderr LineBuffering 
+      hSetBuffering stdout LineBuffering 
       Checker.checkAllStdio ts
     _ -> hPutStrLn stderr "Usage: specstrom (format|check) MODULE-NAME"
