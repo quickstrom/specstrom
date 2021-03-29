@@ -10,7 +10,7 @@ import qualified Data.Text as Text
 import qualified Data.Text.Read as Text
 import Text.Read (readMaybe)
 
-data Kwd = Define | Syntax | Let | Import | Check | With | Fun | When deriving (Show, Eq)
+data Kwd = Define | Syntax | Let | Import | Check | With | Fun | When | Action deriving (Show, Eq)
 
 data Token
   = Ident Text
@@ -23,6 +23,8 @@ data Token
   | SelectorLitTok Text
   | LParen
   | RParen
+  | LBrack
+  | RBrack
   | Semi
   | Comma
   | Dot
@@ -74,7 +76,7 @@ readLiteral' delimiter rest =
         _ -> Nothing
 
 reserved :: Char -> Bool
-reserved c = isSpace c || c `elem` ("();,." :: [Char])
+reserved c = isSpace c || c `elem` ("();,.[]" :: [Char])
 
 lexer :: Position -> Text -> Either LexerError [(Position, Token)]
 lexer p t
@@ -109,6 +111,8 @@ lexer p t
       Just (lit, rest) -> ((p, SelectorLitTok (Text.drop 1 (Text.take (Text.length lit - 1) lit))) :) <$> lexer (advance lit p) rest
     Just ('(', cs) -> ((p, LParen) :) <$> lexer (nextCol p) cs
     Just (')', cs) -> ((p, RParen) :) <$> lexer (nextCol p) cs
+    Just ('[', cs) -> ((p, LBrack) :) <$> lexer (nextCol p) cs
+    Just (']', cs) -> ((p, RBrack) :) <$> lexer (nextCol p) cs
     Just (';', cs) -> ((p, Semi) :) <$> lexer (nextCol p) cs
     Just (',', cs) -> ((p, Comma) :) <$> lexer (nextCol p) cs
     Just ('.', cs) ->
@@ -129,4 +133,5 @@ fromCandidate "check" = Reserved Check
 fromCandidate "with" = Reserved With
 fromCandidate "when" = Reserved When
 fromCandidate "fun" = Reserved Fun
+fromCandidate "action" = Reserved Action 
 fromCandidate s = Ident s

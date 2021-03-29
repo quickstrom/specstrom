@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Specstrom.TypeInf where
-
 import Control.Monad.Except
 import Control.Monad.Gen
 import Data.List (nub, (\\))
@@ -52,10 +51,10 @@ builtInTypes =
       ("true", Ty Value),
       ("false", Ty Value),
       ("null", Ty Value),
-      ("noop!", Ty Value),
-      ("loaded?", Ty Value),
+--    ("noop!", Ty Value),
+--    ("loaded?", Ty Value),
       ("_when_", val3),
-      ("_timeout_", val3),
+--    ("_timeout_", val3),
       ("_||_", val3),
       ("_&&_", val3),
       ("nextF_", val2),
@@ -63,9 +62,10 @@ builtInTypes =
       ("next_", val2),
       ("always_", val2),
       ("not_", val2),
-      ("click!", val2),
-      ("changed?", val2),
-      ("if_then_else_", Forall "a" (Ty (Arrow Value (Arrow (TyVar "a") (Arrow (TyVar "a") (TyVar "a"))))))
+--      ("click!", val2),
+--      ("changed?", val2),
+      ("if_then_else_", Forall "a" (Ty (Arrow Value (Arrow (TyVar "a") (Arrow (TyVar "a") (TyVar "a")))))),
+      ("#act", Ty (Arrow Value (Arrow Value (Arrow Value (Arrow Value Value)))))
     ]
   where
     val3 = Ty (Arrow Value (Arrow Value Value))
@@ -139,6 +139,15 @@ inferBody g (Local b rest) = do
   (t, s') <- inferBody g' rest
   pure (t, s <> s')
 
+inferActionBind :: Context -> Bind -> TC (Context, Subst)
+inferActionBind g (Bind (Direct (VarP n p)) bod) = do
+  (t, s) <- inferBody g bod
+  ss <- unify p t Value
+  pure (M.insert n (Ty Value) (substGamma (s <> ss) g), s <> ss)
+inferActionBind g (Bind (FunP n _ lams) bod) = do
+  (t, s) <- inferActionFun g lams bod
+  pure (M.insert n (Ty t) (substGamma s g), s)
+
 inferBind :: Context -> Bind -> TC (Context, Subst)
 inferBind g (Bind (Direct (VarP n _)) bod) = do
   (t, s) <- inferBody g bod
@@ -148,6 +157,15 @@ inferBind g (Bind (FunP n _ lams) bod) = do
   (t, s) <- inferFun g lams bod
   let qt = generalise g t
   pure (M.insert n qt (substGamma s g), s)
+
+inferActionFun :: Context -> [Pattern] -> Body -> TC (Type, Subst)
+inferActionFun g [] bod = do 
+    (t, s) <- inferBody g bod
+    ss <- unify (bodyPosition bod) t Value
+    pure (Value, s <> ss)
+inferActionFun g (VarP n p : rest) bod = do
+  (t, s) <- inferActionFun (M.insert n (Ty Value) g) rest bod
+  pure (Arrow Value t, s)
 
 inferFun :: Context -> [Pattern] -> Body -> TC (Type, Subst)
 inferFun g [] bod = inferBody g bod
@@ -177,15 +195,31 @@ inferExp g (Lam p (VarP n _) e) = do
   (t, s) <- inferExp (M.insert n (Ty alpha) g) e
   pure (Arrow (subst s alpha) t, s)
 inferExp g (Literal {}) = pure (Value, mempty)
+inferExp g (ListLiteral _ es) = do
+    ss <- inferExpsValue g es
+    pure (Value, ss)
 inferExp g (Freeze _ (VarP n _) e1 e2) = do
   (t1, s1) <- inferExp g e1
   (t2, s2) <- inferExp (M.insert n (Ty t1) (substGamma s1 g)) e2
   pure (t2, s1 <> s2)
 
+inferExpsValue :: Context -> [Expr Pattern] -> TC Subst
+inferExpsValue g [] = pure mempty
+inferExpsValue g (e:es) = do
+    (t,s) <- inferExp g e
+    s' <- unify (exprPos e) t Value
+    let ss = s <> s'
+    s'' <- inferExpsValue (substGamma ss g) es
+    pure (ss <> s'')
+
+
 inferTopLevels :: Context -> [TopLevel] -> Either (Position, [TypeErrorBit]) Context
 inferTopLevels g [] = pure g
 inferTopLevels g (Binding b : rest) = do
   g' <- runTC (fst <$> inferBind g b)
+  inferTopLevels g' rest
+inferTopLevels g (ActionDecl b : rest) = do
+  g' <- runTC (fst <$> inferActionBind g b)
   inferTopLevels g' rest
 inferTopLevels g (Imported t ts : rest) = do
   g' <- inferTopLevels g ts

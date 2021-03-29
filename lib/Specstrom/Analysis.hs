@@ -29,15 +29,15 @@ builtIns :: AnalysisEnv
 builtIns =
   M.fromList $
     zip values (repeat (Value mempty))
-      ++ [("click!", toAnnotation (\(Value b) -> Value (project "disabled" b)))]
       ++ zip binOps (repeat $ toAnnotation merge)
       ++ zip unOps (repeat $ toAnnotation (id :: Annotation -> Annotation))
-      ++ [ ("if_then_else_", toAnnotation (\(Value b) t e -> merge t e `unionDep` b))
+      ++ [ ("if_then_else_", toAnnotation (\(Value b) t e -> merge t e `unionDep` b)),
+           ("#act", toAnnotation (\(Value x1) (Value x2) (Value x3) (Value x4) -> Value (x1 <> x2 <> x3 <> x4)) )
          ]
   where
-    binOps = ["_==_", "_&&_", "_||_", "_when_", "_timeout_", "_until_", "_!=_", "_==>_"]
-    unOps = ["not_", "always_", "next_", "nextT_", "nextF_", "changed?", "eventually_"]
-    values = ["true", "false", "null", "loaded?", "noop!"]
+    binOps = ["_==_", "_&&_", "_||_", "_when_", "_until_", "_!=_", "_==>_"]
+    unOps = ["not_", "always_", "next_", "nextT_", "nextF_", "eventually_"]
+    values = ["true", "false", "null"]
 
 merge :: Annotation -> Annotation -> Annotation
 merge (Value a) (Function f b) = Function f (a <> b)
@@ -80,6 +80,7 @@ analyseExpr :: AnalysisEnv -> Expr Pattern -> Annotation
 analyseExpr g (Projection e t) | Value d <- analyseExpr g e = Value (project t d)
 analyseExpr g (Var _ t) | Just d <- M.lookup t g = d
 analyseExpr g (App a b) | Function f d <- analyseExpr g a = f (analyseExpr g b) `unionDep` d
+analyseExpr g (ListLiteral _ ls) = foldr merge (Value mempty) $ map (analyseExpr g) ls
 analyseExpr _ (Literal _ (SelectorLit l)) = Value (dep l)
 analyseExpr _ (Literal _ _) = Value mempty
 analyseExpr g (Freeze _ pat e2 e3) =
@@ -101,5 +102,6 @@ analyseTopLevels = foldl' toAnalysisEnv builtIns
     toAnalysisEnv :: AnalysisEnv -> TopLevel -> AnalysisEnv
     toAnalysisEnv env = \case
       Binding b -> analyseBind env b
+      ActionDecl b -> analyseBind env b
       Imported _ ts' -> foldl' toAnalysisEnv env ts'
       Properties {} -> env

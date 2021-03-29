@@ -29,6 +29,7 @@ data Expr p
   | Literal Position Lit
   | Freeze Position p (Expr p) (Expr p)
   | Lam Position p (Expr p)
+  | ListLiteral Position [Expr p]
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 peelAps :: Expr p -> [Expr p] -> (Expr p, [Expr p])
@@ -45,6 +46,7 @@ exprPos (Literal p _) = p
 exprPos (Projection e _) = exprPos e
 exprPos (Freeze p _ _ _) = p
 exprPos (Lam p _ _) = p
+exprPos (ListLiteral p _) = p
 
 type Name = Text
 
@@ -96,8 +98,13 @@ data Bind = Bind BindPattern Body
 data Body = Local Bind Body | Done (Expr Pattern)
   deriving (Eq, Show)
 
+bodyPosition :: Body -> Position
+bodyPosition (Local b bod) = bodyPosition bod
+bodyPosition (Done e) = exprPos e
+
 data TopLevel
   = Binding Bind
+  | ActionDecl Bind
   | Properties Position Glob Glob (Maybe (Expr Pattern))
   | Imported Text [TopLevel]
   deriving (Eq, Show)
@@ -113,6 +120,7 @@ instance MapPosition (Expr p) where
     Literal p lit -> Literal (f p) lit
     Freeze pos p e1 e2 -> Freeze pos p (mapPosition f e1) (mapPosition f e2)
     Lam pos p body -> Lam (f pos) p (mapPosition f body)
+    ListLiteral p r -> ListLiteral (f p) (map (mapPosition f) r)
 
 instance MapPosition Pattern where
   mapPosition f (VarP name pos) = VarP name (f pos)
@@ -131,5 +139,6 @@ instance MapPosition Bind where
 instance MapPosition TopLevel where
   mapPosition f expr = case expr of
     Binding bind -> Binding (mapPosition f bind)
+    ActionDecl bind -> ActionDecl (mapPosition f bind)
     Properties pos g1 g2 expr -> Properties (f pos) g1 g2 (fmap (mapPosition f) expr)
     Imported name ts -> Imported name (map (mapPosition f) ts)

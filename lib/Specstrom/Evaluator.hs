@@ -24,16 +24,16 @@ instance Show Thunk where
 
 data Strength = AssumeTrue | AssumeFalse | Demand deriving (Show)
 
-data BaseAction = Click Name | Noop | Loaded | Changed Name
-  deriving (Show, Eq, Generic, JSON.FromJSON, JSON.ToJSON)
+-- data BaseAction = Click Name | Noop | Loaded | Changed Name
+--   deriving (Show, Eq, Generic, JSON.FromJSON, JSON.ToJSON)
+-- 
+-- isEvent :: BaseAction -> Bool
+-- isEvent Loaded = True
+-- isEvent (Changed n) = True
+-- isEvent _ = False
 
-isEvent :: BaseAction -> Bool
-isEvent Loaded = True
-isEvent (Changed n) = True
-isEvent _ = False
-
-data Action = A BaseAction (Maybe Int)
-  deriving (Show, Eq, Generic, JSON.FromJSON, JSON.ToJSON)
+--data Action = A BaseAction (Maybe Int)
+--  deriving (Show, Eq, Generic, JSON.FromJSON, JSON.ToJSON)
 
 data PrimOp
   = -- unary
@@ -41,27 +41,29 @@ data PrimOp
   | NextT
   | NextD
   | Always
-  | ClickAct
-  | ChangedAct
+--  | ClickAct
+--  | ChangedAct
   | Not
   | -- binary
     And
   | Or
   | Equals
   | WhenAct
-  | TimeoutAct
+--  | TimeoutAct
   | Addition
   | Subtraction
   | Multiplication
   | Division
   | -- ternary
     IfThenElse
+    -- quad
+  | MkPrimAction
   deriving (Show, Eq, Ord, Enum, Bounded)
 
 primOpVar :: PrimOp -> Name
 primOpVar op = case op of
   WhenAct -> "_when_"
-  TimeoutAct -> "_timeout_"
+--  TimeoutAct -> "_timeout_"
   NextF -> "nextF_"
   NextT -> "nextT_"
   NextD -> "next_"
@@ -75,8 +77,12 @@ primOpVar op = case op of
   Multiplication -> "_*_"
   Division -> "_/_"
   IfThenElse -> "if_then_else_"
-  ClickAct -> "click!"
-  ChangedAct -> "changed?"
+  MkPrimAction -> "#act"
+--  ClickAct -> "click!"
+--  ChangedAct -> "changed?"
+
+emptyEnv :: Env
+emptyEnv = M.fromList [] 
 
 basicEnv :: Env
 basicEnv =
@@ -85,9 +91,9 @@ basicEnv =
     values =
       [ ("true", Trivial),
         ("false", Absurd),
-        ("null", Null),
-        ("noop!", Action (A Noop Nothing)),
-        ("loaded?", Action (A Loaded Nothing))
+        ("null", Null)
+--        ("noop!", Action (A Noop Nothing)),
+--        ("loaded?", Action (A Loaded Nothing))
       ]
     primOps =
       [ (primOpVar op, Op op []) | op <- enumFromTo minBound maxBound
@@ -115,7 +121,7 @@ data Value
   | -- Residual formulae
     Residual Residual
   | -- Actions
-    Action Action
+    Action Name [Value]
   | -- Values
     Trivial
   | Absurd
@@ -137,8 +143,15 @@ newThunk :: Env -> Expr Pattern -> Eval Thunk
 newThunk g e = T g e <$> newIORef Nothing
 
 evaluateBind :: Env -> Bind -> Eval Env
-evaluateBind g (Bind (Direct (VarP n p)) e) = M.insert n <$> evaluateBody g e <*> pure g
-evaluateBind g (Bind (FunP n p pats) e) = pure (M.insert n (Closure (n, p, 0) g pats e) g)
+evaluateBind g b = evaluateBind' g g b
+
+evaluateActionBind :: Env -> Bind -> Eval Env
+evaluateActionBind g (Bind (Direct (VarP n _)) _) = pure (M.insert n (Action n []) g)
+evaluateActionBind g (Bind (FunP n _ _) _) = pure (M.insert n (Action n []) g)
+
+evaluateBind' :: Env -> Env -> Bind -> Eval Env
+evaluateBind' g g' (Bind (Direct (VarP n p)) e) = M.insert n <$> evaluateBody g' e <*> pure g
+evaluateBind' g g' (Bind (FunP n p pats) e) = pure (M.insert n (Closure (n, p, 0) g' pats e) g)
 
 withPatterns :: Pattern -> Value -> Env -> Eval Env
 withPatterns (VarP n p) v g = pure (M.insert n v g)
@@ -149,6 +162,34 @@ delayedEvaluate s g v@(Var {}) = evaluate s g v
 delayedEvaluate s g v@(Literal {}) = evaluate s g v
 delayedEvaluate s g v@(Lam {}) = evaluate s g v
 delayedEvaluate s g e = Thunk <$> newThunk g e
+
+appAll :: State -> Value -> [Value] -> Eval Value
+appAll s v [] = pure v
+appAll s v (x:xs) = app s v x >>= \v' -> appAll s v' xs
+
+app :: State -> Value -> Value -> Eval Value
+app s v v2 =
+  case v of
+    Op o [] ->
+      if isUnary o
+        then unaryOp o s v2
+        else pure (Op o [v2])
+    Op o [v1] ->
+      if isBinary o
+        then binaryOp o s v1 v2
+        else pure (Op o [v1, v2])
+    Op o [v1, v1'] | o /= MkPrimAction -> ternaryOp o s v1 v1' v2
+                   | otherwise -> pure (Op o [v1,v1',v2])
+    Op MkPrimAction [v11,v12,v13] -> makePrimAction s v11 v12 v13 v2
+    Action a args -> do
+      v2' <- force s v2
+      pure (Action a (args ++ [v2]))
+    Closure (n, p, ai) g' [pat] body -> do
+      g'' <- withPatterns pat v2 g'
+      evaluateBody g'' body -- If we want backtraces, add (n,p,ai) to a stack while running this
+    Closure (n, p, ai) g' (pat : pats) body -> do
+      g'' <- withPatterns pat v2 g'
+      pure (Closure (n, p, ai + 1) g'' pats body)
 
 evaluate :: State -> Env -> Expr Pattern -> Eval Value
 evaluate s g (Projection e t) = do
@@ -163,27 +204,15 @@ evaluate s g (Var p t) = case M.lookup t g of
 evaluate s g (App e1 e2) = do
   v <- force s =<< evaluate s g e1
   v2 <- delayedEvaluate s g e2 -- TODO avoid thunking everything when safe
-  case v of
-    Op o [] ->
-      if isUnary o
-        then unaryOp o s v2
-        else pure (Op o [v2])
-    Op o [v1] ->
-      if isBinary o
-        then binaryOp o s v1 v2
-        else pure (Op o [v1, v2])
-    Op o [v1, v1'] -> ternaryOp o s v1 v1' v2
-    Closure (n, p, ai) g' [pat] body -> do
-      g'' <- withPatterns pat v2 g'
-      evaluateBody g'' body -- If we want backtraces, add (n,p,ai) to a stack while running this
-    Closure (n, p, ai) g' (pat : pats) body -> do
-      g'' <- withPatterns pat v2 g'
-      pure (Closure (n, p, ai + 1) g'' pats body)
+  app s v v2
 evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l s of
   Nothing -> error ("Can't find '" <> Text.unpack sel <> "' in the state (analysis failed?)")
   Just ls -> pure (List ls)
 evaluate s g (Literal p l) = pure (LitVal l)
 evaluate s g (Lam p pat e) = pure (Closure ("fun", p, 0) g [pat] (Done e))
+evaluate s g (ListLiteral p ls) = do
+  vs <- mapM (evaluate s g) ls
+  pure (List vs)
 evaluate s g (Freeze p pat e1 e2) = do
   v1 <- Frozen s <$> newThunk g e1
   g' <- withPatterns pat v1 g
@@ -203,6 +232,16 @@ force :: State -> Value -> Eval Value
 force _ (Frozen s' t) = forceThunk t s'
 force s (Thunk t) = forceThunk t s
 force s v = pure v
+
+
+makePrimAction :: State -> Value -> Value -> Value -> Value -> Eval Value
+makePrimAction s v1 v2 v3 v4 = do 
+  v1' <- force s v1
+  v2' <- force s v2
+  v3' <- force s v3
+  v4' <- force s v4
+  -- no typechecking..
+  pure (Object (M.fromList [("id",v1'), ("event", v2'), ("args",v3'), ("timeout",v4')]))
 
 ternaryOp :: PrimOp -> State -> Value -> Value -> Value -> Eval Value
 ternaryOp IfThenElse s v1 v2 v3 = do
@@ -229,11 +268,12 @@ areEqual s v1 v2 = do
     areEqual' Absurd Absurd = pure True
     areEqual' Null Null = pure True
     areEqual' (List as) (List bs) | length as == length bs = and <$> zipWithM (areEqual s) as bs
+    areEqual' (Action n as) (Action m bs) | n == m && length as == length bs = and <$> zipWithM (areEqual s) as bs
     areEqual' (Object as) (Object bs) = undefined -- for now
     areEqual' _ _ = pure False
 
 unaryOp :: PrimOp -> State -> Value -> Eval Value
-unaryOp ClickAct s v =
+{- unaryOp ClickAct s v =
   do
     v' <- force s v
     let vs = case v' of
@@ -251,8 +291,8 @@ unaryOp ClickAct s v =
       _ -> error "click expects element(s)"
     case as of
       [a] -> pure a
-      as -> pure (List as)
-unaryOp ChangedAct s v = do
+      as -> pure (List as) -}
+{- unaryOp ChangedAct s v = do
   v' <- force s v
   let vs = case v' of
         Object m -> [Object m]
@@ -265,7 +305,7 @@ unaryOp ChangedAct s v = do
     _ -> error "changed expects element(s)"
   case as of
     [a] -> pure a
-    as -> pure (List as)
+    as -> pure (List as) -}
 unaryOp Always s v@(Thunk (T g e _)) = do
   v' <- force s v
   case v' of
@@ -331,7 +371,7 @@ binaryOp WhenAct s v1 v2 = do
     Trivial -> pure v1
     Absurd -> pure Null
     _ -> error "Expected boolean in when condition"
-binaryOp TimeoutAct s v1 v2 = do
+{- binaryOp TimeoutAct s v1 v2 = do
   v1' <- force s v1
   v2' <- force s v2
   t <- case v2 of
@@ -342,6 +382,7 @@ binaryOp TimeoutAct s v1 v2 = do
     Action (A _ (Just _)) -> error "Action already has a timeout"
     List vs -> List <$> traverse (\x -> binaryOp TimeoutAct s x v2') vs
     _ -> error "Timeout expects an action"
+-}
 
 binaryNumOp :: State -> Value -> Value -> PrimOp -> IO Value
 binaryNumOp s v1 v2 op = do
@@ -367,13 +408,13 @@ resetThunk (T e exp ior) = do
 
 resetThunks :: Value -> Eval Value
 resetThunks (Closure a e b c) = (\e' -> Closure a e' b c) <$> traverse resetThunks e
-resetThunks (Action a) = pure (Action a)
 resetThunks (Op o vs) = Op o <$> traverse resetThunks vs
 resetThunks (Thunk t) = Thunk <$> resetThunk t
 resetThunks (Frozen s t) = pure $ Frozen s t -- should be safe? Never need to re-evaluate frozen stuff.
 resetThunks (Residual r) = pure $ Residual r -- that all gets cleared out later
 resetThunks (Object o) = Object <$> traverse resetThunks o
 resetThunks (List o) = List <$> traverse resetThunks o
+resetThunks (Action n o) = Action n <$> traverse resetThunks o
 resetThunks (Absurd) = pure Absurd
 resetThunks (Trivial) = pure Trivial
 resetThunks (Null) = pure Null

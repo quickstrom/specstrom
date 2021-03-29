@@ -10,7 +10,6 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 import Prettyprinter.Render.Terminal
-import Specstrom.Evaluator
 import Specstrom.Lexer
 import Specstrom.Parser
 import Specstrom.Syntax
@@ -84,6 +83,7 @@ prettyToken (Reserved When) = keyword "when"
 prettyToken (Reserved Check) = keyword "check"
 prettyToken (Reserved With) = keyword "with"
 prettyToken (Reserved Import) = keyword "import"
+prettyToken (Reserved Action) = keyword "action"
 prettyToken (ProjectionTok t) = projection ("." <> t)
 prettyToken (Reserved Syntax) = keyword "syntax"
 prettyToken (StringLitTok str) = literal (pretty (show str))
@@ -93,14 +93,19 @@ prettyToken (FloatLitTok str) = literal (pretty (show str))
 prettyToken (SelectorLitTok str) = literal ("`" <> pretty str <> "`")
 prettyToken LParen = "("
 prettyToken RParen = ")"
+prettyToken LBrack = "["
+prettyToken RBrack = "]"
 prettyToken Semi = ";"
 prettyToken Comma = ","
 prettyToken Dot = "."
 prettyToken EOF = "EOF"
 
 prettyBind :: Bind -> Doc AnsiStyle
-prettyBind (Bind bp bs) =
-  keyword "let" <+> prettyBindPattern bp
+prettyBind b = keyword "let" <+> prettyBind' b
+
+prettyBind' :: Bind -> Doc AnsiStyle
+prettyBind' (Bind bp bs) =
+  prettyBindPattern bp
     <+> nest
       3
       ( keyword "=" <> softline
@@ -121,6 +126,7 @@ prettyToplevel (Properties _p g1 g2 g3) =
     <> maybe mempty ((space <>) . (keyword "when" <+>) . prettyExpr) g3
     <> keyword ";"
 prettyToplevel (Binding b) = prettyBind b
+prettyToplevel (ActionDecl b) = keyword "action" <+> prettyBind' b
 prettyToplevel (Imported i bs) = keyword "import" <+> literal (pretty i) <> keyword ";" <> line <> indent 2 (prettyAll bs)
 
 prettyBody :: Body -> Doc AnsiStyle
@@ -165,6 +171,7 @@ prettyExpr trm = renderTerm True trm
         Literal _p l -> prettyLit l
         Projection e pr -> renderTerm False e <> projection ("." <> pr)
         App {} -> mempty -- Handled by peelAps
+        ListLiteral _ ls -> "[" <> hsep (punctuate comma $ map (renderTerm True) ls) <> "]"
         Lam _ n e ->
           (if outer then id else parens) $
             "fun" <+> prettyPattern n <> "." <+> prettyExpr e

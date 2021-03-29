@@ -116,6 +116,9 @@ parseTopLevel search t ((p, Reserved Syntax) : ts) = do
 parseTopLevel search t ((p, Reserved Let) : ts) = do
   (rest, b) <- wrap (parseBind t p ts)
   fmap (Binding b :) <$> parseTopLevel search t rest
+parseTopLevel search t ((p, Reserved Action) : ts) = do
+  (rest, b) <- wrap (parseBind t p ts)
+  fmap (ActionDecl b :) <$> parseTopLevel search t rest
 parseTopLevel search t ((p, Reserved Check) : ts) = do
   (rest, g1) <- wrap (parseGlob ts)
   case rest of
@@ -232,6 +235,7 @@ grammar table = mdo
     rule $
       ident
         <|> lparen *> expr <* rparen
+        <|> ListLiteral . fst <$> lbrack <*> argList <* rbrack
   normalProj <- rule $ atom <|> Projection <$> normalProj <*> projection
   argList <-
     rule $
@@ -259,6 +263,8 @@ grammar table = mdo
     mixfixParts =
       [ s | xs <- table, (ys, _) <- xs, Just s <- ys
       ]
+    lbrack = satisfy ((== LBrack) . snd) <?> "left bracket"  
+    rbrack = satisfy ((== RBrack) . snd) <?> "right bracket"  
     lparen = satisfy ((== LParen) . snd) <?> "left parenthesis"
     rparen = satisfy ((== RParen) . snd) <?> "right parenthesis"
     identToken s = isToken (Ident s) s
@@ -280,6 +286,7 @@ grammar table = mdo
         unident (Ident s) = s
         unident (Reserved Fun) = "fun"
         unident Dot = "."
+        unident (Reserved When) = "when"
         unident _ = "="
     getPosition ls = case filter isJust ls of
       [] -> error "No concrete token: the impossible happened"
