@@ -11,13 +11,11 @@ import Specstrom.Syntax
 
 type AnalysisEnv = M.HashMap Name Annotation
 
-data Annotation = Value Dep | Function (Annotation -> Annotation) Dep
+data Annotation = Value Dep Dep | Function (Annotation -> Annotation) Dep
 
 class ToAnnotation a where
   toAnnotation :: a -> Annotation
 
-instance ToAnnotation Dep where
-  toAnnotation = Value
 
 instance ToAnnotation Annotation where
   toAnnotation = id
@@ -28,29 +26,39 @@ instance (ToAnnotation b) => ToAnnotation (Annotation -> b) where
 builtIns :: AnalysisEnv
 builtIns =
   M.fromList $
-    zip values (repeat (Value mempty))
-      ++ zip binOps (repeat $ toAnnotation merge)
-      ++ zip unOps (repeat $ toAnnotation (id :: Annotation -> Annotation))
-      ++ [ ("if_then_else_", toAnnotation (\(Value b) t e -> merge t e `unionDep` b)),
-           ("#act", toAnnotation (\(Value x1) (Value x2) (Value x3) (Value x4) -> Value (x1 <> x2 <> x3 <> x4)))
+    zip values (repeat (Value mempty mempty))
+      ++ zip binOps (repeat $ toAnnotation mergeIndirect)
+      ++ zip unOps (repeat $ toAnnotation indirect)
+      ++ [ ("if_then_else_", toAnnotation (\(Value a b) t e -> mergeDirect t e `unionDep` (a <> b))),
+           ("_when_", toAnnotation (\(Value a b) (Value c d) -> Value a (b <> c <> d))),
+           ("#act", toAnnotation (\(Value x1 y1) (Value x2 y2) (Value x3 y3) (Value x4 y4) -> Value (x1 <> x2 <> x3 <> x4) (y1 <> y2 <> y3 <> y4)))
          ]
   where
-    binOps = ["_==_", "_&&_", "_||_", "_when_", "_until_", "_!=_", "_==>_"]
+    binOps = ["_==_", "_&&_", "_||_", "_until_", "_!=_", "_==>_"]
     unOps = ["not_", "always_", "next_", "nextT_", "nextF_", "eventually_"]
     values = ["true", "false", "null"]
 
-merge :: Annotation -> Annotation -> Annotation
-merge (Value a) (Function f b) = Function f (a <> b)
-merge (Function f a) (Value b) = Function f (a <> b)
-merge (Value a) (Value b) = Value (a <> b)
-merge (Function f a) (Function g b) = Function (\x -> merge (f x) (g x)) (a <> b)
+indirect :: Annotation -> Annotation
+indirect (Value a b) = Value mempty (a <> b)
+
+mergeDirect ::  Annotation -> Annotation -> Annotation
+mergeDirect (Value a _) (Function f b) = error "Impossible"
+mergeDirect (Function f a) (Value b _) = error "Impossible"
+mergeDirect (Value a c) (Value b d) = Value (a <> b) (c <> d)
+mergeDirect (Function f a) (Function g b) = Function (\x -> mergeDirect (f x) (g x)) (a <> b)
+
+mergeIndirect :: Annotation -> Annotation -> Annotation
+mergeIndirect (Value a _) (Function f b) = error "Impossible"
+mergeIndirect (Function f a) (Value b _) = error "Impossible"
+mergeIndirect (Value a c) (Value b d) = Value mempty (a <> c <> b <> d)
+mergeIndirect (Function f a) (Function g b) = Function (\x -> mergeIndirect (f x) (g x)) (a <> b)
 
 unionDep :: Annotation -> Dep -> Annotation
-unionDep (Value d) d' = Value (d <> d')
+unionDep (Value x d) d' = Value x (d <> d')
 unionDep (Function f d) d' = Function f (d <> d')
 
 depOf :: Annotation -> Dep
-depOf (Value d) = d
+depOf (Value d d') = d <> d'
 depOf (Function _ d) = d
 
 analyseBody :: AnalysisEnv -> Body -> Annotation
@@ -77,12 +85,12 @@ analyseBind g (Bind (FunP n _ pats) body) =
    in M.union g new
 
 analyseExpr :: AnalysisEnv -> Expr Pattern -> Annotation
-analyseExpr g (Projection e t) | Value d <- analyseExpr g e = Value (project t d)
+analyseExpr g (Projection e t) | Value d ind <- analyseExpr g e = Value (project t d) ind
 analyseExpr g (Var _ t) | Just d <- M.lookup t g = d
 analyseExpr g (App a b) | Function f d <- analyseExpr g a = f (analyseExpr g b) `unionDep` d
-analyseExpr g (ListLiteral _ ls) = foldr merge (Value mempty) $ map (analyseExpr g) ls
-analyseExpr _ (Literal _ (SelectorLit l)) = Value (dep l)
-analyseExpr _ (Literal _ _) = Value mempty
+analyseExpr g (ListLiteral _ ls) = foldr mergeDirect (Value mempty mempty) $ map (analyseExpr g) ls
+analyseExpr _ (Literal _ (SelectorLit l)) = Value (dep l) mempty
+analyseExpr _ (Literal _ _) = Value mempty mempty
 analyseExpr g (Freeze _ pat e2 e3) =
   let a = analyseExpr g e2
       new = M.fromList (zip (patternVars pat) (repeat a))

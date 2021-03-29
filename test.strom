@@ -31,13 +31,17 @@ let a ~> b = transition(a, b);
 
 action myAction! = click!(`#hello`);
 
+let testVal = (if `x`.foo then `y`.bar else `z`.baz).fuzz;
+
 let play = paused ~> playing && unchanged(timeDisplayText);
 
 let pause = playing ~> paused && unchanged(timeDisplayText);
 
 let tick = playing ~> playing && not unchanged(timeDisplayText);
 
-let prop =  paused && always (play || pause || tick); // always always == always, I am just demonstrating the prefix syntax.
+let prop = testVal && paused && always (play || pause || tick); // always always == always, I am just demonstrating the prefix syntax.
+
+
 
 check prop* with *;
 
