@@ -11,6 +11,7 @@
 module Specstrom.Checker where
 
 import qualified Control.Concurrent.Async as Async
+import Control.Exception (BlockedIndefinitelyOnSTM (..), catch)
 import Control.Monad (unless, void, (<=<))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Writer (WriterT, runWriterT, tell)
@@ -33,7 +34,6 @@ import Specstrom.Syntax (TopLevel (..))
 import qualified Specstrom.Syntax as Syntax
 import System.IO (hPutStrLn, isEOF, stderr)
 import System.Random (randomRIO)
-import Control.Exception (BlockedIndefinitelyOnSTM(..), catch)
 
 checkAllStdio :: [TopLevel] -> IO ()
 checkAllStdio ts = do
@@ -45,9 +45,9 @@ checkAllStdio ts = do
         Async.wait inputDone
         -- TODO: add notion of channel being closed instead of relying on the STM exception
         void (Async.wait outputDone) `catch` \case
-          BlockedIndefinitelyOnSTM{} -> fail "Checker failed due to premature end of input."
+          BlockedIndefinitelyOnSTM {} -> fail "Checker failed due to premature end of input."
         Async.wait checkerDone `catch` \case
-          BlockedIndefinitelyOnSTM{} -> fail "Checker failed due to premature end of input."
+          BlockedIndefinitelyOnSTM {} -> fail "Checker failed due to premature end of input."
 
 checkAll :: Receive ExecutorMessage -> Send InterpreterMessage -> [TopLevel] -> IO ()
 checkAll input output ts = do
