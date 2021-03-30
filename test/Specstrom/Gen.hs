@@ -1,14 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Specstrom.Gen where
 
 import qualified Data.Aeson as JSON
 import qualified Data.HashMap.Strict as HashMap
-import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Traversable (for)
 import qualified Data.Vector as Vector
 import Hedgehog (Gen)
 import qualified Hedgehog.Gen as Gen
@@ -82,6 +79,10 @@ state (Dependency.Dep bySelector) =
   flip HashMap.traverseWithKey bySelector $ \(Selector s) schema -> do
     elements <- Gen.list (Range.linear 1 10) (elementState schema)
     pure
-      [ JSON.Object (element <> HashMap.singleton "ref" (JSON.String (s <> "-" <> Text.pack (show i))))
-        | (i, JSON.Object element) <- zip [0 :: Int ..] elements
-      ]
+      ( JSON.Array
+          ( Vector.fromList
+              [ JSON.Object (element <> HashMap.singleton "ref" (JSON.String (s <> "-" <> Text.pack (show i))))
+                | (i, JSON.Object element) <- zip [0 :: Int ..] elements
+              ]
+          )
+      )

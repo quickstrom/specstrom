@@ -1,8 +1,11 @@
+action click!(x) = #act("click",false,[x.ref],null) when x.enabled;
 
-let disable! = click!(`button`);
+action loaded? = #act("loaded",true,[],null);
+
+action disable! = click!(`button`);
 
 let active = not (`foo`.disabled && `bar`.disabled);
 
 let prop = active && next (not active);
 
-check prop with disable!;
+check prop with disable! when loaded?;

@@ -22,7 +22,6 @@ import qualified Specstrom.Analysis as Analysis
 import qualified Specstrom.Channel as Channel
 import qualified Specstrom.Checker as Checker
 import qualified Specstrom.Checker.Protocol as Protocol
-import qualified Specstrom.Evaluator as Evaluator
 import qualified Specstrom.Gen as Gen
 import qualified Specstrom.Parser as Parser
 import Specstrom.PrettyPrinter (prettyParseError)
@@ -44,7 +43,7 @@ prop_check_produces_result = property $ do
   annotateShow results
 
 enableButtons :: Protocol.State -> Protocol.State
-enableButtons = traverse . traverse . JSON._Object . at "disabled" .~ pure (JSON.Bool True)
+enableButtons = traverse . JSON._Array . traverse . JSON._Object . at "disabled" .~ pure (JSON.Bool True)
 
 runSessions ::
   MonadIO m =>
@@ -61,7 +60,17 @@ runSessions input output = go
           Channel.send output (Protocol.Performed s)
           go ss
         (Protocol.Start {}, s : ss) -> do
-          Channel.send output (Protocol.Event Evaluator.Loaded s)
+          Channel.send
+            output
+            ( Protocol.Event
+                Protocol.A
+                  { Protocol.id = "loaded",
+                    Protocol.isEvent = True,
+                    Protocol.args = [],
+                    Protocol.timeout = Nothing
+                  }
+                s
+            )
           go ss
         (Protocol.End {}, _) -> go states
         (Protocol.Done results, _) -> pure results
