@@ -155,16 +155,15 @@ inferActionBind g (Bind (FunP n _ lams) bod) = do
   pure (M.insert n (Ty t) (substGamma s g), s)
 inferActionBind g (Bind (Direct p) bod) = typeError (patternPos p) [StrE "Action binding cannot use a pattern of the form", PtnE p]
 
-
 inferBind :: Context -> Bind -> TC (Context, Subst)
 inferBind g (Bind (Direct (VarP n _)) bod) = do
   (t, s) <- inferBody g bod
   let qt = generalise g t
   pure (M.insert n qt (substGamma s g), s)
-inferBind g (Bind(Direct pat) bod) = do
+inferBind g (Bind (Direct pat) bod) = do
   (t, s) <- inferBody g bod
   ss <- unify (bodyPosition bod) t Value
-  pure (M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) (substGamma (s <>ss) g), s <> ss)
+  pure (M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) (substGamma (s <> ss) g), s <> ss)
 inferBind g (Bind (FunP n _ lams) bod) = do
   (t, s) <- inferFun g lams bod
   let qt = generalise g t
@@ -175,7 +174,7 @@ inferActionFun g [] bod = do
   (t, s) <- inferBody g bod
   ss <- unify (bodyPosition bod) t Value
   pure (Value, s <> ss)
-inferActionFun g (pat: rest) bod = do
+inferActionFun g (pat : rest) bod = do
   let g' = M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) g
   (t, s) <- inferActionFun g' rest bod
   pure (Arrow Value t, s)
@@ -186,7 +185,7 @@ inferFun g (VarP n _ : rest) bod = do
   alpha <- fresh
   (t, s) <- inferFun (M.insert n (Ty alpha) g) rest bod
   pure (Arrow (subst s alpha) t, s)
-inferFun g (pat: rest) bod = do
+inferFun g (pat : rest) bod = do
   let g' = M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) g
   (t, s) <- inferFun g' rest bod
   pure (Arrow Value t, s)

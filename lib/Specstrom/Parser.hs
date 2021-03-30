@@ -6,10 +6,10 @@ module Specstrom.Parser where
 
 import Control.Applicative
 import Control.Monad.Except
+import Data.Bifunctor (first, second)
 import Data.List (intersperse, nub, (\\))
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe
-import Data.Bifunctor(first,second)
 import Data.Text (Text, splitOn)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
@@ -50,33 +50,34 @@ data ParseError
 type Table = ([[(Holey Text, Associativity)]], [Name])
 
 builtIns :: ([[(Holey Text, Associativity)]], [Name])
-builtIns = (\x -> (x,[])) $
-  (map . map)
-    (first holey)
-    [ [ ("if_then_else_", RightAssoc)
-      ],
-      [ ("_==>_", RightAssoc)
-      ],
-      [("_||_", RightAssoc)],
-      [("_&&_", RightAssoc)],
-      [("_until_", RightAssoc)],
-      [ ("not_", RightAssoc),
-        ("always_", RightAssoc),
-        ("nextT_", RightAssoc),
-        ("nextF_", RightAssoc),
-        ("next_", RightAssoc),
-        ("eventually_", RightAssoc)
-      ],
-      [ ("_==_", NonAssoc),
-        ("_!=_", NonAssoc)
-      ],
-      [ ("_-_", LeftAssoc),
-        ("_+_", LeftAssoc)
-      ],
-      [ ("_*_", LeftAssoc),
-        ("_/_", LeftAssoc)
+builtIns =
+  (\x -> (x, [])) $
+    (map . map)
+      (first holey)
+      [ [ ("if_then_else_", RightAssoc)
+        ],
+        [ ("_==>_", RightAssoc)
+        ],
+        [("_||_", RightAssoc)],
+        [("_&&_", RightAssoc)],
+        [("_until_", RightAssoc)],
+        [ ("not_", RightAssoc),
+          ("always_", RightAssoc),
+          ("nextT_", RightAssoc),
+          ("nextF_", RightAssoc),
+          ("next_", RightAssoc),
+          ("eventually_", RightAssoc)
+        ],
+        [ ("_==_", NonAssoc),
+          ("_!=_", NonAssoc)
+        ],
+        [ ("_-_", LeftAssoc),
+          ("_+_", LeftAssoc)
+        ],
+        [ ("_*_", LeftAssoc),
+          ("_/_", LeftAssoc)
+        ]
       ]
-    ]
 
 parseGlob :: [(Position, Token)] -> Either ParseError ([(Position, Token)], Glob)
 parseGlob ((_p, Ident n) : rest) = do
@@ -101,13 +102,14 @@ loadModule search p n t = do
         Right toks -> do
           (t', inc) <- parseTopLevel search t toks
           pure (t', inc)
+
 loadImmediate :: [FilePath] -> Table -> Text -> ExceptT ParseError IO (Table, [TopLevel])
-loadImmediate search t txt =  case lexer ("<immediate>", 1, 1) txt of 
+loadImmediate search t txt = case lexer ("<immediate>", 1, 1) txt of
   Left e -> throwError $ LexerFailure e
   Right toks -> parseTopLevel search t toks
 
 immediateExpr :: Table -> Text -> Either ParseError (Expr Pattern)
-immediateExpr tbl txt = case lexer ("<immediate>", 1, 1) txt of 
+immediateExpr tbl txt = case lexer ("<immediate>", 1, 1) txt of
   Left e -> throwError $ LexerFailure e
   Right toks -> snd <$> parseExpressionTo EOF tbl toks
 
@@ -190,7 +192,8 @@ parseBindPattern :: Table -> [(Position, Token)] -> Either ParseError ([(Positio
 parseBindPattern t ts = do
   (ts', e) <- parseExpressionTo (Reserved Define) t ts
   case peelAps e [] of
-    (Var p n, es) | not (null es), n `notElem` (snd t) -> do
+    (Var p n, es) | not (null es),
+                    n `notElem` (snd t) -> do
       es' <- mapM (patFromExpr (snd t)) es
       let ns = concatMap patternVars es'
           uniques = nub ns
@@ -203,15 +206,16 @@ parseBindPattern t ts = do
       pure (ts', Direct p)
 
 patFromAnyExpr :: [Name] -> Expr e -> Maybe Pattern
-patFromAnyExpr t (Var p n) | n `elem` t = pure (ActionP n p [])
-                           | otherwise =  pure (VarP n p)
+patFromAnyExpr t (Var p n)
+  | n `elem` t = pure (ActionP n p [])
+  | otherwise = pure (VarP n p)
 patFromAnyExpr t (ListLiteral p es) = ListP p <$> mapM (patFromAnyExpr t) es
-patFromAnyExpr t x@(App {}) = case peelAps x [] of 
+patFromAnyExpr t x@(App {}) = case peelAps x [] of
   (Var p n, args) | n `elem` t -> ActionP n p <$> mapM (patFromAnyExpr t) args
   _ -> Nothing
 patFromAnyExpr t _ = Nothing
 
-patFromExpr ::  [Name] -> Expr Pattern -> Either ParseError Pattern
+patFromExpr :: [Name] -> Expr Pattern -> Either ParseError Pattern
 patFromExpr t e = case patFromAnyExpr t e of
   Just e' -> pure e'
   Nothing -> Left $ ExpectedPattern e

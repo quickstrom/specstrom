@@ -78,9 +78,10 @@ data BindPattern
   | FunP Name Position [Pattern]
   deriving (Eq, Show)
 
-data Pattern = VarP Name Position
-             | ListP Position [Pattern]
-             | ActionP Name Position [Pattern]
+data Pattern
+  = VarP Name Position
+  | ListP Position [Pattern]
+  | ActionP Name Position [Pattern]
   deriving (Eq, Show)
 
 bindPatternVars :: BindPattern -> [Name]

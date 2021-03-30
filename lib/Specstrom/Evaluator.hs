@@ -4,6 +4,7 @@
 
 module Specstrom.Evaluator where
 
+import Control.Exception (Exception, throw)
 import Control.Monad (MonadPlus (mzero), zipWithM)
 import qualified Data.Aeson as JSON
 import qualified Data.HashMap.Strict as M
@@ -12,7 +13,6 @@ import qualified Data.Text as Text
 import GHC.Generics (Generic)
 import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax
-import Control.Exception(Exception,throw)
 
 type Env = M.HashMap Name Value
 
@@ -153,30 +153,30 @@ evaluateActionBind g (Bind _ _) = evalError "impossible"
 
 evaluateBind' :: Env -> Env -> Bind -> Eval Env
 evaluateBind' g g' (Bind (Direct (VarP n _)) e) = M.insert n <$> evaluateBody g' e <*> pure g
-evaluateBind' g g' (Bind (Direct pat) e) =  do 
+evaluateBind' g g' (Bind (Direct pat) e) = do
   Thunk t <- evaluateBody g' e
   pure (M.union (M.fromList (map (\v -> (v, Matched t pat v)) (patternVars pat))) g)
 evaluateBind' g g' (Bind (FunP n p pats) e) = pure (M.insert n (Closure (n, p, 0) g' pats e) g)
 
 withPatterns :: State -> Pattern -> Value -> Env -> Eval (Maybe Env)
 withPatterns s (VarP n p) v g = pure (Just $ M.insert n v g)
-withPatterns s (ListP p ps) v g = do 
+withPatterns s (ListP p ps) v g = do
   v' <- force s v
   case v' of
     List ls | length ls == length ps -> withPatternses s ps ls g
-    _ -> pure Nothing 
-withPatterns s (ActionP n p ps) v g = do 
+    _ -> pure Nothing
+withPatterns s (ActionP n p ps) v g = do
   v' <- force s v
   case v' of
     Action n' ls _ | n == n' && length ls == length ps -> withPatternses s ps ls g
-    _ -> pure Nothing 
+    _ -> pure Nothing
 
 withPatternses :: State -> [Pattern] -> [Value] -> Env -> Eval (Maybe Env)
 withPatternses _ [] _ g = pure $ Just g
 withPatternses _ _ [] g = pure $ Just g
-withPatternses s (p:ps) (v:vs) g = do
+withPatternses s (p : ps) (v : vs) g = do
   mg' <- withPatterns s p v g
-  case mg' of 
+  case mg' of
     Nothing -> pure Nothing
     Just g' -> withPatternses s ps vs g'
 
@@ -211,12 +211,14 @@ app s v v2 =
       pure (Action a (args ++ [v2]) t)
     Closure (n, p, ai) g' [pat] body -> do
       mg'' <- withPatterns s pat v2 g'
-      case mg'' of Nothing -> pure Null
-                   Just g'' -> evaluateBody g'' body -- If we want backtraces, add (n,p,ai) to a stack while running this
+      case mg'' of
+        Nothing -> pure Null
+        Just g'' -> evaluateBody g'' body -- If we want backtraces, add (n,p,ai) to a stack while running this
     Closure (n, p, ai) g' (pat : pats) body -> do
       mg'' <- withPatterns s pat v2 g'
-      case mg'' of Nothing -> pure Null
-                   Just g'' -> pure (Closure (n, p, ai + 1) g'' pats body)
+      case mg'' of
+        Nothing -> pure Null
+        Just g'' -> pure (Closure (n, p, ai + 1) g'' pats body)
     Null -> pure Null
 
 evaluate :: State -> Env -> Expr Pattern -> Eval Value
@@ -244,7 +246,7 @@ evaluate s g (ListLiteral p ls) = do
 evaluate s g (Freeze p pat e1 e2) = do
   v1 <- Frozen s <$> newThunk g e1
   mg' <- withPatterns s pat v1 g
-  case mg' of 
+  case mg' of
     Just g' -> evaluate s g' e2
     _ -> evalError "Pattern match failure in freeze"
 
@@ -264,7 +266,7 @@ force s (Thunk t) = forceThunk t s
 force s (Matched t pat v) = do
   val <- forceThunk t s
   g <- withPatterns s pat val mempty
-  case g >>= M.lookup v of 
+  case g >>= M.lookup v of
     Nothing -> evalError "Pattern match failure in let binding"
     Just v' -> force s v'
 force s v = pure v

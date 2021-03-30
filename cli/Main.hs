@@ -5,13 +5,12 @@ module Main where
 import Data.Text (pack)
 import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty, line)
 import Prettyprinter.Render.Terminal (renderIO)
+import REPL (repl)
 import qualified Specstrom.Checker as Checker
 import Specstrom.PrettyPrinter
 import System.Environment
 import System.IO (BufferMode (LineBuffering), hPutStrLn, hSetBuffering, stderr, stdout)
-import REPL(repl)
 import Util
-
 
 main :: IO ()
 main =

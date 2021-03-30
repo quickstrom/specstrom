@@ -5,28 +5,27 @@
 
 module Specstrom.PrettyPrinter where
 
+import qualified Data.HashMap.Strict as M
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Text (Text)
 import qualified Data.Text as Text
-import qualified Data.HashMap.Strict as M
 import Data.Text.Prettyprint.Doc
 import Prettyprinter.Render.Terminal
+import qualified Specstrom.Evaluator as Evaluator
 import Specstrom.Lexer
 import Specstrom.Parser
 import Specstrom.Syntax
 import Specstrom.TypeInf
-import qualified Specstrom.Evaluator as Evaluator
-
 
 prettyValue :: Evaluator.Value -> Doc AnsiStyle
 prettyValue (Evaluator.Action n vs _) = pretty n <> "(" <> sep (punctuate comma (map prettyValue vs)) <> ")"
-prettyValue (Evaluator.Closure (n,_,i) _ _ _) = "<<function:" <> pretty n <> "|" <> pretty (show i) <> ">>"
+prettyValue (Evaluator.Closure (n, _, i) _ _ _) = "<<function:" <> pretty n <> "|" <> pretty (show i) <> ">>"
 prettyValue (Evaluator.Trivial) = "true"
 prettyValue (Evaluator.Absurd) = "false"
 prettyValue (Evaluator.Null) = "null"
 prettyValue (Evaluator.List vs) = "[" <> sep (punctuate comma (map prettyValue vs)) <> "]"
 prettyValue (Evaluator.LitVal l) = prettyLit l
-prettyValue (Evaluator.Object o) = "{" <> sep (punctuate comma (map (\(k,v) -> pretty k <> ":" <+> prettyValue v) (M.toList o))) <> "}"
+prettyValue (Evaluator.Object o) = "{" <> sep (punctuate comma (map (\(k, v) -> pretty k <> ":" <+> prettyValue v) (M.toList o))) <> "}"
 prettyValue v = pretty (show v) -- for now
 
 prettyPos :: Position -> Doc AnsiStyle
