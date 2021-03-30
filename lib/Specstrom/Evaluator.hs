@@ -15,7 +15,7 @@ import Specstrom.Syntax
 
 type Env = M.HashMap Name Value
 
-type State = M.HashMap Selector [Value]
+type State = M.HashMap Selector Value
 
 data Thunk = T Env (Expr Pattern) (IORef (Maybe Value))
 
@@ -209,7 +209,7 @@ evaluate s g (App e1 e2) = do
   app s v v2
 evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l s of
   Nothing -> error ("Can't find '" <> Text.unpack sel <> "' in the state (analysis failed?)")
-  Just ls -> pure (List ls)
+  Just ls -> pure ls
 evaluate s g (Literal p l) = pure (LitVal l)
 evaluate s g (Lam p pat e) = pure (Closure ("fun", p, 0) g [pat] (Done e))
 evaluate s g (ListLiteral p ls) = do

@@ -12,7 +12,7 @@ import qualified Specstrom.Syntax as Syntax
 
 type Trace = [TraceElement]
 
-type State = M.HashMap Syntax.Selector [JSON.Value]
+type State = M.HashMap Syntax.Selector JSON.Value
 
 data PrimAction = A {id :: Syntax.Name, isEvent :: Bool, args :: [JSON.Value], timeout :: Maybe Int}
   deriving (Show, Eq, Generic, JSON.ToJSON, JSON.FromJSON)

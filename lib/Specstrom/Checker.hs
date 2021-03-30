@@ -244,7 +244,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
                   run ReadingQueue {formula = r, stateVersion, lastState = lastState, sentAction = Sent (primaction, action)}
 
 toEvaluatorState :: State -> Evaluator.State
-toEvaluatorState = fmap (fmap toEvaluatorValue)
+toEvaluatorState = fmap toEvaluatorValue
 
 toJSONValue :: Evaluator.State -> Evaluator.Value -> Evaluator.Eval JSON.Value
 toJSONValue s v = do
