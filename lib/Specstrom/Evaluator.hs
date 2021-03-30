@@ -77,7 +77,6 @@ primOpVar op = case op of
   IfThenElse -> "if_then_else_"
   MkPrimAction -> "#act"
 
-
 emptyEnv :: Env
 emptyEnv = M.fromList []
 
@@ -333,7 +332,6 @@ binaryOp WhenAct s v1 v2 = do
     Trivial -> pure v1
     Absurd -> pure Null
     _ -> error "Expected boolean in when condition"
-
 binaryOp TimeoutAct s v1 v2 = do
   v1' <- force s v1
   v2' <- force s v2

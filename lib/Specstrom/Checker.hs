@@ -156,9 +156,10 @@ extractActions act actionEnv s v = do
       Nothing -> pure []
     Evaluator.List ls -> concat <$> mapM (extractActions act actionEnv s) ls
     _ -> pure []
-  where 
+  where
     applyTimeout Nothing = Prelude.id
-    applyTimeout (Just t) = \x -> x { timeout = Just t }
+    applyTimeout (Just t) = \x -> x {timeout = Just t}
+
 checkProp :: Receive ExecutorMessage -> Send InterpreterMessage -> Evaluator.Env -> Dep -> Evaluator.Value -> [Evaluator.Value] -> Maybe (Evaluator.Value) -> IO Result
 checkProp input output actionEnv dep initialFormula actions expectedEvent = do
   send output (Start dep)
