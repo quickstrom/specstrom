@@ -33,6 +33,7 @@ prettyTypeError (p, rest) = errorMessage p "Type error" (map prettyTyBit rest)
 prettyTyBit :: TypeErrorBit -> Doc AnsiStyle
 prettyTyBit (StrE s) = pretty s
 prettyTyBit (TypeE t) = prettyType t
+prettyTyBit (PtnE t) = prettyPattern t
 prettyTyBit (VarNameE s) = ident s
 
 prettyType :: Type -> Doc AnsiStyle
@@ -145,6 +146,8 @@ prettyLit (FloatLit s) = literal (pretty (show s))
 
 patternToExpr :: Pattern -> Expr TempExpr
 patternToExpr (VarP p n) = Var n p
+patternToExpr (ListP p ps) = ListLiteral p (map patternToExpr ps)
+patternToExpr (ActionP n p ps) = unpeelAps (Var p n) (map patternToExpr ps)
 
 bindPatternToExpr :: BindPattern -> Expr TempExpr
 bindPatternToExpr (FunP n p ps) = unpeelAps (Var p n) (map patternToExpr ps)

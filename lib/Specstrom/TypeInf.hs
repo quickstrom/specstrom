@@ -76,7 +76,7 @@ data Type = Arrow Type Type | Value | TyVar Name
 
 data QType = Forall Name QType | Ty Type
 
-data TypeErrorBit = StrE Text | VarNameE Name | TypeE Type
+data TypeErrorBit = StrE Text | VarNameE Name | TypeE Type | PtnE Pattern
 
 type TC = ExceptT (Position, [TypeErrorBit]) (Gen Integer)
 
@@ -148,12 +148,18 @@ inferActionBind g (Bind (Direct (VarP n p)) bod) = do
 inferActionBind g (Bind (FunP n _ lams) bod) = do
   (t, s) <- inferActionFun g lams bod
   pure (M.insert n (Ty t) (substGamma s g), s)
+inferActionBind g (Bind (Direct p) bod) = typeError (patternPos p) [StrE "Action binding cannot use a pattern of the form", PtnE p]
+
 
 inferBind :: Context -> Bind -> TC (Context, Subst)
 inferBind g (Bind (Direct (VarP n _)) bod) = do
   (t, s) <- inferBody g bod
   let qt = generalise g t
   pure (M.insert n qt (substGamma s g), s)
+inferBind g (Bind(Direct pat) bod) = do
+  (t, s) <- inferBody g bod
+  ss <- unify (bodyPosition bod) t Value
+  pure (M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) (substGamma (s <>ss) g), s <> ss)
 inferBind g (Bind (FunP n _ lams) bod) = do
   (t, s) <- inferFun g lams bod
   let qt = generalise g t
@@ -164,8 +170,9 @@ inferActionFun g [] bod = do
   (t, s) <- inferBody g bod
   ss <- unify (bodyPosition bod) t Value
   pure (Value, s <> ss)
-inferActionFun g (VarP n p : rest) bod = do
-  (t, s) <- inferActionFun (M.insert n (Ty Value) g) rest bod
+inferActionFun g (pat: rest) bod = do
+  let g' = M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) g
+  (t, s) <- inferActionFun g' rest bod
   pure (Arrow Value t, s)
 
 inferFun :: Context -> [Pattern] -> Body -> TC (Type, Subst)
@@ -174,6 +181,10 @@ inferFun g (VarP n _ : rest) bod = do
   alpha <- fresh
   (t, s) <- inferFun (M.insert n (Ty alpha) g) rest bod
   pure (Arrow (subst s alpha) t, s)
+inferFun g (pat: rest) bod = do
+  let g' = M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) g
+  (t, s) <- inferFun g rest bod
+  pure (Arrow Value t, s)
 
 inferExp :: Context -> Expr Pattern -> TC (Type, Subst)
 inferExp g (Projection e t) = do
@@ -195,6 +206,10 @@ inferExp g (Lam p (VarP n _) e) = do
   alpha <- fresh
   (t, s) <- inferExp (M.insert n (Ty alpha) g) e
   pure (Arrow (subst s alpha) t, s)
+inferExp g (Lam p pat e) = do
+  let g' = M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) g
+  (t, s) <- inferExp g' e
+  pure (Arrow Value t, s)
 inferExp g (Literal {}) = pure (Value, mempty)
 inferExp g (ListLiteral _ es) = do
   ss <- inferExpsValue g es
@@ -203,6 +218,12 @@ inferExp g (Freeze _ (VarP n _) e1 e2) = do
   (t1, s1) <- inferExp g e1
   (t2, s2) <- inferExp (M.insert n (Ty t1) (substGamma s1 g)) e2
   pure (t2, s1 <> s2)
+inferExp g (Freeze p pat e1 e2) = do
+  (t1, s1) <- inferExp g e1
+  ss <- unify p t1 Value
+  let g' = M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) (substGamma (s1 <> ss) g)
+  (t2, s2) <- inferExp g' e2
+  pure (t2, s1 <> ss <> s2)
 
 inferExpsValue :: Context -> [Expr Pattern] -> TC Subst
 inferExpsValue g [] = pure mempty

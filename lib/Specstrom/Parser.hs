@@ -5,11 +5,11 @@
 module Specstrom.Parser where
 
 import Control.Applicative
-import Control.Arrow (first)
 import Control.Monad.Except
 import Data.List (intersperse, nub, (\\))
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe
+import Data.Bifunctor(first,second)
 import Data.Text (Text, splitOn)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
@@ -47,10 +47,10 @@ data ParseError
   | ModuleNotFound Position Text
   deriving (Show)
 
-type Table = [[(Holey Text, Associativity)]]
+type Table = ([[(Holey Text, Associativity)]], [Name])
 
-builtIns :: [[(Holey Text, Associativity)]]
-builtIns =
+builtIns :: ([[(Holey Text, Associativity)]], [Name])
+builtIns = (\x -> (x,[])) $
   (map . map)
     (first holey)
     [ [ ("if_then_else_", RightAssoc)
@@ -117,8 +117,9 @@ parseTopLevel search t ((p, Reserved Let) : ts) = do
   (rest, b) <- wrap (parseBind t p ts)
   fmap (Binding b :) <$> parseTopLevel search t rest
 parseTopLevel search t ((p, Reserved Action) : ts) = do
-  (rest, b) <- wrap (parseBind t p ts)
-  fmap (ActionDecl b :) <$> parseTopLevel search t rest
+  (rest, b@(Bind pat _)) <- wrap (parseBind t p ts)
+  let t' = second (bindPatternBoundVars pat ++) t
+  fmap (ActionDecl b :) <$> parseTopLevel search t' rest
 parseTopLevel search t ((p, Reserved Check) : ts) = do
   (rest, g1) <- wrap (parseGlob ts)
   case rest of
@@ -169,8 +170,8 @@ parseBindingBody t ts = fmap Done <$> parseExpressionTo Semi t ts
 
 insertSyntax :: Position -> Name -> Int -> Associativity -> Table -> Either ParseError Table
 insertSyntax p n i a t
-  | any ((holey n `elem`) . map fst) t = Left $ SyntaxAlreadyDeclared n p
-  | otherwise = Right $ go i t
+  | any ((holey n `elem`) . map fst) (fst t) = Left $ SyntaxAlreadyDeclared n p
+  | otherwise = Right $ first (go i) t
   where
     go 0 (r : rs) = ((holey n, a) : r) : rs
     go n' (r : rs) = r : (go (n' -1) rs)
@@ -180,8 +181,8 @@ parseBindPattern :: Table -> [(Position, Token)] -> Either ParseError ([(Positio
 parseBindPattern t ts = do
   (ts', e) <- parseExpressionTo (Reserved Define) t ts
   case peelAps e [] of
-    (Var p n, es) | not (null es) -> do
-      es' <- mapM patFromExpr es
+    (Var p n, es) | not (null es), n `notElem` (snd t) -> do
+      es' <- mapM (patFromExpr (snd t)) es
       let ns = concatMap patternVars es'
           uniques = nub ns
           dupes = ns \\ uniques
@@ -189,20 +190,25 @@ parseBindPattern t ts = do
         then Left (DuplicatePatternBinding p dupes)
         else pure (ts', FunP n p es')
     _ -> do
-      p <- patFromExpr e
+      p <- patFromExpr (snd t) e
       pure (ts', Direct p)
 
-patFromAnyExpr :: Expr e -> Maybe Pattern
-patFromAnyExpr (Var p n) = pure (VarP n p)
-patFromAnyExpr _ = Nothing
+patFromAnyExpr :: [Name] -> Expr e -> Maybe Pattern
+patFromAnyExpr t (Var p n) | n `elem` t = pure (ActionP n p [])
+                           | otherwise =  pure (VarP n p)
+patFromAnyExpr t (ListLiteral p es) = ListP p <$> mapM (patFromAnyExpr t) es
+patFromAnyExpr t x@(App {}) = case peelAps x [] of 
+  (Var p n, args) | n `elem` t -> ActionP n p <$> mapM (patFromAnyExpr t) args
+  _ -> Nothing
+patFromAnyExpr t _ = Nothing
 
-patFromExpr :: Expr Pattern -> Either ParseError Pattern
-patFromExpr e = case patFromAnyExpr e of
+patFromExpr ::  [Name] -> Expr Pattern -> Either ParseError Pattern
+patFromExpr t e = case patFromAnyExpr t e of
   Just e' -> pure e'
   Nothing -> Left $ ExpectedPattern e
 
-patFromExpr' :: Expr TempExpr -> Either ParseError Pattern
-patFromExpr' e = case patFromAnyExpr e of
+patFromExpr' :: [Name] -> Expr TempExpr -> Either ParseError Pattern
+patFromExpr' t e = case patFromAnyExpr t e of
   Just e' -> pure e'
   Nothing -> Left $ ExpectedPattern' e
 
@@ -212,7 +218,7 @@ parseExpressionTo :: Token -> Table -> [(Position, Token)] -> Either ParseError 
 parseExpressionTo terminator t ts =
   let (candidate, ts') = break ((\x -> x == terminator || x == EOF) . snd) ts
    in case fullParses (parser $ grammar t) candidate of
-        ([one], _) -> (ts',) <$> traverse (\(E e) -> patFromExpr' e) one
+        ([one], _) -> (ts',) <$> traverse (\(E e) -> patFromExpr' (snd t) e) one
         ([], r) -> case unconsumed r of
           ((p, t') : _) -> Left (ExpectedGot p (expected r) t')
           [] -> error ("Expected: " <> show (expected r))
@@ -258,10 +264,10 @@ grammar table = mdo
         ],
         [([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)]
       ]
-        ++ map (map $ first $ map $ fmap identToken) table
+        ++ map (map $ first $ map $ fmap identToken) (fst table)
 
     mixfixParts =
-      [ s | xs <- table, (ys, _) <- xs, Just s <- ys
+      [ s | xs <- fst table, (ys, _) <- xs, Just s <- ys
       ]
     lbrack = satisfy ((== LBrack) . snd) <?> "left bracket"
     rbrack = satisfy ((== RBrack) . snd) <?> "right bracket"

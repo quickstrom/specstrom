@@ -112,6 +112,7 @@ data Value
   | -- thunks (not returned by force)
     Thunk Thunk
   | Frozen State Thunk
+  | Matched Thunk Pattern Name
   | -- Residual formulae
     Residual Residual
   | -- Actions
@@ -142,13 +143,36 @@ evaluateBind g b = evaluateBind' g g b
 evaluateActionBind :: Env -> Bind -> Eval Env
 evaluateActionBind g (Bind (Direct (VarP n _)) _) = pure (M.insert n (Action n [] Nothing) g)
 evaluateActionBind g (Bind (FunP n _ _) _) = pure (M.insert n (Action n [] Nothing) g)
+evaluateActionBind g (Bind _ _) = error "impossible"
 
 evaluateBind' :: Env -> Env -> Bind -> Eval Env
-evaluateBind' g g' (Bind (Direct (VarP n p)) e) = M.insert n <$> evaluateBody g' e <*> pure g
+evaluateBind' g g' (Bind (Direct (VarP n _)) e) = M.insert n <$> evaluateBody g' e <*> pure g
+evaluateBind' g g' (Bind (Direct pat) e) =  do 
+  Thunk t <- evaluateBody g' e
+  pure (M.union (M.fromList (map (\v -> (v, Matched t pat v)) (patternVars pat))) g)
 evaluateBind' g g' (Bind (FunP n p pats) e) = pure (M.insert n (Closure (n, p, 0) g' pats e) g)
 
-withPatterns :: Pattern -> Value -> Env -> Eval Env
-withPatterns (VarP n p) v g = pure (M.insert n v g)
+withPatterns :: State -> Pattern -> Value -> Env -> Eval (Maybe Env)
+withPatterns s (VarP n p) v g = pure (Just $ M.insert n v g)
+withPatterns s (ListP p ps) v g = do 
+  v' <- force s v
+  case v' of
+    List ls | length ls == length ps -> withPatternses s ps ls g
+    _ -> pure Nothing 
+withPatterns s (ActionP n p ps) v g = do 
+  v' <- force s v
+  case v' of
+    Action n' ls _ | n == n' && length ls == length ps -> withPatternses s ps ls g
+    _ -> pure Nothing 
+
+withPatternses :: State -> [Pattern] -> [Value] -> Env -> Eval (Maybe Env)
+withPatternses _ [] _ g = pure $ Just g
+withPatternses _ _ [] g = pure $ Just g
+withPatternses s (p:ps) (v:vs) g = do
+  mg' <- withPatterns s p v g
+  case mg' of 
+    Nothing -> pure Nothing
+    Just g' -> withPatternses s ps vs g'
 
 delayedEvaluate :: State -> Env -> Expr Pattern -> Eval Value
 -- note that any call to "evaluate" here must not in turn call "force" or we will get dangerous strictness.
@@ -180,11 +204,14 @@ app s v v2 =
       v2' <- force s v2
       pure (Action a (args ++ [v2]) t)
     Closure (n, p, ai) g' [pat] body -> do
-      g'' <- withPatterns pat v2 g'
-      evaluateBody g'' body -- If we want backtraces, add (n,p,ai) to a stack while running this
+      mg'' <- withPatterns s pat v2 g'
+      case mg'' of Nothing -> pure Null
+                   Just g'' -> evaluateBody g'' body -- If we want backtraces, add (n,p,ai) to a stack while running this
     Closure (n, p, ai) g' (pat : pats) body -> do
-      g'' <- withPatterns pat v2 g'
-      pure (Closure (n, p, ai + 1) g'' pats body)
+      mg'' <- withPatterns s pat v2 g'
+      case mg'' of Nothing -> pure Null
+                   Just g'' -> pure (Closure (n, p, ai + 1) g'' pats body)
+    Null -> pure Null
 
 evaluate :: State -> Env -> Expr Pattern -> Eval Value
 evaluate s g (Projection e t) = do
@@ -210,8 +237,10 @@ evaluate s g (ListLiteral p ls) = do
   pure (List vs)
 evaluate s g (Freeze p pat e1 e2) = do
   v1 <- Frozen s <$> newThunk g e1
-  g' <- withPatterns pat v1 g
-  evaluate s g' e2
+  mg' <- withPatterns s pat v1 g
+  case mg' of 
+    Just g' -> evaluate s g' e2
+    _ -> error "Pattern match failure in freeze"
 
 forceThunk :: Thunk -> State -> Eval Value
 forceThunk (T g e r) s = do
@@ -226,6 +255,12 @@ forceThunk (T g e r) s = do
 force :: State -> Value -> Eval Value
 force _ (Frozen s' t) = forceThunk t s'
 force s (Thunk t) = forceThunk t s
+force s (Matched t pat v) = do
+  val <- forceThunk t s
+  g <- withPatterns s pat val mempty
+  case g >>= M.lookup v of 
+    Nothing -> error "Pattern match failure in let binding"
+    Just v' -> force s v'
 force s v = pure v
 
 makePrimAction :: State -> Value -> Value -> Value -> Value -> Eval Value
@@ -370,6 +405,7 @@ resetThunks (Op o vs) = Op o <$> traverse resetThunks vs
 resetThunks (Thunk t) = Thunk <$> resetThunk t
 resetThunks (Frozen s t) = pure $ Frozen s t -- should be safe? Never need to re-evaluate frozen stuff.
 resetThunks (Residual r) = pure $ Residual r -- that all gets cleared out later
+resetThunks (Matched t p v) = Matched <$> resetThunk t <*> pure p <*> pure v
 resetThunks (Object o) = Object <$> traverse resetThunks o
 resetThunks (List o) = List <$> traverse resetThunks o
 resetThunks (Action n o t) = Action n <$> traverse resetThunks o <*> pure t
