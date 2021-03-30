@@ -12,6 +12,7 @@ import qualified Data.Text as Text
 import GHC.Generics (Generic)
 import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax
+import Control.Exception(Exception,throw)
 
 type Env = M.HashMap Name Value
 
@@ -126,9 +127,14 @@ data Value
   | LitVal Lit
   deriving (Show)
 
-data EvalError = Error String
+data EvalError = Error String deriving (Show)
 
 type Eval = IO
+
+instance Exception EvalError
+
+evalError :: String -> a
+evalError = throw . Error
 
 evaluateBody :: Env -> Body -> Eval Value
 evaluateBody g (Local b r) = evaluateBind g b >>= \g' -> evaluateBody g' r
@@ -143,7 +149,7 @@ evaluateBind g b = evaluateBind' g g b
 evaluateActionBind :: Env -> Bind -> Eval Env
 evaluateActionBind g (Bind (Direct (VarP n _)) _) = pure (M.insert n (Action n [] Nothing) g)
 evaluateActionBind g (Bind (FunP n _ _) _) = pure (M.insert n (Action n [] Nothing) g)
-evaluateActionBind g (Bind _ _) = error "impossible"
+evaluateActionBind g (Bind _ _) = evalError "impossible"
 
 evaluateBind' :: Env -> Env -> Bind -> Eval Env
 evaluateBind' g g' (Bind (Direct (VarP n _)) e) = M.insert n <$> evaluateBody g' e <*> pure g
@@ -219,16 +225,16 @@ evaluate s g (Projection e t) = do
   case v' of
     List (Object m : _) | Just v <- M.lookup t m -> pure v
     Object m | Just v <- M.lookup t m -> pure v
-    _ -> error "TODO proper error"
+    _ -> evalError "Cannot take projection of a non-object (or list of objects)"
 evaluate s g (Var p t) = case M.lookup t g of
   Just v -> pure v
-  Nothing -> error ("Impossible: variable '" <> Text.unpack t <> "' not found in environment")
+  Nothing -> evalError ("Impossible: variable '" <> Text.unpack t <> "' not found in environment (type checker found it though)")
 evaluate s g (App e1 e2) = do
   v <- force s =<< evaluate s g e1
   v2 <- delayedEvaluate s g e2 -- TODO avoid thunking everything when safe
   app s v v2
 evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l s of
-  Nothing -> error ("Can't find '" <> Text.unpack sel <> "' in the state (analysis failed?)")
+  Nothing -> evalError ("Can't find '" <> Text.unpack sel <> "' in the state (analysis failed?)")
   Just ls -> pure ls
 evaluate s g (Literal p l) = pure (LitVal l)
 evaluate s g (Lam p pat e) = pure (Closure ("fun", p, 0) g [pat] (Done e))
@@ -240,7 +246,7 @@ evaluate s g (Freeze p pat e1 e2) = do
   mg' <- withPatterns s pat v1 g
   case mg' of 
     Just g' -> evaluate s g' e2
-    _ -> error "Pattern match failure in freeze"
+    _ -> evalError "Pattern match failure in freeze"
 
 forceThunk :: Thunk -> State -> Eval Value
 forceThunk (T g e r) s = do
@@ -259,7 +265,7 @@ force s (Matched t pat v) = do
   val <- forceThunk t s
   g <- withPatterns s pat val mempty
   case g >>= M.lookup v of 
-    Nothing -> error "Pattern match failure in let binding"
+    Nothing -> evalError "Pattern match failure in let binding"
     Just v' -> force s v'
 force s v = pure v
 
@@ -278,7 +284,7 @@ ternaryOp IfThenElse s v1 v2 v3 = do
   case v1' of
     Trivial -> pure v2
     Absurd -> pure v3
-    _ -> error "Expected boolean in if condition"
+    _ -> evalError "Expected boolean in if condition"
 
 areEqual :: State -> Value -> Value -> Eval Bool
 areEqual s v1 v2 = do
@@ -287,12 +293,12 @@ areEqual s v1 v2 = do
   areEqual' v1' v2'
   where
     areEqual' :: Value -> Value -> Eval Bool
-    areEqual' (Closure {}) _ = error "Cannot compare functions for equality"
-    areEqual' _ (Closure {}) = error "Cannot compare functions for equality"
-    areEqual' (Op {}) _ = error "Cannot compare functions for equality"
-    areEqual' _ (Op {}) = error "Cannot compare functions for equality"
-    areEqual' (Residual {}) _ = error "Cannot compare temporal formulae for equality"
-    areEqual' _ (Residual {}) = error "Cannot compare temporal formulae for equality"
+    areEqual' (Closure {}) _ = evalError "Cannot compare functions for equality"
+    areEqual' _ (Closure {}) = evalError "Cannot compare functions for equality"
+    areEqual' (Op {}) _ = evalError "Cannot compare functions for equality"
+    areEqual' _ (Op {}) = evalError "Cannot compare functions for equality"
+    areEqual' (Residual {}) _ = evalError "Cannot compare temporal formulae for equality"
+    areEqual' _ (Residual {}) = evalError "Cannot compare temporal formulae for equality"
     areEqual' Trivial Trivial = pure True
     areEqual' Absurd Absurd = pure True
     areEqual' Null Null = pure True
@@ -312,14 +318,14 @@ unaryOp Always s v@(Thunk (T g e _)) = do
     Residual r -> do
       residual <- Next AssumeTrue <$> newThunk g e
       pure (Residual (Conjunction r residual))
-    _ -> error "Always expects formula"
+    _ -> evalError "Always expects formula"
 unaryOp Not s v = do
   v' <- force s v
   case v' of
     Absurd -> pure Trivial
     Trivial -> pure Absurd
     Residual f -> Residual <$> negateResidual f
-    _ -> error ("Not expects boolean, got: " <> show v')
+    _ -> evalError ("Not expects boolean, got: " <> show v')
   where
     negateResidual (Conjunction a b) = Disjunction <$> negateResidual a <*> negateResidual b
     negateResidual (Disjunction a b) = Conjunction <$> negateResidual a <*> negateResidual b
@@ -329,7 +335,7 @@ unaryOp Not s v = do
 unaryOp NextF s (Thunk t) = pure (Residual (Next AssumeFalse t))
 unaryOp NextT s (Thunk t) = pure (Residual (Next AssumeTrue t))
 unaryOp NextD s (Thunk t) = pure (Residual (Next Demand t))
-unaryOp op _ arg = error ("Impossible unary operation " <> show op <> " on: " <> show arg)
+unaryOp op _ arg = evalError ("Impossible unary operation " <> show op <> " on: " <> show arg)
 
 binaryOp :: PrimOp -> State -> Value -> Value -> Eval Value
 binaryOp And s v1 v2 = do
@@ -343,8 +349,8 @@ binaryOp And s v1 v2 = do
         Absurd -> pure Absurd
         Trivial -> pure (Residual r)
         Residual r' -> pure (Residual (Conjunction r r'))
-        _ -> error "And expects formulae"
-    _ -> error "And expects formulae"
+        _ -> evalError "And expects formulae"
+    _ -> evalError "And expects formulae"
 binaryOp Or s v1 v2 = do
   v1' <- force s v1
   case v1' of
@@ -356,8 +362,8 @@ binaryOp Or s v1 v2 = do
         Trivial -> pure Trivial
         Absurd -> pure (Residual r)
         Residual r' -> pure (Residual (Disjunction r r'))
-        _ -> error "Or expects formulae"
-    _ -> error "Or expects formulae"
+        _ -> evalError "Or expects formulae"
+    _ -> evalError "Or expects formulae"
 binaryOp Equals s v1 v2 = areEqual s v1 v2 >>= \b -> if b then pure Trivial else pure Absurd
 binaryOp Addition s v1 v2 = binaryNumOp s v1 v2 Addition
 binaryOp Subtraction s v1 v2 = binaryNumOp s v1 v2 Subtraction
@@ -366,16 +372,16 @@ binaryOp WhenAct s v1 v2 = do
   case v2' of
     Trivial -> pure v1
     Absurd -> pure Null
-    _ -> error "Expected boolean in when condition"
+    _ -> evalError "Expected boolean in when condition"
 binaryOp TimeoutAct s v1 v2 = do
   v1' <- force s v1
   v2' <- force s v2
   t <- case v2' of
     LitVal (IntLit i) -> pure i
-    _ -> error "Timeout expects an integer timeout"
+    _ -> evalError "Timeout expects an integer timeout"
   case v1' of
     Action act args _ -> pure (Action act args (Just t))
-    _ -> error "Timeout expects an action"
+    _ -> evalError "Timeout expects an action"
 
 binaryNumOp :: State -> Value -> Value -> PrimOp -> IO Value
 binaryNumOp s v1 v2 op = do
@@ -388,7 +394,7 @@ binaryNumOp s v1 v2 op = do
     (LitVal (FloatLit i1), LitVal (FloatLit i2))
       | op == Division -> pure (LitVal (FloatLit (i1 / i2)))
       | otherwise -> pure (LitVal (FloatLit (numOp op i1 i2)))
-    _ -> error (show op <> " expects matching numeric types, but got: " <> show v1 <> " and " <> show v2)
+    _ -> evalError (show op <> " expects matching numeric types, but got: " <> show v1 <> " and " <> show v2)
   where
     numOp Addition = (+)
     numOp Subtraction = (-)

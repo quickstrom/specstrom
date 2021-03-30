@@ -2,6 +2,7 @@ module REPL where
 import Util 
 import Data.Text (Text, pack)
 import System.Console.Haskeline 
+import System.Console.Haskeline.MonadException
 import qualified Data.Aeson as JSON
 import qualified Specstrom.Evaluator as Evaluator
 import qualified Specstrom.Analysis  as Analysis 
@@ -35,7 +36,7 @@ loop :: Options ->
   Evaluator.State -> 
   Analysis.AnalysisEnv -> 
   InputT IO () 
-loop opts tbl g e e' s ae = do 
+loop opts tbl g e e' s ae = flip catch (\(Evaluator.Error er) -> outputStrLn er >> loop opts tbl g e e' s ae) $ do 
     str <- getInputLine "> "
     case str of 
         Nothing -> pure ()
