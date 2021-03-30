@@ -41,16 +41,14 @@ data PrimOp
   | NextT
   | NextD
   | Always
-  | --  | ClickAct
-    --  | ChangedAct
-    Not
+  | Not
   | -- binary
     And
   | Or
   | Equals
   | WhenAct
-  | --  | TimeoutAct
-    Addition
+  | TimeoutAct
+  | Addition
   | Subtraction
   | Multiplication
   | Division
@@ -63,7 +61,7 @@ data PrimOp
 primOpVar :: PrimOp -> Name
 primOpVar op = case op of
   WhenAct -> "_when_"
-  --  TimeoutAct -> "_timeout_"
+  TimeoutAct -> "_timeout_"
   NextF -> "nextF_"
   NextT -> "nextT_"
   NextD -> "next_"
@@ -79,8 +77,6 @@ primOpVar op = case op of
   IfThenElse -> "if_then_else_"
   MkPrimAction -> "#act"
 
---  ClickAct -> "click!"
---  ChangedAct -> "changed?"
 
 emptyEnv :: Env
 emptyEnv = M.fromList []
@@ -93,8 +89,6 @@ basicEnv =
       [ ("true", Trivial),
         ("false", Absurd),
         ("null", Null)
-        --        ("noop!", Action (A Noop Nothing)),
-        --        ("loaded?", Action (A Loaded Nothing))
       ]
     primOps =
       [ (primOpVar op, Op op []) | op <- enumFromTo minBound maxBound
@@ -122,7 +116,7 @@ data Value
   | -- Residual formulae
     Residual Residual
   | -- Actions
-    Action Name [Value]
+    Action Name [Value] (Maybe Int)
   | -- Values
     Trivial
   | Absurd
@@ -147,8 +141,8 @@ evaluateBind :: Env -> Bind -> Eval Env
 evaluateBind g b = evaluateBind' g g b
 
 evaluateActionBind :: Env -> Bind -> Eval Env
-evaluateActionBind g (Bind (Direct (VarP n _)) _) = pure (M.insert n (Action n []) g)
-evaluateActionBind g (Bind (FunP n _ _) _) = pure (M.insert n (Action n []) g)
+evaluateActionBind g (Bind (Direct (VarP n _)) _) = pure (M.insert n (Action n [] Nothing) g)
+evaluateActionBind g (Bind (FunP n _ _) _) = pure (M.insert n (Action n [] Nothing) g)
 
 evaluateBind' :: Env -> Env -> Bind -> Eval Env
 evaluateBind' g g' (Bind (Direct (VarP n p)) e) = M.insert n <$> evaluateBody g' e <*> pure g
@@ -183,9 +177,9 @@ app s v v2 =
       | o /= MkPrimAction -> ternaryOp o s v1 v1' v2
       | otherwise -> pure (Op o [v1, v1', v2])
     Op MkPrimAction [v11, v12, v13] -> makePrimAction s v11 v12 v13 v2
-    Action a args -> do
+    Action a args t -> do
       v2' <- force s v2
-      pure (Action a (args ++ [v2]))
+      pure (Action a (args ++ [v2]) t)
     Closure (n, p, ai) g' [pat] body -> do
       g'' <- withPatterns pat v2 g'
       evaluateBody g'' body -- If we want backtraces, add (n,p,ai) to a stack while running this
@@ -269,44 +263,11 @@ areEqual s v1 v2 = do
     areEqual' Absurd Absurd = pure True
     areEqual' Null Null = pure True
     areEqual' (List as) (List bs) | length as == length bs = and <$> zipWithM (areEqual s) as bs
-    areEqual' (Action n as) (Action m bs) | n == m && length as == length bs = and <$> zipWithM (areEqual s) as bs
+    areEqual' (Action n as x) (Action m bs y) | n == m && length as == length bs && x == y = and <$> zipWithM (areEqual s) as bs
     areEqual' (Object as) (Object bs) = undefined -- for now
     areEqual' _ _ = pure False
 
 unaryOp :: PrimOp -> State -> Value -> Eval Value
-{- unaryOp ClickAct s v =
-  do
-    v' <- force s v
-    let vs = case v' of
-          Object m -> [Object m]
-          List ms -> ms
-          _ -> error "click expects element(s)"
-    let vs' = flip filter vs $ \x -> case x of
-          Object m -> case M.lookup "disabled" m of
-            Just Absurd -> True
-            _ -> False
-    as <- flip traverse vs' $ \v -> case v of
-      Object m -> case M.lookup "ref" m of
-        Just (LitVal (StringLit s)) -> pure (Action (A (Click s) Nothing))
-        _ -> error "Cannot find ref of element for click"
-      _ -> error "click expects element(s)"
-    case as of
-      [a] -> pure a
-      as -> pure (List as) -}
-{- unaryOp ChangedAct s v = do
-  v' <- force s v
-  let vs = case v' of
-        Object m -> [Object m]
-        List ms -> ms
-        _ -> error "changed expects element(s)"
-  as <- flip traverse vs $ \v -> case v of
-    Object m -> case M.lookup "ref" m of
-      Just (LitVal (StringLit s)) -> pure (Action (A (Changed s) Nothing))
-      _ -> error "Cannot find ref of element for changed"
-    _ -> error "changed expects element(s)"
-  case as of
-    [a] -> pure a
-    as -> pure (List as) -}
 unaryOp Always s v@(Thunk (T g e _)) = do
   v' <- force s v
   case v' of
@@ -373,18 +334,15 @@ binaryOp WhenAct s v1 v2 = do
     Absurd -> pure Null
     _ -> error "Expected boolean in when condition"
 
-{- binaryOp TimeoutAct s v1 v2 = do
+binaryOp TimeoutAct s v1 v2 = do
   v1' <- force s v1
   v2' <- force s v2
-  t <- case v2 of
+  t <- case v2' of
     LitVal (IntLit i) -> pure i
     _ -> error "Timeout expects an integer timeout"
-  case v1 of
-    Action (A act Nothing) -> pure (Action (A act (Just t)))
-    Action (A _ (Just _)) -> error "Action already has a timeout"
-    List vs -> List <$> traverse (\x -> binaryOp TimeoutAct s x v2') vs
+  case v1' of
+    Action act args _ -> pure (Action act args (Just t))
     _ -> error "Timeout expects an action"
--}
 
 binaryNumOp :: State -> Value -> Value -> PrimOp -> IO Value
 binaryNumOp s v1 v2 op = do
@@ -416,7 +374,7 @@ resetThunks (Frozen s t) = pure $ Frozen s t -- should be safe? Never need to re
 resetThunks (Residual r) = pure $ Residual r -- that all gets cleared out later
 resetThunks (Object o) = Object <$> traverse resetThunks o
 resetThunks (List o) = List <$> traverse resetThunks o
-resetThunks (Action n o) = Action n <$> traverse resetThunks o
+resetThunks (Action n o t) = Action n <$> traverse resetThunks o <*> pure t
 resetThunks (Absurd) = pure Absurd
 resetThunks (Trivial) = pure Trivial
 resetThunks (Null) = pure Null

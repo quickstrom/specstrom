@@ -139,11 +139,11 @@ extractActions act actionEnv s v = do
       asInteger (Evaluator.LitVal (Syntax.IntLit i)) = Just i
       asInteger _ = Nothing
   case v' of
-    Evaluator.Action n args ->
+    Evaluator.Action n args t ->
       case M.lookup n actionEnv of
         Just v1 -> do
           r <- Evaluator.appAll s v1 args
-          map (second (const $ (n, args))) <$> extractActions (Just (n, args)) actionEnv s r
+          map (first (applyTimeout t) . second (const $ (n, args))) <$> extractActions (Just (n, args)) actionEnv s r
         Nothing -> error $ "action not found"
     Evaluator.Object mp -> case act of
       Just (n, args) ->
@@ -156,7 +156,9 @@ extractActions act actionEnv s v = do
       Nothing -> pure []
     Evaluator.List ls -> concat <$> mapM (extractActions act actionEnv s) ls
     _ -> pure []
-
+  where 
+    applyTimeout Nothing = Prelude.id
+    applyTimeout (Just t) = \x -> x { timeout = Just t }
 checkProp :: Receive ExecutorMessage -> Send InterpreterMessage -> Evaluator.Env -> Dep -> Evaluator.Value -> [Evaluator.Value] -> Maybe (Evaluator.Value) -> IO Result
 checkProp input output actionEnv dep initialFormula actions expectedEvent = do
   send output (Start dep)
