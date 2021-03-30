@@ -1,0 +1,13 @@
+action click!(x) = #act("click",false,[x.ref],null) when x.enabled;
+
+action changed?(x) = #act("changed",true,[x.ref],null);
+
+action noop! = #act("noop",false,[],null);
+
+// bindings can take arguments.
+let transition(a, b) = a && next b;
+
+syntax _~>_ 5;
+let a ~> b = transition(a, b);
+
+let unchanged(x) = freeze a = x. next (x == a); 

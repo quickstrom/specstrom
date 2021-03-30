@@ -17,7 +17,7 @@ import System.Exit
 import System.IO (BufferMode (LineBuffering), hPutStrLn, hSetBuffering, stderr, stdout)
 
 searchPaths :: [FilePath]
-searchPaths = ["."]
+searchPaths = ["ulib", "."]
 
 load :: Text -> IO [TopLevel]
 load f = do
