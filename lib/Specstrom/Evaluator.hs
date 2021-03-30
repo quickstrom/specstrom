@@ -45,13 +45,13 @@ data PrimOp
   | -- binary
     And
   | Or
-  | Equals
   | WhenAct
   | TimeoutAct
   | Addition
   | Subtraction
   | Multiplication
   | Division
+  | Equals
   | -- ternary
     IfThenElse
   | -- quad

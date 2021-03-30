@@ -8,12 +8,26 @@ module Specstrom.PrettyPrinter where
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Text (Text)
 import qualified Data.Text as Text
+import qualified Data.HashMap.Strict as M
 import Data.Text.Prettyprint.Doc
 import Prettyprinter.Render.Terminal
 import Specstrom.Lexer
 import Specstrom.Parser
 import Specstrom.Syntax
 import Specstrom.TypeInf
+import qualified Specstrom.Evaluator as Evaluator
+
+
+prettyValue :: Evaluator.Value -> Doc AnsiStyle
+prettyValue (Evaluator.Action n vs _) = pretty n <> "(" <> sep (punctuate comma (map prettyValue vs)) <> ")"
+prettyValue (Evaluator.Closure (n,_,i) _ _ _) = "<<function:" <> pretty n <> "|" <> pretty (show i) <> ">>"
+prettyValue (Evaluator.Trivial) = "true"
+prettyValue (Evaluator.Absurd) = "false"
+prettyValue (Evaluator.Null) = "null"
+prettyValue (Evaluator.List vs) = "[" <> sep (punctuate comma (map prettyValue vs)) <> "]"
+prettyValue (Evaluator.LitVal l) = prettyLit l
+prettyValue (Evaluator.Object o) = "{" <> sep (punctuate comma (map (\(k,v) -> pretty k <> ":" <+> prettyValue v) (M.toList o))) <> "}"
+prettyValue v = pretty (show v) -- for now
 
 prettyPos :: Position -> Doc AnsiStyle
 prettyPos (f, l, c) = pretty f <> ":" <> pretty l <> ":" <> pretty c
@@ -193,107 +207,6 @@ prettyExpr trm = renderTerm True trm
     infixTerms (Text.uncons -> Just ('_', str)) (x : xs) = renderTerm False x : infixTerms str xs
     infixTerms str args | (first, rest) <- Text.span (/= '_') str = ident first : infixTerms rest args
 
-{-
-prettyEvalError :: EvalError -> Doc AnsiStyle
-prettyEvalError = \case
-  ScopeError pos name -> errorMessage pos "name not in scope" [pretty name]
-  ModuloOnFloats d1 d2 -> errorMessageNoPos "invalid modulo on floats" [pretty d1 <+> "%" <+> pretty d2]
-  NotAFunction v -> errorMessageNoPos ("not a function") [prettyValue v]
-  BinaryOpOnInvalidTypes op v1 v2 -> errorMessageNoPos ("binary operation" <+> prettyBinaryOp op <+> "is not valid on parameters:") [prettyValue v1, prettyValue v2]
-  UnaryOpOnInvalidTypes op v -> errorMessageNoPos ("unary operation" <+> prettyUnaryOp op <+> "is not valid on parameters:") [prettyValue v]
-  FreezeLHSNotVar pos -> errorMessage pos "left-hand side of freeze is not a variable name" []
-  FreezeRHSNotValue pos -> errorMessage pos "right-hand side of freeze is not a value" []
-  FreezeInNotFormula pos -> errorMessage pos "body of freeze is not a formula" []
-  VariableAlreadyDefined name pos -> errorMessage pos ("variable already defined:" <+> pretty name) []
-
-prettyFormulaExpr :: Int -> FormulaExpr Accessor -> Doc AnsiStyle
-prettyFormulaExpr p = \case
-  LocExpr _name _pos expr -> prettyFormulaExpr p expr
-  Accessor a -> parensIf (p >= 0) ("access" <+> literal (enclose "`" "`" (pretty a)))
-  Op op args ->
-    case args of
-      [e] -> parensIf (p >= opPrecedence op) (prettyUnaryOp op <+> prettyFormulaExpr (opPrecedence op) e)
-      [e1, e2] -> parensIf (p >= opPrecedence op) (prettyFormulaExpr (opPrecedence op) e1 <+> prettyBinaryOp op <+> prettyFormulaExpr (opPrecedence op) e2)
-      _ -> "<invalid>"
-  Constant val -> prettyIValue val
-  FreezeVar name _ -> pretty name
-
-opPrecedence :: Op -> Int
-opPrecedence = \case
-  NotOp -> 6
-  AlwaysOp -> 6
-  EventuallyOp -> 6
-  NextOp -> 6
-  MkAccessor -> 1
-  Equals -> 7
-  NotEquals -> 7
-  Plus -> 8
-  Times -> 8
-  Divide -> 8
-  Modulo -> 8
-  Less -> 7
-  LessEq -> 7
-  Greater -> 7
-  GreaterEq -> 7
-  AndOp -> 4
-  OrOp -> 3
-  ImpliesOp -> 2
-  UntilOp -> 5
-
-prettyUnaryOp :: Op -> Doc ann
-prettyUnaryOp NotOp = "not"
-prettyUnaryOp AlwaysOp = "always"
-prettyUnaryOp EventuallyOp = "eventually"
-prettyUnaryOp NextOp = "next"
-prettyUnaryOp MkAccessor = "access"
-
-prettyBinaryOp :: Op -> Doc ann
-prettyBinaryOp Equals = "=="
-prettyBinaryOp NotEquals = "!="
-prettyBinaryOp Plus = "+"
-prettyBinaryOp Times = "*"
-prettyBinaryOp Divide = "/"
-prettyBinaryOp Modulo = "%"
-prettyBinaryOp Less = "<"
-prettyBinaryOp LessEq = "<="
-prettyBinaryOp Greater = ">"
-prettyBinaryOp GreaterEq = ">="
-prettyBinaryOp AndOp = "&&"
-prettyBinaryOp OrOp = "||"
-prettyBinaryOp ImpliesOp = "==>"
-prettyBinaryOp UntilOp = "until"
-
-prettyIValue :: IValue -> Doc AnsiStyle
-prettyIValue = \case
-  LitVal lit -> prettyLit lit
-  BoolVal True -> "true"
-  BoolVal False -> "false"
-  Null -> "null"
-
-prettyValue :: Value -> Doc AnsiStyle
-prettyValue = \case
-  Independent v -> prettyIValue v
-  StateDependent _ expr -> prettyFormulaExpr 0 expr
-  Formula _ f -> prettyFormula 0 f
-  Closure _pos _env _args _body -> ""
-  PartialOp _op _params -> "<partial op>"
-
-prettyFormula :: Int -> Formula Accessor -> Doc AnsiStyle
-prettyFormula p = \case
-  Atomic e -> prettyFormulaExpr p e
-  Until f1 f2 -> parensIf (p >= 5) (prettyFormula 5 f1 <+> "until" <+> prettyFormula 5 f2)
-  Not f -> parensIf (p >= 6) ("not" <+> prettyFormula 6 f)
-  And f1 f2 -> parensIf (p >= 4) (prettyFormula 4 f1 <> line <> "&&" <+> align (prettyFormula 4 f2))
-  Or f1 f2 -> parensIf (p >= 3) (prettyFormula 3 f1 <> line <> "||" <+> align (prettyFormula 3 f2))
-  Implies f1 f2 -> parensIf (p >= 2) (prettyFormula 2 f1 <+> "==>" <+> prettyFormula 2 f2)
-  Always f -> parens ("always" <+> prettyFormula 6 f)
-  Eventually f -> parensIf (p >= 6) ("eventually" <+> prettyFormula 6 f)
-  Next f -> parensIf (p >= 6) ("next" <+> prettyFormula 6 f)
-  Trivial -> "true"
-  Absurd -> "false"
-  LocFormula _name _pos f -> prettyFormula p f
-  FreezeIn _pos name e f -> parensIf (p >= 0) (keyword "freeze" <+> pretty name <+> keyword "=" <+> prettyFormulaExpr 0 e <+> keyword "." <> prettyFormula 0 f)
--}
 parensIf :: Bool -> Doc ann -> Doc ann
 parensIf True = parens . align
 parensIf False = id

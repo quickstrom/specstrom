@@ -6,7 +6,6 @@ import quickstrom;
 // All other syntax is user-definable using syntax-keywords using mix-fix operators.
 // Note that this means spaces between symbols and words is important. a&&b is not a && b!
 
-action click!(x) = #act("click",false,[x.ref],null) when x.enabled;
 
 let unchanged(x) = freeze a = x. next (x == a); 
 
@@ -26,8 +25,6 @@ let paused =
 // bindings can take arguments.
 let transition(a, b) = a && next b;
 let [a,b] = [3,4];
-syntax _~>_ 5;
-let a ~> b = transition(a, b);
 
 action myAction! = click!(`#hello`);
 

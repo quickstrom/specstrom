@@ -67,6 +67,8 @@ executable specstrom
   -- other-extensions:
   build-depends:       prettyprinter-ansi-terminal
                      , specstrom
+                     , haskeline
+  other-modules:       REPL, Util
 
 test-suite specstrom-test
   import:              shared

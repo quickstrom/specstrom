@@ -55,9 +55,14 @@ builtInTypes =
       --    ("noop!", Ty Value),
       --    ("loaded?", Ty Value),
       ("_when_", val3),
-      --    ("_timeout_", val3),
+      ("_timeout_", val3),
       ("_||_", val3),
       ("_&&_", val3),
+      ("_+_", val3),
+      ("_-_", val3),
+      ("_/_", val3),
+      ("_*_", val3),
+      ("_%_", val3),
       ("nextF_", val2),
       ("nextT_", val2),
       ("next_", val2),
@@ -72,9 +77,9 @@ builtInTypes =
     val3 = Ty (Arrow Value (Arrow Value Value))
     val2 = Ty (Arrow Value Value)
 
-data Type = Arrow Type Type | Value | TyVar Name
+data Type = Arrow Type Type | Value | TyVar Name deriving (Show)
 
-data QType = Forall Name QType | Ty Type
+data QType = Forall Name QType | Ty Type deriving (Show)
 
 data TypeErrorBit = StrE Text | VarNameE Name | TypeE Type | PtnE Pattern
 
@@ -183,7 +188,7 @@ inferFun g (VarP n _ : rest) bod = do
   pure (Arrow (subst s alpha) t, s)
 inferFun g (pat: rest) bod = do
   let g' = M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) g
-  (t, s) <- inferFun g rest bod
+  (t, s) <- inferFun g' rest bod
   pure (Arrow Value t, s)
 
 inferExp :: Context -> Expr Pattern -> TC (Type, Subst)
@@ -233,6 +238,9 @@ inferExpsValue g (e : es) = do
   let ss = s <> s'
   s'' <- inferExpsValue (substGamma ss g) es
   pure (ss <> s'')
+
+inferExpImmediate :: Context -> Expr Pattern -> Either (Position, [TypeErrorBit]) Type
+inferExpImmediate g e = runTC (fst <$> inferExp g e)
 
 inferTopLevels :: Context -> [TopLevel] -> Either (Position, [TypeErrorBit]) Context
 inferTopLevels g [] = pure g
