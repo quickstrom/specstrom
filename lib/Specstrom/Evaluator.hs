@@ -14,6 +14,7 @@ import qualified Data.Text as Text
 import GHC.Generics (Generic)
 import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax
+import Data.Fixed(mod')
 
 type Env = M.HashMap Name Value
 
@@ -53,6 +54,12 @@ data PrimOp
   | Subtraction
   | Multiplication
   | Division
+  | Modulo
+  | LessEq
+  | Less
+  | GreaterEq
+  | Greater
+  | NotEquals
   | Equals
   | -- HOFs (binary)
     Map
@@ -76,6 +83,12 @@ primOpVar op = case op of
   And -> "_&&_"
   Or -> "_||_"
   Equals -> "_==_"
+  NotEquals -> "_!=_"
+  LessEq -> "_<=_"
+  Less -> "_<_"
+  GreaterEq -> "_>=_"
+  Greater -> "_>_"
+  Modulo -> "_%_"
   Addition -> "_+_"
   Subtraction -> "_-_"
   Multiplication -> "_*_"
@@ -398,8 +411,16 @@ binaryOp Or s v1 v2 = do
         _ -> evalError "Or expects formulae"
     _ -> evalError "Or expects formulae"
 binaryOp Equals s v1 v2 = areEqual s v1 v2 >>= \b -> if b then pure Trivial else pure Absurd
+binaryOp NotEquals s v1 v2 = areEqual s v1 v2 >>= \b -> if b then pure Absurd else pure Trivial
+binaryOp Less s v1 v2 = binaryCmpOp s v1 v2 Less
+binaryOp Greater s v1 v2 = binaryCmpOp s v1 v2 Greater
+binaryOp LessEq s v1 v2 = binaryCmpOp s v1 v2 LessEq
+binaryOp GreaterEq s v1 v2 = binaryCmpOp s v1 v2 GreaterEq
 binaryOp Addition s v1 v2 = binaryNumOp s v1 v2 Addition
 binaryOp Subtraction s v1 v2 = binaryNumOp s v1 v2 Subtraction
+binaryOp Division s v1 v2 = binaryNumOp s v1 v2 Division
+binaryOp Multiplication s v1 v2 = binaryNumOp s v1 v2 Multiplication
+binaryOp Modulo s v1 v2 = binaryNumOp s v1 v2 Modulo
 binaryOp WhenAct s v1 v2 = do
   v2' <- force s v2
   case v2' of
@@ -425,6 +446,26 @@ binaryOp Map s v1 v2 = do
     List ls -> List <$> (filterM notNull =<< mapM (app s v1') ls)
     r -> app s v1' v2'
 
+
+binaryCmpOp :: State -> Value -> Value -> PrimOp -> IO Value
+binaryCmpOp s v1 v2 op = do
+  v1' <- force s v1
+  v2' <- force s v2
+  let toVal x = if x then Trivial else Absurd
+  case (v1', v2') of
+    (LitVal (IntLit i1), LitVal (IntLit i2))
+      | otherwise -> pure (toVal (cmpOp op i1 i2))
+    (LitVal (FloatLit i1), LitVal (FloatLit i2))
+      | otherwise -> pure (toVal (cmpOp op i1 i2))
+    (LitVal (IntLit i1), LitVal (FloatLit i2)) -> binaryCmpOp s (LitVal (FloatLit $ fromIntegral i1)) (LitVal (FloatLit i2)) op
+    (LitVal (FloatLit i1), LitVal (IntLit i2)) -> binaryCmpOp s (LitVal (FloatLit i1)) (LitVal (FloatLit $ fromIntegral i2)) op
+    _ -> evalError (show op <> " expects numeric types, but got: " <> show v1 <> " and " <> show v2)
+  where
+    cmpOp Less = (<)
+    cmpOp Greater = (>)
+    cmpOp LessEq = (<=)
+    cmpOp GreaterEq = (>=)
+
 binaryNumOp :: State -> Value -> Value -> PrimOp -> IO Value
 binaryNumOp s v1 v2 op = do
   v1' <- force s v1
@@ -432,11 +473,15 @@ binaryNumOp s v1 v2 op = do
   case (v1', v2') of
     (LitVal (IntLit i1), LitVal (IntLit i2))
       | op == Division -> pure (LitVal (IntLit (i1 `div` i2)))
+      | op == Modulo -> pure (LitVal (IntLit (i1 `mod` i2)))
       | otherwise -> pure (LitVal (IntLit (numOp op i1 i2)))
     (LitVal (FloatLit i1), LitVal (FloatLit i2))
       | op == Division -> pure (LitVal (FloatLit (i1 / i2)))
+      | op == Modulo -> pure (LitVal (FloatLit (i1 `mod'` i2)))
       | otherwise -> pure (LitVal (FloatLit (numOp op i1 i2)))
-    _ -> evalError (show op <> " expects matching numeric types, but got: " <> show v1 <> " and " <> show v2)
+    (LitVal (IntLit i1), LitVal (FloatLit i2)) -> binaryNumOp s (LitVal (FloatLit $ fromIntegral i1)) (LitVal (FloatLit i2)) op
+    (LitVal (FloatLit i1), LitVal (IntLit i2)) -> binaryNumOp s (LitVal (FloatLit i1)) (LitVal (FloatLit $ fromIntegral i2)) op
+    _ -> evalError (show op <> " expects numeric types, but got: " <> show v1 <> " and " <> show v2)
   where
     numOp Addition = (+)
     numOp Subtraction = (-)
