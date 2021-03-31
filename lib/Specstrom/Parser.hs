@@ -258,7 +258,7 @@ grammar table = mdo
   normalProj <- rule $ atom <|> Projection <$> normalProj <*> projection
   argList <-
     rule $
-      (:) <$> normalApp <*> (isToken Comma "," *> argList <|> pure [])
+      (:) <$> expr <*> (isToken Comma "," *> argList <|> pure [])
         <|> pure []
   normalApp <-
     rule $
