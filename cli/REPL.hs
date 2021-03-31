@@ -4,6 +4,7 @@ import Control.Monad.Except
 import Control.Monad.Trans
 import qualified Data.Aeson as JSON
 import qualified Data.ByteString.Lazy.Char8 as LBS
+import Data.Foldable (foldl')
 import Data.Text (Text, pack)
 import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty, line)
 import Prettyprinter.Render.Terminal (renderIO)
@@ -17,7 +18,6 @@ import System.Console.Haskeline
 import System.Console.Haskeline.MonadException
 import System.IO (hPutStrLn, stderr, stdout)
 import Util
-import Data.Foldable (foldl')
 
 repl :: [FilePath] -> Text -> IO ()
 repl searchPaths' fp = do
@@ -32,7 +32,7 @@ defaultOpts = Opts False False []
 data Options = Opts {showTypes :: Bool, showAnalysis :: Bool, searchPaths :: [FilePath]}
 
 addSearchPath :: Options -> FilePath -> Options
-addSearchPath opts path = opts { searchPaths = path : searchPaths opts }
+addSearchPath opts path = opts {searchPaths = path : searchPaths opts}
 
 loop ::
   Options ->
