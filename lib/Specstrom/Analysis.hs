@@ -45,6 +45,7 @@ builtIns =
 
 indirect :: Annotation -> Annotation
 indirect (Value a b) = Value mempty (a <> b)
+indirect x = x
 
 mergeDirect :: Annotation -> Annotation -> Annotation
 mergeDirect (Value a _) (Function f b) = error "Impossible"

@@ -168,6 +168,9 @@ inferBind g (Bind (Direct (VarP n _)) bod) = do
   (t, s) <- inferBody g bod
   let qt = generalise g t
   pure (M.insert n qt (substGamma s g), s)
+inferBind g (Bind(Direct (IgnoreP _)) bod) = do
+  (t, s) <- inferBody g bod
+  pure (substGamma s g, s)
 inferBind g (Bind (Direct pat) bod) = do
   (t, s) <- inferBody g bod
   ss <- unify (bodyPosition bod) t Value
@@ -218,6 +221,10 @@ inferExp g (Lam p (VarP n _) e) = do
   alpha <- fresh
   (t, s) <- inferExp (M.insert n (Ty alpha) g) e
   pure (Arrow (subst s alpha) t, s)
+inferExp g (Lam p (IgnoreP _) e) = do
+  alpha <- fresh
+  (t, s) <- inferExp g e
+  pure (Arrow (subst s alpha) t, s)
 inferExp g (Lam p pat e) = do
   let g' = M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) g
   (t, s) <- inferExp g' e
@@ -229,6 +236,10 @@ inferExp g (ListLiteral _ es) = do
 inferExp g (Freeze _ (VarP n _) e1 e2) = do
   (t1, s1) <- inferExp g e1
   (t2, s2) <- inferExp (M.insert n (Ty t1) (substGamma s1 g)) e2
+  pure (t2, s1 <> s2)
+inferExp g (Freeze _ (IgnoreP _) e1 e2) = do
+  (t1, s1) <- inferExp g e1
+  (t2, s2) <- inferExp (substGamma s1 g) e2
   pure (t2, s1 <> s2)
 inferExp g (Freeze p pat e1 e2) = do
   (t1, s1) <- inferExp g e1

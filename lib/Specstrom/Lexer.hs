@@ -97,7 +97,7 @@ lexer p t
         Right ((p', IntLitTok v) : rest) <- lexer (nextCol p) cs ->
         pure $ (p', IntLitTok (- v)) : rest
     Just (i, _cs) | isDigit i -> case Text.span isDigit t of
-      (digits, Text.uncons -> Just ('.', rest)) ->
+      (digits, Text.uncons -> Just ('.', rest)) | Just (i',_) <- Text.uncons rest, isDigit i' ->
         let (decimals, rest') = Text.span (\x -> isDigit x || x `elem` ("eE+-" :: [Char])) rest
             candidate = digits <> "." <> decimals
          in case Text.double candidate of

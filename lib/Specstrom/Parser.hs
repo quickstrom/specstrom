@@ -212,8 +212,13 @@ parseBindPattern t ts = do
 
 patFromAnyExpr :: [Name] -> Expr e -> Maybe Pattern
 patFromAnyExpr t (Var p n)
+  | n == "_" = pure (IgnoreP p)
+  | n == "null" = pure (NullP p)
+  | n == "true" = pure (BoolP p True)
+  | n == "false" = pure (BoolP p False)
   | n `elem` t = pure (ActionP n p [])
   | otherwise = pure (VarP n p)
+patFromAnyExpr t (Literal p l) = pure $ LitP p l
 patFromAnyExpr t (ListLiteral p es) = ListP p <$> mapM (patFromAnyExpr t) es
 patFromAnyExpr t x@(App {}) = case peelAps x [] of
   (Var p n, args) | n `elem` t -> ActionP n p <$> mapM (patFromAnyExpr t) args

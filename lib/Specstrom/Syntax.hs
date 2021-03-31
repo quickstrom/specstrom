@@ -84,6 +84,10 @@ data Pattern
   = VarP Name Position
   | ListP Position [Pattern]
   | ActionP Name Position [Pattern]
+  | IgnoreP Position
+  | LitP Position Lit
+  | BoolP Position Bool
+  | NullP Position
   deriving (Eq, Show)
 
 bindPatternVars :: BindPattern -> [Name]
@@ -98,11 +102,19 @@ patternPos :: Pattern -> Position
 patternPos (VarP _ p) = p
 patternPos (ListP p _) = p
 patternPos (ActionP _ p _) = p
+patternPos (LitP p _) = p
+patternPos (BoolP p _) = p
+patternPos (IgnoreP p) = p
+patternPos (NullP p) = p
 
 patternVars :: Pattern -> [Name]
 patternVars (VarP n p) = [n]
 patternVars (ListP p ps) = concatMap patternVars ps
 patternVars (ActionP n p ps) = concatMap patternVars ps
+patternVars (LitP p _) = []
+patternVars (BoolP p _) = []
+patternVars (IgnoreP p) = []
+patternVars (NullP p) = []
 
 data Bind = Bind BindPattern Body
   deriving (Eq, Show)
@@ -137,6 +149,10 @@ instance MapPosition (Expr p) where
 
 instance MapPosition Pattern where
   mapPosition f (VarP name pos) = VarP name (f pos)
+  mapPosition f (IgnoreP pos) = IgnoreP (f pos)
+  mapPosition f (NullP pos) = NullP (f pos)
+  mapPosition f (BoolP pos b) = BoolP (f pos) b
+  mapPosition f (LitP pos l) = LitP (f pos) l
   mapPosition f (ListP p ps) = ListP (f p) (map (mapPosition f) ps)
   mapPosition f (ActionP n p ps) = ActionP n (f p) (map (mapPosition f) ps)
 

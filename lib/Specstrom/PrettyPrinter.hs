@@ -159,6 +159,10 @@ prettyLit (FloatLit s) = literal (pretty (show s))
 
 patternToExpr :: Pattern -> Expr TempExpr
 patternToExpr (VarP p n) = Var n p
+patternToExpr (IgnoreP p) = Var p "_"
+patternToExpr (LitP p l) = Literal p l
+patternToExpr (BoolP p l) = if l then Var p "true" else Var p "false"
+patternToExpr (NullP p) = Var p "null"
 patternToExpr (ListP p ps) = ListLiteral p (map patternToExpr ps)
 patternToExpr (ActionP n p ps) = unpeelAps (Var p n) (map patternToExpr ps)
 
@@ -186,6 +190,7 @@ prettyExpr trm = renderTerm True trm
         Var _ s -> ident s
         Literal _p l -> prettyLit l
         Projection e pr -> renderTerm False e <> projection ("." <> pr)
+        Index e e' -> renderTerm False e <> "[" <> renderTerm True e <> "]"
         App {} -> mempty -- Handled by peelAps
         ListLiteral _ ls -> "[" <> hsep (punctuate comma $ map (renderTerm True) ls) <> "]"
         Lam _ n e ->
@@ -194,10 +199,10 @@ prettyExpr trm = renderTerm True trm
         Freeze _ n e b ->
           (if outer then id else parens) $
             "freeze" <+> prettyPattern n <+> "=" <+> prettyExpr e <> "." <+> prettyExpr b
-      | (Var _ t, [Lam _ pat e2, e3]) <- peelAps t [],
-        t `elem` ["map", "any", "all"] =
+      | (Var _ name, [Lam _ pat e2, e3]) <- peelAps t [],
+        name `elem` ["map", "any", "all"] =
         (if outer then id else parens) $
-          (case t of "map" -> "for"; "any" -> "exists"; "all" -> "forall") <+> prettyPattern pat <+> "in" <+> prettyExpr e3 <> "." <+> prettyExpr e2
+          (case name of "map" -> "for"; "any" -> "exists"; "all" -> "forall"; _ -> "") <+> prettyPattern pat <+> "in" <+> prettyExpr e3 <> "." <+> prettyExpr e2
       | (Var _ n, args) <- peelAps t [],
         Text.length (Text.filter (== '_') n) == length args =
         (if outer then id else parens) $ hsep $ infixTerms n args
