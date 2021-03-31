@@ -26,6 +26,7 @@ data Expr p
   = Projection (Expr p) Text
   | Var Position Text
   | App (Expr p) (Expr p)
+  | Index (Expr p) (Expr p)
   | Literal Position Lit
   | Freeze Position p (Expr p) (Expr p)
   | Lam Position p (Expr p)
@@ -42,6 +43,7 @@ unpeelAps e xs = foldl App e xs
 exprPos :: Expr p -> Position
 exprPos (Var p _) = p
 exprPos (App e1 _e2) = exprPos e1
+exprPos (Index e1 _e2) = exprPos e1
 exprPos (Literal p _) = p
 exprPos (Projection e _) = exprPos e
 exprPos (Freeze p _ _ _) = p
@@ -127,6 +129,7 @@ instance MapPosition (Expr p) where
     Projection e name -> Projection (mapPosition f e) name
     Var pos name -> Var (f pos) name
     App e1 e2 -> App (mapPosition f e1) (mapPosition f e2)
+    Index e1 e2 -> Index (mapPosition f e1) (mapPosition f e2)
     Literal p lit -> Literal (f p) lit
     Freeze pos p e1 e2 -> Freeze pos p (mapPosition f e1) (mapPosition f e2)
     Lam pos p body -> Lam (f pos) p (mapPosition f body)

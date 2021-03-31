@@ -236,6 +236,12 @@ inferExp g (Freeze p pat e1 e2) = do
   let g' = M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) (substGamma (s1 <> ss) g)
   (t2, s2) <- inferExp g' e2
   pure (t2, s1 <> ss <> s2)
+inferExp g (Index e1 e2) = do
+  (t1,s1) <- inferExp g e1
+  s2 <- unify (exprPos e1) t1 Value
+  (t2,s3) <- inferExp (substGamma (s1 <> s2) g) e2
+  s4 <- unify (exprPos e1) t2 Value
+  pure (t2,s1 <> s2 <> s3 <> s4)
 
 inferExpsValue :: Context -> [Expr Pattern] -> TC Subst
 inferExpsValue g [] = pure mempty

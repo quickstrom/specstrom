@@ -269,6 +269,7 @@ grammar table = mdo
     rule $
       normalProj
         <|> app <$> normalApp <* lparen <*> argList <* rparen
+        <|> Index <$> normalApp <* lbrack <*> expr <* rbrack
   expr <- mixfixExpression tbl normalApp makeAp
   return expr
   where

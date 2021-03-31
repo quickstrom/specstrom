@@ -92,6 +92,7 @@ analyseBind g (Bind (FunP n _ pats) body) =
 analyseExpr :: AnalysisEnv -> Expr Pattern -> Annotation
 analyseExpr g (Projection e t) | Value d ind <- analyseExpr g e = Value (project t d) ind
 analyseExpr g (Var _ t) | Just d <- M.lookup t g = d
+analyseExpr g (Index a b) = analyseExpr g a `unionDep` depOf (analyseExpr g b)
 analyseExpr g (App a b) | Function f d <- analyseExpr g a = f (analyseExpr g b) `unionDep` d
 analyseExpr g (ListLiteral _ ls) = foldr mergeDirect (Value mempty mempty) $ map (analyseExpr g) ls
 analyseExpr _ (Literal _ (SelectorLit l)) = Value (dep l) mempty

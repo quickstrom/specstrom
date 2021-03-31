@@ -209,6 +209,7 @@ delayedEvaluate :: State -> Env -> Expr Pattern -> Eval Value
 delayedEvaluate s g v@(Var {}) = evaluate s g v
 delayedEvaluate s g v@(Literal {}) = evaluate s g v
 delayedEvaluate s g v@(Lam {}) = evaluate s g v
+delayedEvaluate s g v@(ListLiteral {}) = evaluate s g v
 delayedEvaluate s g e = Thunk <$> newThunk g e
 
 appAll :: State -> Value -> [Value] -> Eval Value
@@ -246,6 +247,23 @@ app s v v2 =
     Null -> pure Null
 
 evaluate :: State -> Env -> Expr Pattern -> Eval Value
+evaluate s g (Index e1 e2) = do
+  v' <- force s =<< evaluate s g e1
+  i' <- force s =<< evaluate s g e2
+  case v' of
+    List ls -> do
+      case i' of 
+        LitVal (IntLit i) -> let l = length ls; i' = if i < 0 then l + i else i in 
+          if i' < l && i' >= 0 then pure (ls !! i')
+          else pure Null
+        _ -> evalError ("Lists are only indexable by integers")
+    Object m -> do
+      case i' of 
+        LitVal (StringLit s) -> case M.lookup s m of 
+          Just v -> pure v
+          Nothing -> pure Null
+        _ -> evalError ("Objects are only indexable by strings")
+    _ -> evalError ("Indexing doesn't work on non-list/object values")
 evaluate s g (Projection e t) = do
   v' <- force s =<< evaluate s g e
   case v' of
