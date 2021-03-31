@@ -69,7 +69,7 @@ loop opts tbl g e e' s ae = flip catch (\(Evaluator.Error er) -> outputStrLn er 
               if showAnalysis opts
                 then liftIO $ LBS.putStrLn (JSON.encode (Analysis.depOf (Analysis.analyseExpr ae expr)))
                 else return ()
-              val <- liftIO $ (Evaluator.force s =<< Evaluator.evaluate s e expr)
+              val <- liftIO $ (Evaluator.deepForce s =<< Evaluator.evaluate s e expr)
               liftIO $ renderIO stdout (layoutPretty defaultLayoutOptions (prettyValue val <> line))
               loop opts tbl g e e' s ae
         Right (tbl2, tls) -> do

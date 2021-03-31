@@ -69,10 +69,8 @@ builtInTypes =
       ("always_", val2),
       ("not_", val2),
       ("map", hof),
-      ("any", hof),
-      ("all", hof),
-      --      ("click!", val2),
-      --      ("changed?", val2),
+      ("foldl", hof2),
+      ("foldr", hof2),
       ("if_then_else_", Forall "a" (Ty (Arrow Value (Arrow (TyVar "a") (Arrow (TyVar "a") (TyVar "a")))))),
       ("#act", Ty (Arrow Value (Arrow Value (Arrow Value (Arrow Value Value)))))
     ]
@@ -80,6 +78,7 @@ builtInTypes =
     val3 = Ty (Arrow Value (Arrow Value Value))
     val2 = Ty (Arrow Value Value)
     hof = Ty (Arrow (Arrow Value Value) (Arrow Value Value))
+    hof2 = Ty (Arrow (Arrow Value (Arrow Value Value)) (Arrow Value (Arrow Value Value)))
 
 data Type = Arrow Type Type | Value | TyVar Name deriving (Show)
 

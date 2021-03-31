@@ -5,7 +5,7 @@
 module Specstrom.Evaluator where
 
 import Control.Exception (Exception, throw)
-import Control.Monad (MonadPlus (mzero), zipWithM)
+import Control.Monad (MonadPlus (mzero), zipWithM, filterM)
 import qualified Data.Aeson as JSON
 import qualified Data.HashMap.Strict as M
 import Data.IORef
@@ -13,6 +13,7 @@ import qualified Data.Text as Text
 import GHC.Generics (Generic)
 import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax
+import Data.Foldable(foldlM,foldrM)
 
 type Env = M.HashMap Name Value
 
@@ -55,10 +56,10 @@ data PrimOp
   | Equals
   | -- HOFs (binary)
     Map
-  | Any
-  | All
   | -- ternary
     IfThenElse
+  | Foldr
+  | Foldl
   | -- quad
     MkPrimAction
   deriving (Show, Eq, Ord, Enum, Bounded)
@@ -82,8 +83,8 @@ primOpVar op = case op of
   IfThenElse -> "if_then_else_"
   MkPrimAction -> "#act"
   Map -> "map"
-  Any -> "any"
-  All -> "all"
+  Foldr -> "foldr"
+  Foldl -> "foldl"
 
 emptyEnv :: Env
 emptyEnv = M.fromList []
@@ -105,7 +106,7 @@ isUnary :: PrimOp -> Bool
 isUnary = (<= Not)
 
 isBinary :: PrimOp -> Bool
-isBinary x = not (isUnary x) && x <= All
+isBinary x = not (isUnary x) && x <= Map
 
 data Residual
   = Next Strength Thunk
@@ -267,6 +268,14 @@ forceThunk (T g e r) s = do
       pure v
     Just v -> pure v
 
+deepForce :: State -> Value -> Eval Value
+deepForce s v = do
+  v' <- force s v
+  case v' of
+    List ls -> List <$> mapM (deepForce s) ls
+    Object m -> Object <$> traverse (deepForce s) m
+    _ -> pure v'
+
 force :: State -> Value -> Eval Value
 force _ (Frozen s' t) = forceThunk t s'
 force s (Thunk t) = forceThunk t s
@@ -294,6 +303,20 @@ ternaryOp IfThenElse s v1 v2 v3 = do
     Trivial -> pure v2
     Absurd -> pure v3
     _ -> evalError "Expected boolean in if condition"
+ternaryOp Foldr s v1 v2 v3 = do
+  func <- force s v1
+  zero <- force s v2
+  list <- force s v3
+  case list of
+    List ls -> foldrM (\a b -> appAll s func [a,b]) zero ls
+    x -> appAll s func [x,zero]
+ternaryOp Foldl s v1 v2 v3 = do
+  func <- force s v1
+  zero <- force s v2
+  list <- force s v3
+  case list of
+    List ls -> foldlM (\a b -> appAll s func [a,b]) zero ls
+    x -> appAll s func [zero,x]
 
 areEqual :: State -> Value -> Value -> Eval Bool
 areEqual s v1 v2 = do
@@ -314,6 +337,7 @@ areEqual s v1 v2 = do
     areEqual' (List as) (List bs) | length as == length bs = and <$> zipWithM (areEqual s) as bs
     areEqual' (Action n as x) (Action m bs y) | n == m && length as == length bs && x == y = and <$> zipWithM (areEqual s) as bs
     areEqual' (Object as) (Object bs) = undefined -- for now
+    areEqual' (LitVal l) (LitVal l') = pure $ l == l'
     areEqual' _ _ = pure False
 
 unaryOp :: PrimOp -> State -> Value -> Eval Value
@@ -391,9 +415,15 @@ binaryOp TimeoutAct s v1 v2 = do
   case v1' of
     Action act args _ -> pure (Action act args (Just t))
     _ -> evalError "Timeout expects an action"
-binaryOp Map s v1 v2 = undefined -- TODO
-binaryOp Any s v1 v2 = undefined -- TODO
-binaryOp All s v1 v2 = undefined -- TODO
+binaryOp Map s v1 v2 = do
+  v1' <- force s v1
+  v2' <- force s v2
+  let notNull x = do
+       x' <- force s x
+       pure $ case x' of Null -> False; _ -> True
+  case v2' of 
+    List ls -> List <$> (filterM notNull =<< mapM (app s v1') ls)
+    r -> app s v1' v2'
 
 binaryNumOp :: State -> Value -> Value -> PrimOp -> IO Value
 binaryNumOp s v1 v2 op = do
