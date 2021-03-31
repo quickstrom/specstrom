@@ -303,7 +303,7 @@ evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l s of
   Nothing -> evalError ("Can't find '" <> Text.unpack sel <> "' in the state (analysis failed?)")
   Just ls -> pure ls
 evaluate s g (Literal p l) = pure (LitVal l)
-evaluate s g (Lam p pat e) = pure (Closure ("fun", p, 0) g [pat] (Done e))
+evaluate s g (Lam p b pat e) = pure (Closure (if b then "case" else "fun", p, 0) g [pat] (Done e))
 evaluate s g (ListLiteral p ls) = do
   vs <- mapM (evaluate s g) ls
   pure (List vs)

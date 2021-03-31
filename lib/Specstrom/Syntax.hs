@@ -29,7 +29,7 @@ data Expr p
   | Index (Expr p) (Expr p)
   | Literal Position Lit
   | Freeze Position p (Expr p) (Expr p)
-  | Lam Position p (Expr p)
+  | Lam Position Bool p (Expr p) -- Bool is if it is declared with "case" or not.
   | ListLiteral Position [Expr p]
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
@@ -47,7 +47,7 @@ exprPos (Index e1 _e2) = exprPos e1
 exprPos (Literal p _) = p
 exprPos (Projection e _) = exprPos e
 exprPos (Freeze p _ _ _) = p
-exprPos (Lam p _ _) = p
+exprPos (Lam p _ _ _) = p
 exprPos (ListLiteral p _) = p
 
 type Name = Text
@@ -144,7 +144,7 @@ instance MapPosition (Expr p) where
     Index e1 e2 -> Index (mapPosition f e1) (mapPosition f e2)
     Literal p lit -> Literal (f p) lit
     Freeze pos p e1 e2 -> Freeze pos p (mapPosition f e1) (mapPosition f e2)
-    Lam pos p body -> Lam (f pos) p (mapPosition f body)
+    Lam pos b p body -> Lam (f pos) b p (mapPosition f body)
     ListLiteral p r -> ListLiteral (f p) (map (mapPosition f) r)
 
 instance MapPosition Pattern where

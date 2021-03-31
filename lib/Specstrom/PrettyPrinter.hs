@@ -82,7 +82,7 @@ prettyParseError (ExpectedGot p s t) =
     [sep (punctuate comma (map pretty s)), annotate (bold <> color Red) "but got:", prettyToken t]
 prettyParseError (ExpressionAmbiguous (e :| es)) =
   errorMessage (exprPos e) "ambiguous expression; can be parsed as:" $
-    punctuate (line <> annotate (bold <> color Red) "or:") (map prettyExpr es)
+    punctuate (line <> annotate (bold <> color Red) "or:") (map prettyExpr (e:es))
 prettyParseError (DuplicatePatternBinding p [b]) = errorMessage p "duplicate bound variable in pattern:" [pretty b]
 prettyParseError (DuplicatePatternBinding p bs) =
   errorMessage p "duplicate bound variables in pattern:" [sep (punctuate comma (map pretty bs))]
@@ -96,6 +96,7 @@ prettyToken (Reserved Fun) = keyword "fun"
 prettyToken (Reserved When) = keyword "when"
 prettyToken (Reserved Check) = keyword "check"
 prettyToken (Reserved With) = keyword "with"
+prettyToken (Reserved Case) = keyword "case"
 prettyToken (Reserved Import) = keyword "import"
 prettyToken (Reserved Action) = keyword "action"
 prettyToken (ProjectionTok t) = projection ("." <> t)
@@ -193,13 +194,13 @@ prettyExpr trm = renderTerm True trm
         Index e e' -> renderTerm False e <> "[" <> renderTerm True e <> "]"
         App {} -> mempty -- Handled by peelAps
         ListLiteral _ ls -> "[" <> hsep (punctuate comma $ map (renderTerm True) ls) <> "]"
-        Lam _ n e ->
+        Lam _ b n e ->
           (if outer then id else parens) $
-            "fun" <+> prettyPattern n <> "." <+> prettyExpr e
+            if b then "case" else "fun" <+> prettyPattern n <> "." <+> prettyExpr e
         Freeze _ n e b ->
           (if outer then id else parens) $
             "freeze" <+> prettyPattern n <+> "=" <+> prettyExpr e <> "." <+> prettyExpr b
-      | (Var _ name, [Lam _ pat e2, e3]) <- peelAps t [],
+      | (Var _ name, [Lam _ _ pat e2, e3]) <- peelAps t [],
         name `elem` ["map", "any", "all"] =
         (if outer then id else parens) $
           (case name of "map" -> "for"; "any" -> "exists"; "all" -> "forall"; _ -> "") <+> prettyPattern pat <+> "in" <+> prettyExpr e3 <> "." <+> prettyExpr e2

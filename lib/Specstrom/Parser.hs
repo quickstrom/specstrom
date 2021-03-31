@@ -47,11 +47,11 @@ data ParseError
   | ModuleNotFound Position Text
   deriving (Show)
 
-type Table = ([[(Holey Text, Associativity)]], [Name])
+type Table = ([[(Holey Text, Associativity)]], ([[(Holey Text, Associativity)]],[Name]))
 
-builtIns :: ([[(Holey Text, Associativity)]], [Name])
+builtIns :: ([[(Holey Text, Associativity)]], ([[(Holey Text, Associativity)]], [Name]))
 builtIns =
-  (\x -> (x, [])) $
+  (\x -> (x, ([], []))) $
     (map . map)
       (first holey)
       [ [ ("if_then_else_", RightAssoc)
@@ -134,7 +134,7 @@ parseTopLevel search t ((p, Reserved Let) : ts) = do
   fmap (Binding b :) <$> parseTopLevel search t rest
 parseTopLevel search t ((p, Reserved Action) : ts) = do
   (rest, b@(Bind pat _)) <- wrap (parseBind t p ts)
-  let t' = second (bindPatternBoundVars pat ++) t
+  let t' = second (second (bindPatternBoundVars pat ++)) t
   fmap (ActionDecl b :) <$> parseTopLevel search t' rest
 parseTopLevel search t ((p, Reserved Check) : ts) = do
   (rest, g1) <- wrap (parseGlob ts)
@@ -166,14 +166,17 @@ parseBind t p ts = do
     ((p', _) : _) -> Left $ ExpectedEquals p'
 
 parseSyntax :: Table -> Position -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Table)
-parseSyntax t p ts = case ts of
-  ((_, Ident n) : (_, IntLitTok i) : (_, Semi) : ts') ->
-    insertSyntax p n i NonAssoc t >>= \t' -> Right (ts', t')
-  ((_, Ident n) : (_, IntLitTok i) : (_, Ident "left") : (_, Semi) : ts') ->
-    insertSyntax p n i LeftAssoc t >>= \t' -> Right (ts', t')
-  ((_, Ident n) : (_, IntLitTok i) : (_, Ident "right") : (_, Semi) : ts') ->
-    insertSyntax p n i RightAssoc t >>= \t' -> Right (ts', t')
-  _ -> Left $ MalformedSyntaxDeclaration p
+parseSyntax t p ts = do
+  (n, assoc, i,ts') <- case ts of 
+    ((_, Ident n) : (_, IntLitTok i) : (_, Semi) : ts') -> pure (n, NonAssoc, i,ts')
+    ((_, Ident n) : (_, IntLitTok i) : (_, Ident "left") : (_, Semi) : ts') -> pure (n, LeftAssoc, i,ts')
+    ((_, Ident n) : (_, IntLitTok i) : (_, Ident "right") : (_, Semi) : ts') -> pure (n, RightAssoc, i,ts')
+    _ -> Left $ MalformedSyntaxDeclaration p
+  if i < 0  
+    then insertSyntax p n (-i) assoc (reverse $ fst (snd t)) >>= \t' -> Right (ts', second (first (const $ reverse t')) t)
+    else insertSyntax p n i assoc (fst t) >>= \t' -> Right (ts', first (const t') t)
+  
+  
 
 parseBindingBody :: Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Body)
 parseBindingBody t ((p, Reserved Syntax) : ts) = do
@@ -184,10 +187,10 @@ parseBindingBody t ((p, Reserved Let) : ts) = do
   fmap (Local b) <$> parseBindingBody t rest
 parseBindingBody t ts = fmap Done <$> parseExpressionTo Semi t ts
 
-insertSyntax :: Position -> Name -> Int -> Associativity -> Table -> Either ParseError Table
+insertSyntax :: Position -> Name -> Int -> Associativity -> [[(Holey Text, Associativity)]]-> Either ParseError [[(Holey Text, Associativity)]]
 insertSyntax p n i a t
-  | any ((holey n `elem`) . map fst) (fst t) = Left $ SyntaxAlreadyDeclared n p
-  | otherwise = Right $ first (go i) t
+  | any ((holey n `elem`) . map fst) t = Left $ SyntaxAlreadyDeclared n p
+  | otherwise = Right $ go i t
   where
     go 0 (r : rs) = ((holey n, a) : r) : rs
     go n' (r : rs) = r : (go (n' -1) rs)
@@ -198,8 +201,8 @@ parseBindPattern t ts = do
   (ts', e) <- parseExpressionTo (Reserved Define) t ts
   case peelAps e [] of
     (Var p n, es) | not (null es),
-                    n `notElem` (snd t) -> do
-      es' <- mapM (patFromExpr (snd t)) es
+                    n `notElem` (snd $ snd t) -> do
+      es' <- mapM (patFromExpr (snd $ snd t)) es
       let ns = concatMap patternVars es'
           uniques = nub ns
           dupes = ns \\ uniques
@@ -207,7 +210,7 @@ parseBindPattern t ts = do
         then Left (DuplicatePatternBinding p dupes)
         else pure (ts', FunP n p es')
     _ -> do
-      p <- patFromExpr (snd t) e
+      p <- patFromExpr (snd $ snd t) e
       pure (ts', Direct p)
 
 patFromAnyExpr :: [Name] -> Expr e -> Maybe Pattern
@@ -241,10 +244,10 @@ parseExpressionTo :: Token -> Table -> [(Position, Token)] -> Either ParseError 
 parseExpressionTo terminator t ts =
   let (candidate, ts') = break ((\x -> x == terminator || x == EOF) . snd) ts
    in case fullParses (parser $ grammar t) candidate of
-        ([one], _) -> (ts',) <$> traverse (\(E e) -> patFromExpr' (snd t) e) one
+        ([one], _) -> (ts',) <$> traverse (\(E e) -> patFromExpr' (snd $ snd t) e) one
         ([], r) -> case unconsumed r of
           ((p, t') : _) -> Left (ExpectedGot p (expected r) t')
-          [] -> error ("Expected: " <> show (expected r))
+          [] -> Left (ExpectedGot dummyPosition (expected r) EOF) -- not sure how this happens
         (e : es, _r) -> Left (ExpressionAmbiguous (e :| es))
 
 grammar :: Table -> Grammar r (Prod r Text (Position, Token) (Expr TempExpr))
@@ -280,8 +283,10 @@ grammar table = mdo
   where
     app x [] = x
     app f (x : xs) = app (App f x) xs
-    tbl =
-      [ [ ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+    tbl = map (map $ first $ map $ fmap identToken) (fst (snd table)) ++
+      [ 
+        [ ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+          ([Just (isToken (Reserved Case) "case"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
           ([Just (identToken "for"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
           ([Just (identToken "forall"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
           ([Just (identToken "exists"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)
@@ -312,15 +317,17 @@ grammar table = mdo
         _ -> Nothing
     makeAp hol as = case (unholey hol, as) of
       (Var p "freeze_=_._", [a1, a2, a3]) -> Freeze p (E a1) a2 a3
-      (Var p "for_in_._", [a1, a2, a3]) -> App (App (Var p "map") (Lam p (E a1) a3)) a2
-      (Var p "forall_in_._", [a1, a2, a3]) -> App (App (Var p "all") (Lam p (E a1) a3)) a2
-      (Var p "exists_in_._", [a1, a2, a3]) -> App (App (Var p "any") (Lam p (E a1) a3)) a2
-      (Var p "fun_._", [a1, a2]) -> Lam p (E a1) a2
+      (Var p "for_in_._", [a1, a2, a3]) -> App (App (Var p "map") (Lam p False (E a1) a3)) a2
+      (Var p "forall_in_._", [a1, a2, a3]) -> App (App (Var p "all") (Lam p False (E a1) a3)) a2
+      (Var p "exists_in_._", [a1, a2, a3]) -> App (App (Var p "any") (Lam p False (E a1) a3)) a2
+      (Var p "fun_._", [a1, a2]) -> Lam p False (E a1) a2
+      (Var p "case_._", [a1, a2]) -> Lam p True (E a1) a2
       _ -> unpeelAps (unholey hol) as
     unholey ls = Var (getPosition ls) (foldMap (fromMaybe "_") (map (fmap (unident . snd)) ls))
       where
         unident (Ident s) = s
         unident (Reserved Fun) = "fun"
+        unident (Reserved Case) = "case"
         unident Dot = "."
         unident (Reserved When) = "when"
         unident _ = "="

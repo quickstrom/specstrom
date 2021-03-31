@@ -10,7 +10,7 @@ import qualified Data.Text as Text
 import qualified Data.Text.Read as Text
 import Text.Read (readMaybe)
 
-data Kwd = Define | Syntax | Let | Import | Check | With | Fun | When | Action deriving (Show, Eq)
+data Kwd = Define | Syntax | Let | Import | Check | With | Fun | Case | When | Action deriving (Show, Eq)
 
 data Token
   = Ident Text
@@ -145,5 +145,6 @@ fromCandidate "check" = Reserved Check
 fromCandidate "with" = Reserved With
 fromCandidate "when" = Reserved When
 fromCandidate "fun" = Reserved Fun
+fromCandidate "case" = Reserved Case
 fromCandidate "action" = Reserved Action
 fromCandidate s = Ident s

@@ -53,15 +53,16 @@ loop opts tbl g e e' s ae = flip catch (\(Evaluator.Error er) -> outputStrLn er 
       | rest == "unset analysis" -> loop (opts {showAnalysis = False}) tbl g e e' s ae
       | rest == "unset types" -> loop (opts {showTypes = False}) tbl g e e' s ae
       | rest == "quit" -> pure ()
-      | rest == "debug" -> liftIO (print g) >> loop opts tbl g e e' s ae
+      | rest == "debug" -> liftIO (print tbl) >> loop opts tbl g e e' s ae
       | rest == "state" -> pure () -- for now
       | otherwise -> liftIO $ hPutStrLn stderr "Invalid meta-command"
     Just x -> do
       r <- liftIO $ runExceptT (Parser.loadImmediate (searchPaths opts) tbl $ pack x)
       case r of
-        Left _ -> case Parser.immediateExpr tbl (pack x) of
+        Left err' -> case Parser.immediateExpr tbl (pack x) of
           Left err -> do
             liftIO $ renderIO stderr (layoutPretty defaultLayoutOptions (prettyParseError err <> line))
+            liftIO $ renderIO stderr (layoutPretty defaultLayoutOptions (prettyParseError err' <> line))
             loop opts tbl g e e' s ae
           Right expr -> case TypeInf.inferExpImmediate g expr of
             Left err -> do

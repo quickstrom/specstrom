@@ -10,7 +10,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Specstrom.Lexer (Position)
 import Specstrom.Syntax
-
+import Debug.Trace
 type Context = M.Map Name QType
 
 newtype Subst = Subst [(Name, Type)]
@@ -114,7 +114,7 @@ generalise :: Context -> Type -> QType
 generalise g t =
   let gs = nub (tvGamma g)
       ts = nub (tv t)
-   in quantify (gs \\ ts) t
+   in quantify (ts \\ gs) t
   where
     quantify [] t = Ty t
     quantify (x : xs) t = Forall x (quantify xs t)
@@ -129,7 +129,7 @@ unify p (TyVar n) (TyVar m)
   | n == m = pure mempty
   | otherwise = pure (n =: TyVar m)
 unify p (TyVar n) t
-  | n `elem` tv t = typeError p [StrE "Cannot construct infinite type (occurs check fail)"]
+  | n `elem` tv t = typeError p [StrE "Cannot construct infinite type (occurs check fail)",VarNameE n, TypeE t]
   | otherwise = pure (n =: t)
 unify p t (TyVar n) = unify p (TyVar n) t
 unify p t1 t2 = typeError p [StrE "Type mismatch, cannot unify", TypeE t1, StrE "and", TypeE t2]
@@ -141,7 +141,7 @@ tv Value = []
 
 tvQ :: QType -> [Name]
 tvQ (Ty t) = tv t
-tvQ (Forall n t) = tvQ t \\ [n]
+tvQ (Forall n t) = filter (/= n) (tvQ t)
 
 tvGamma :: Context -> [Name]
 tvGamma = foldMap tvQ
@@ -217,15 +217,15 @@ inferExp g (App e1 e2) = do
   alpha <- fresh
   s3 <- unify (exprPos e1) (subst s2 t1) (Arrow t2 alpha)
   pure (subst s3 alpha, s1 <> s2 <> s3)
-inferExp g (Lam p (VarP n _) e) = do
+inferExp g (Lam p _ (VarP n _) e) = do
   alpha <- fresh
   (t, s) <- inferExp (M.insert n (Ty alpha) g) e
   pure (Arrow (subst s alpha) t, s)
-inferExp g (Lam p (IgnoreP _) e) = do
+inferExp g (Lam p _ (IgnoreP _) e) = do
   alpha <- fresh
   (t, s) <- inferExp g e
   pure (Arrow (subst s alpha) t, s)
-inferExp g (Lam p pat e) = do
+inferExp g (Lam p _ pat e) = do
   let g' = M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) g
   (t, s) <- inferExp g' e
   pure (Arrow Value t, s)

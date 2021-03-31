@@ -103,7 +103,7 @@ analyseExpr g (Freeze _ pat e2 e3) =
       new = M.fromList (zip (patternVars pat) (repeat a))
       g' = M.union g new
    in analyseExpr g' e3 `unionDep` depOf a
-analyseExpr g (Lam _ pat e) = Function f mempty
+analyseExpr g (Lam _ _ pat e) = Function f mempty
   where
     f a =
       let new = M.fromList (zip (patternVars pat) (repeat a))
