@@ -168,7 +168,7 @@ inferBind g (Bind (Direct (VarP n _)) bod) = do
   (t, s) <- inferBody g bod
   let qt = generalise g t
   pure (M.insert n qt (substGamma s g), s)
-inferBind g (Bind(Direct (IgnoreP _)) bod) = do
+inferBind g (Bind (Direct (IgnoreP _)) bod) = do
   (t, s) <- inferBody g bod
   pure (substGamma s g, s)
 inferBind g (Bind (Direct pat) bod) = do

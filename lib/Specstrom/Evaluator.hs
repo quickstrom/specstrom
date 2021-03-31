@@ -187,20 +187,20 @@ withPatternsDelayed pat t g = M.union (M.fromList (map (\v -> (v, Matched t pat 
 
 withPatterns :: State -> Pattern -> Value -> Env -> Eval (Maybe Env)
 withPatterns s (IgnoreP p) v g = pure (Just g)
-withPatterns s (NullP p) v g = do 
-   v' <- force s v
-   case v' of 
-     Null -> pure (Just g)
-     _ -> pure Nothing
-withPatterns s (BoolP p l) v g = do 
-   v' <- force s v
-   case v' of 
-     Absurd | not l -> pure (Just g)
-     Trivial | l -> pure (Just g)
-     _ -> pure Nothing
-withPatterns s (LitP p l) v g = do 
-   v' <- force s v
-   case v' of 
+withPatterns s (NullP p) v g = do
+  v' <- force s v
+  case v' of
+    Null -> pure (Just g)
+    _ -> pure Nothing
+withPatterns s (BoolP p l) v g = do
+  v' <- force s v
+  case v' of
+    Absurd | not l -> pure (Just g)
+    Trivial | l -> pure (Just g)
+    _ -> pure Nothing
+withPatterns s (LitP p l) v g = do
+  v' <- force s v
+  case v' of
     LitVal l' | l == l' -> pure (Just g)
     _ -> pure Nothing
 withPatterns s (VarP n p) v g = pure (Just $ M.insert n v g)
