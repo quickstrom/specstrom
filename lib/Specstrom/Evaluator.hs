@@ -5,15 +5,15 @@
 module Specstrom.Evaluator where
 
 import Control.Exception (Exception, throw)
-import Control.Monad (MonadPlus (mzero), zipWithM, filterM)
+import Control.Monad (MonadPlus (mzero), filterM, zipWithM)
 import qualified Data.Aeson as JSON
+import Data.Foldable (foldlM, foldrM)
 import qualified Data.HashMap.Strict as M
 import Data.IORef
 import qualified Data.Text as Text
 import GHC.Generics (Generic)
 import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax
-import Data.Foldable(foldlM,foldrM)
 
 type Env = M.HashMap Name Value
 
@@ -308,15 +308,15 @@ ternaryOp Foldr s v1 v2 v3 = do
   zero <- force s v2
   list <- force s v3
   case list of
-    List ls -> foldrM (\a b -> appAll s func [a,b]) zero ls
-    x -> appAll s func [x,zero]
+    List ls -> foldrM (\a b -> appAll s func [a, b]) zero ls
+    x -> appAll s func [x, zero]
 ternaryOp Foldl s v1 v2 v3 = do
   func <- force s v1
   zero <- force s v2
   list <- force s v3
   case list of
-    List ls -> foldlM (\a b -> appAll s func [a,b]) zero ls
-    x -> appAll s func [zero,x]
+    List ls -> foldlM (\a b -> appAll s func [a, b]) zero ls
+    x -> appAll s func [zero, x]
 
 areEqual :: State -> Value -> Value -> Eval Bool
 areEqual s v1 v2 = do
@@ -419,9 +419,9 @@ binaryOp Map s v1 v2 = do
   v1' <- force s v1
   v2' <- force s v2
   let notNull x = do
-       x' <- force s x
-       pure $ case x' of Null -> False; _ -> True
-  case v2' of 
+        x' <- force s x
+        pure $ case x' of Null -> False; _ -> True
+  case v2' of
     List ls -> List <$> (filterM notNull =<< mapM (app s v1') ls)
     r -> app s v1' v2'
 
