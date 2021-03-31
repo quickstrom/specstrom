@@ -47,7 +47,7 @@ data ParseError
   | ModuleNotFound Position Text
   deriving (Show)
 
-type Table = ([[(Holey Text, Associativity)]], ([[(Holey Text, Associativity)]],[Name]))
+type Table = ([[(Holey Text, Associativity)]], ([[(Holey Text, Associativity)]], [Name]))
 
 builtIns :: ([[(Holey Text, Associativity)]], ([[(Holey Text, Associativity)]], [Name]))
 builtIns =
@@ -167,16 +167,14 @@ parseBind t p ts = do
 
 parseSyntax :: Table -> Position -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Table)
 parseSyntax t p ts = do
-  (n, assoc, i,ts') <- case ts of 
-    ((_, Ident n) : (_, IntLitTok i) : (_, Semi) : ts') -> pure (n, NonAssoc, i,ts')
-    ((_, Ident n) : (_, IntLitTok i) : (_, Ident "left") : (_, Semi) : ts') -> pure (n, LeftAssoc, i,ts')
-    ((_, Ident n) : (_, IntLitTok i) : (_, Ident "right") : (_, Semi) : ts') -> pure (n, RightAssoc, i,ts')
+  (n, assoc, i, ts') <- case ts of
+    ((_, Ident n) : (_, IntLitTok i) : (_, Semi) : ts') -> pure (n, NonAssoc, i, ts')
+    ((_, Ident n) : (_, IntLitTok i) : (_, Ident "left") : (_, Semi) : ts') -> pure (n, LeftAssoc, i, ts')
+    ((_, Ident n) : (_, IntLitTok i) : (_, Ident "right") : (_, Semi) : ts') -> pure (n, RightAssoc, i, ts')
     _ -> Left $ MalformedSyntaxDeclaration p
-  if i < 0  
-    then insertSyntax p n (-i) assoc (reverse $ fst (snd t)) >>= \t' -> Right (ts', second (first (const $ reverse t')) t)
+  if i < 0
+    then insertSyntax p n (- i) assoc (reverse $ fst (snd t)) >>= \t' -> Right (ts', second (first (const $ reverse t')) t)
     else insertSyntax p n i assoc (fst t) >>= \t' -> Right (ts', first (const t') t)
-  
-  
 
 parseBindingBody :: Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Body)
 parseBindingBody t ((p, Reserved Syntax) : ts) = do
@@ -187,7 +185,7 @@ parseBindingBody t ((p, Reserved Let) : ts) = do
   fmap (Local b) <$> parseBindingBody t rest
 parseBindingBody t ts = fmap Done <$> parseExpressionTo Semi t ts
 
-insertSyntax :: Position -> Name -> Int -> Associativity -> [[(Holey Text, Associativity)]]-> Either ParseError [[(Holey Text, Associativity)]]
+insertSyntax :: Position -> Name -> Int -> Associativity -> [[(Holey Text, Associativity)]] -> Either ParseError [[(Holey Text, Associativity)]]
 insertSyntax p n i a t
   | any ((holey n `elem`) . map fst) t = Left $ SyntaxAlreadyDeclared n p
   | otherwise = Right $ go i t
@@ -283,19 +281,19 @@ grammar table = mdo
   where
     app x [] = x
     app f (x : xs) = app (App f x) xs
-    tbl = map (map $ first $ map $ fmap identToken) (fst (snd table)) ++
-      [ 
-        [ ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
-          ([Just (isToken (Reserved Case) "case"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
-          ([Just (identToken "for"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
-          ([Just (identToken "forall"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
-          ([Just (identToken "exists"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)
-        ],
-        [ ([Nothing, Just (isToken (Reserved When) "when"), Nothing], LeftAssoc),
-          ([Nothing, Just (identToken "timeout"), Nothing], LeftAssoc)
-        ],
-        [([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)]
-      ]
+    tbl =
+      map (map $ first $ map $ fmap identToken) (fst (snd table))
+        ++ [ [ ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+               ([Just (isToken (Reserved Case) "case"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+               ([Just (identToken "for"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+               ([Just (identToken "forall"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+               ([Just (identToken "exists"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)
+             ],
+             [ ([Nothing, Just (isToken (Reserved When) "when"), Nothing], LeftAssoc),
+               ([Nothing, Just (identToken "timeout"), Nothing], LeftAssoc)
+             ],
+             [([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)]
+           ]
         ++ map (map $ first $ map $ fmap identToken) (fst table)
 
     mixfixParts =

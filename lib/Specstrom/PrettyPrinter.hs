@@ -82,7 +82,7 @@ prettyParseError (ExpectedGot p s t) =
     [sep (punctuate comma (map pretty s)), annotate (bold <> color Red) "but got:", prettyToken t]
 prettyParseError (ExpressionAmbiguous (e :| es)) =
   errorMessage (exprPos e) "ambiguous expression; can be parsed as:" $
-    punctuate (line <> annotate (bold <> color Red) "or:") (map prettyExpr (e:es))
+    punctuate (line <> annotate (bold <> color Red) "or:") (map prettyExpr (e : es))
 prettyParseError (DuplicatePatternBinding p [b]) = errorMessage p "duplicate bound variable in pattern:" [pretty b]
 prettyParseError (DuplicatePatternBinding p bs) =
   errorMessage p "duplicate bound variables in pattern:" [sep (punctuate comma (map pretty bs))]

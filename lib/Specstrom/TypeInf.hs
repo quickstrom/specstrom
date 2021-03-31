@@ -8,9 +8,10 @@ import Data.List (nub, (\\))
 import qualified Data.Map as M
 import Data.Text (Text)
 import qualified Data.Text as T
+import Debug.Trace
 import Specstrom.Lexer (Position)
 import Specstrom.Syntax
-import Debug.Trace
+
 type Context = M.Map Name QType
 
 newtype Subst = Subst [(Name, Type)]
@@ -129,7 +130,7 @@ unify p (TyVar n) (TyVar m)
   | n == m = pure mempty
   | otherwise = pure (n =: TyVar m)
 unify p (TyVar n) t
-  | n `elem` tv t = typeError p [StrE "Cannot construct infinite type (occurs check fail)",VarNameE n, TypeE t]
+  | n `elem` tv t = typeError p [StrE "Cannot construct infinite type (occurs check fail)", VarNameE n, TypeE t]
   | otherwise = pure (n =: t)
 unify p t (TyVar n) = unify p (TyVar n) t
 unify p t1 t2 = typeError p [StrE "Type mismatch, cannot unify", TypeE t1, StrE "and", TypeE t2]
