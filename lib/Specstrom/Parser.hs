@@ -270,7 +270,10 @@ grammar table = mdo
     app x [] = x
     app f (x : xs) = app (App f x) xs
     tbl =
-      [ [ ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)
+      [ [ ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+          ([Just (identToken "for"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+          ([Just (identToken "forall"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+          ([Just (identToken "exists"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)
         ],
         [ ([Nothing, Just (isToken (Reserved When) "when"), Nothing], LeftAssoc),
           ([Nothing, Just (identToken "timeout"), Nothing], LeftAssoc)
@@ -298,6 +301,9 @@ grammar table = mdo
         _ -> Nothing
     makeAp hol as = case (unholey hol, as) of
       (Var p "freeze_=_._", [a1, a2, a3]) -> Freeze p (E a1) a2 a3
+      (Var p "for_in_._", [a1, a2, a3]) -> App (App (Var p "map") (Lam p (E a1) a3)) a2
+      (Var p "forall_in_._", [a1, a2, a3]) -> App (App (Var p "all") (Lam p (E a1) a3)) a2
+      (Var p "exists_in_._", [a1, a2, a3]) -> App (App (Var p "any") (Lam p (E a1) a3)) a2
       (Var p "fun_._", [a1, a2]) -> Lam p (E a1) a2
       _ -> unpeelAps (unholey hol) as
     unholey ls = Var (getPosition ls) (foldMap (fromMaybe "_") (map (fmap (unident . snd)) ls))

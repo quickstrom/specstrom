@@ -1,4 +1,4 @@
-action click!(x) = #act("click",false,[x.ref],null) when x.enabled;
+action click!(x) = for element in x. #act("click",false,[element.ref],null) when element.enabled;
 
 action changed?(x) = #act("changed",true,[x.ref],null);
 

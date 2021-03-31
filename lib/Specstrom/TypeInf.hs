@@ -68,6 +68,9 @@ builtInTypes =
       ("next_", val2),
       ("always_", val2),
       ("not_", val2),
+      ("map", hof),
+      ("any", hof),
+      ("all", hof),
       --      ("click!", val2),
       --      ("changed?", val2),
       ("if_then_else_", Forall "a" (Ty (Arrow Value (Arrow (TyVar "a") (Arrow (TyVar "a") (TyVar "a")))))),
@@ -76,6 +79,7 @@ builtInTypes =
   where
     val3 = Ty (Arrow Value (Arrow Value Value))
     val2 = Ty (Arrow Value Value)
+    hof = Ty (Arrow (Arrow Value Value) (Arrow Value Value))
 
 data Type = Arrow Type Type | Value | TyVar Name deriving (Show)
 

@@ -32,10 +32,13 @@ builtIns =
            ("_when_", toAnnotation (\(Value a b) (Value c d) -> Value a (b <> c <> d))),
            ("#act", toAnnotation (\(Value x1 y1) (Value x2 y2) (Value x3 y3) (Value x4 y4) -> Value (x1 <> x2 <> x3 <> x4) (y1 <> y2 <> y3 <> y4)))
          ]
+      ++ zip hofs (repeat $ hofAnn)
   where
     binOps = ["_==_", "_&&_", "_||_", "_until_", "_!=_", "_==>_"]
     unOps = ["not_", "always_", "next_", "nextT_", "nextF_", "eventually_"]
     values = ["true", "false", "null"]
+    hofs = ["map","any","all"]
+    hofAnn = toAnnotation (\(Function f id) v -> f v `unionDep` id)
 
 indirect :: Annotation -> Annotation
 indirect (Value a b) = Value mempty (a <> b)

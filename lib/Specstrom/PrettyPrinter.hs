@@ -194,6 +194,9 @@ prettyExpr trm = renderTerm True trm
         Freeze _ n e b ->
           (if outer then id else parens) $
             "freeze" <+> prettyPattern n <+> "=" <+> prettyExpr e <> "." <+> prettyExpr b
+      | (Var _ t, [Lam _ pat e2, e3]) <- peelAps t [], t `elem` ["map","any","all"] =
+          (if outer then id else parens) $
+            (case t of "map" -> "for"; "any" -> "exists"; "all" -> "forall") <+> prettyPattern pat <+> "in" <+> prettyExpr e3 <> "." <+> prettyExpr e2      
       | (Var _ n, args) <- peelAps t [],
         Text.length (Text.filter (== '_') n) == length args =
         (if outer then id else parens) $ hsep $ infixTerms n args

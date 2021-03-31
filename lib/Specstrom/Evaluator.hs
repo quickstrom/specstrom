@@ -53,6 +53,10 @@ data PrimOp
   | Multiplication
   | Division
   | Equals
+  | -- HOFs (binary)
+    Map
+  | Any
+  | All
   | -- ternary
     IfThenElse
   | -- quad
@@ -77,6 +81,9 @@ primOpVar op = case op of
   Division -> "_/_"
   IfThenElse -> "if_then_else_"
   MkPrimAction -> "#act"
+  Map -> "map"
+  Any -> "any"
+  All -> "all"
 
 emptyEnv :: Env
 emptyEnv = M.fromList []
@@ -98,7 +105,7 @@ isUnary :: PrimOp -> Bool
 isUnary = (<= Not)
 
 isBinary :: PrimOp -> Bool
-isBinary x = not (isUnary x) && x <= Equals
+isBinary x = not (isUnary x) && x <= All
 
 data Residual
   = Next Strength Thunk
@@ -384,6 +391,11 @@ binaryOp TimeoutAct s v1 v2 = do
   case v1' of
     Action act args _ -> pure (Action act args (Just t))
     _ -> evalError "Timeout expects an action"
+binaryOp Map s v1 v2 = undefined -- TODO
+binaryOp Any s v1 v2 = undefined -- TODO
+binaryOp All s v1 v2 = undefined -- TODO
+  
+
 
 binaryNumOp :: State -> Value -> Value -> PrimOp -> IO Value
 binaryNumOp s v1 v2 op = do
