@@ -12,14 +12,11 @@ import Specstrom.TypeInf
 import System.Exit
 import System.IO (stderr)
 
-searchPaths :: [FilePath]
-searchPaths = ["ulib", "."]
+load :: [FilePath] -> Text -> IO [TopLevel]
+load searchPaths = fmap (\(a, _, _) -> a) . load' searchPaths True
 
-load :: Text -> IO [TopLevel]
-load = fmap (\(a, _, _) -> a) . load' True
-
-load' :: Bool -> Text -> IO ([TopLevel], Table, Context)
-load' exit f = do
+load' :: [FilePath] -> Bool -> Text -> IO ([TopLevel], Table, Context)
+load' searchPaths exit f = do
   result <- first prettyParseError <$> runExceptT (loadModule searchPaths ("Command line", 0, 0) f builtIns)
   case result of
     Left err -> do

@@ -17,17 +17,22 @@ import System.Console.Haskeline
 import System.Console.Haskeline.MonadException
 import System.IO (hPutStrLn, stderr, stdout)
 import Util
+import Data.Foldable (foldl')
 
-repl :: Text -> IO ()
-repl fp = do
-  (tls, tbl, g) <- load' False fp
+repl :: [FilePath] -> Text -> IO ()
+repl searchPaths' fp = do
+  (tls, tbl, g) <- load' searchPaths' False fp
   (e, e', ae) <- liftIO $ checkTopLevels Evaluator.basicEnv mempty Analysis.builtIns tls
-  runInputT defaultSettings (loop defaultOpts tbl g e e' mempty ae)
+  let opts = foldl' addSearchPath defaultOpts searchPaths'
+  runInputT defaultSettings (loop opts tbl g e e' mempty ae)
 
 defaultOpts :: Options
-defaultOpts = Opts False False
+defaultOpts = Opts False False []
 
-data Options = Opts {showTypes :: Bool, showAnalysis :: Bool}
+data Options = Opts {showTypes :: Bool, showAnalysis :: Bool, searchPaths :: [FilePath]}
+
+addSearchPath :: Options -> FilePath -> Options
+addSearchPath opts path = opts { searchPaths = path : searchPaths opts }
 
 loop ::
   Options ->
@@ -52,7 +57,7 @@ loop opts tbl g e e' s ae = flip catch (\(Evaluator.Error er) -> outputStrLn er 
       | rest == "state" -> pure () -- for now
       | otherwise -> liftIO $ hPutStrLn stderr "Invalid meta-command"
     Just x -> do
-      r <- liftIO $ runExceptT (Parser.loadImmediate searchPaths tbl $ pack x)
+      r <- liftIO $ runExceptT (Parser.loadImmediate (searchPaths opts) tbl $ pack x)
       case r of
         Left _ -> case Parser.immediateExpr tbl (pack x) of
           Left err -> do
