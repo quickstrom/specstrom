@@ -48,6 +48,7 @@ data PrimOp
   | -- binary
     And
   | Or
+  | Implies
   | WhenAct
   | TimeoutAct
   | Addition
@@ -82,6 +83,7 @@ primOpVar op = case op of
   Not -> "not_"
   And -> "_&&_"
   Or -> "_||_"
+  Implies -> "_==>_"
   Equals -> "_==_"
   NotEquals -> "_!=_"
   LessEq -> "_<=_"
@@ -125,6 +127,7 @@ data Residual
   = Next Strength Thunk
   | Conjunction Residual Residual
   | Disjunction Residual Residual
+  | Implication Residual Residual
   deriving (Show)
 
 data Value
@@ -372,18 +375,32 @@ unaryOp Not s v = do
     Trivial -> pure Absurd
     Residual f -> Residual <$> negateResidual f
     _ -> evalError ("Not expects boolean, got: " <> show v')
-  where
-    negateResidual (Conjunction a b) = Disjunction <$> negateResidual a <*> negateResidual b
-    negateResidual (Disjunction a b) = Conjunction <$> negateResidual a <*> negateResidual b
-    negateResidual (Next st (T g e v)) = do
-      let st' = case st of AssumeTrue -> AssumeFalse; AssumeFalse -> AssumeTrue; Demand -> Demand
-      Next st' <$> newThunk g (App (Var dummyPosition "not_") e)
+
 unaryOp NextF s (Thunk t) = pure (Residual (Next AssumeFalse t))
 unaryOp NextT s (Thunk t) = pure (Residual (Next AssumeTrue t))
 unaryOp NextD s (Thunk t) = pure (Residual (Next Demand t))
 unaryOp op _ arg = evalError ("Impossible unary operation " <> show op <> " on: " <> show arg)
 
+negateResidual (Conjunction a b) = Disjunction <$> negateResidual a <*> negateResidual b
+negateResidual (Disjunction a b) = Conjunction <$> negateResidual a <*> negateResidual b
+negateResidual (Implication a b) = Conjunction <$> pure a <*> negateResidual b
+negateResidual (Next st (T g e v)) = do
+      let st' = case st of AssumeTrue -> AssumeFalse; AssumeFalse -> AssumeTrue; Demand -> Demand
+      Next st' <$> newThunk g (App (Var dummyPosition "not_") e)
 binaryOp :: PrimOp -> State -> Value -> Value -> Eval Value
+binaryOp Implies s v1 v2 = do
+  v1' <- force s v1
+  case v1' of
+    Absurd -> pure Trivial
+    Trivial -> force s v2
+    Residual r -> do
+      v2' <- force s v2
+      case v2' of
+        Absurd -> Residual <$> negateResidual r
+        Trivial -> pure Trivial
+        Residual r' -> pure (Residual (Implication r r'))
+        _ -> evalError "Implies expects formulae"
+    _ -> evalError "Implies expects formulae"
 binaryOp And s v1 v2 = do
   v1' <- force s v1
   case v1' of
@@ -511,6 +528,10 @@ resetThunks (LitVal l) = pure $ LitVal l
 -- Any other value is presumably a type error.
 step :: Residual -> State -> Eval Value
 step (Next _ t) s = resetThunk t >>= \t' -> forceThunk t' s
+step (Implication r1 r2) s = do 
+  r1' <- step r1 s
+  r2' <- step r2 s
+  binaryOp Implies s r1' r2'
 step (Conjunction r1 r2) s = do
   r1' <- step r1 s
   r2' <- step r2 s
@@ -526,4 +547,5 @@ stop (Next s t) = case s of
   AssumeFalse -> pure False
   Demand -> mzero
 stop (Conjunction r1 r2) = (&&) <$> stop r1 <*> stop r2
+stop (Implication r1 r2) = (\a b -> not a || b) <$> stop r1 <*> stop r2
 stop (Disjunction r1 r2) = (||) <$> stop r1 <*> stop r2

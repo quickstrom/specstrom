@@ -58,6 +58,7 @@ builtInTypes =
       ("_timeout_", val3),
       ("_||_", val3),
       ("_&&_", val3),
+      ("_==>_", val3),
       ("_>=_", val3),
       ("_<=_", val3),
       ("_<_", val3),
