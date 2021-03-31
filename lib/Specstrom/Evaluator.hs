@@ -252,14 +252,16 @@ evaluate s g (Index e1 e2) = do
   i' <- force s =<< evaluate s g e2
   case v' of
     List ls -> do
-      case i' of 
-        LitVal (IntLit i) -> let l = length ls; i' = if i < 0 then l + i else i in 
-          if i' < l && i' >= 0 then pure (ls !! i')
-          else pure Null
+      case i' of
+        LitVal (IntLit i) ->
+          let l = length ls; i' = if i < 0 then l + i else i
+           in if i' < l && i' >= 0
+                then pure (ls !! i')
+                else pure Null
         _ -> evalError ("Lists are only indexable by integers")
     Object m -> do
-      case i' of 
-        LitVal (StringLit s) -> case M.lookup s m of 
+      case i' of
+        LitVal (StringLit s) -> case M.lookup s m of
           Just v -> pure v
           Nothing -> pure Null
         _ -> evalError ("Objects are only indexable by strings")
@@ -393,7 +395,6 @@ unaryOp Not s v = do
     Trivial -> pure Absurd
     Residual f -> Residual <$> negateResidual f
     _ -> evalError ("Not expects boolean, got: " <> show v')
-
 unaryOp NextF s (Thunk t) = pure (Residual (Next AssumeFalse t))
 unaryOp NextT s (Thunk t) = pure (Residual (Next AssumeTrue t))
 unaryOp NextD s (Thunk t) = pure (Residual (Next Demand t))
@@ -403,8 +404,9 @@ negateResidual (Conjunction a b) = Disjunction <$> negateResidual a <*> negateRe
 negateResidual (Disjunction a b) = Conjunction <$> negateResidual a <*> negateResidual b
 negateResidual (Implication a b) = Conjunction <$> pure a <*> negateResidual b
 negateResidual (Next st (T g e v)) = do
-      let st' = case st of AssumeTrue -> AssumeFalse; AssumeFalse -> AssumeTrue; Demand -> Demand
-      Next st' <$> newThunk g (App (Var dummyPosition "not_") e)
+  let st' = case st of AssumeTrue -> AssumeFalse; AssumeFalse -> AssumeTrue; Demand -> Demand
+  Next st' <$> newThunk g (App (Var dummyPosition "not_") e)
+
 binaryOp :: PrimOp -> State -> Value -> Value -> Eval Value
 binaryOp Implies s v1 v2 = do
   v1' <- force s v1
@@ -546,7 +548,7 @@ resetThunks (LitVal l) = pure $ LitVal l
 -- Any other value is presumably a type error.
 step :: Residual -> State -> Eval Value
 step (Next _ t) s = resetThunk t >>= \t' -> forceThunk t' s
-step (Implication r1 r2) s = do 
+step (Implication r1 r2) s = do
   r1' <- step r1 s
   r2' <- step r2 s
   binaryOp Implies s r1' r2'
