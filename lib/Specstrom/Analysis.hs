@@ -37,7 +37,7 @@ builtIns =
            ("foldr", toAnnotation (\(Function f id) v x -> case f x `unionDep` id of Function f' id' -> f' v `unionDep` id'))
          ]
   where
-    binOps = ["_==_", "_&&_", "_||_", "_until_", "_!=_", "_==>_", "_+_", "_-_", "_/_", "_*_","_%_", "_>_","_<_","_>=_","_<=_"]
+    binOps = ["_==_", "_&&_", "_||_", "_until_", "_!=_", "_==>_", "_+_", "_-_", "_/_", "_*_", "_%_", "_>_", "_<_", "_>=_", "_<=_"]
     unOps = ["not_", "always_", "next_", "nextT_", "nextF_", "eventually_"]
     values = ["true", "false", "null"]
     hofs = ["map"]

@@ -7,6 +7,7 @@ module Specstrom.Evaluator where
 import Control.Exception (Exception, throw)
 import Control.Monad (MonadPlus (mzero), filterM, zipWithM)
 import qualified Data.Aeson as JSON
+import Data.Fixed (mod')
 import Data.Foldable (foldlM, foldrM)
 import qualified Data.HashMap.Strict as M
 import Data.IORef
@@ -14,7 +15,6 @@ import qualified Data.Text as Text
 import GHC.Generics (Generic)
 import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax
-import Data.Fixed(mod')
 
 type Env = M.HashMap Name Value
 
@@ -445,7 +445,6 @@ binaryOp Map s v1 v2 = do
   case v2' of
     List ls -> List <$> (filterM notNull =<< mapM (app s v1') ls)
     r -> app s v1' v2'
-
 
 binaryCmpOp :: State -> Value -> Value -> PrimOp -> IO Value
 binaryCmpOp s v1 v2 op = do
