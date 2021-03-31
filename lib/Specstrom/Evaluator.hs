@@ -394,8 +394,6 @@ binaryOp TimeoutAct s v1 v2 = do
 binaryOp Map s v1 v2 = undefined -- TODO
 binaryOp Any s v1 v2 = undefined -- TODO
 binaryOp All s v1 v2 = undefined -- TODO
-  
-
 
 binaryNumOp :: State -> Value -> Value -> PrimOp -> IO Value
 binaryNumOp s v1 v2 op = do

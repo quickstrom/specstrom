@@ -37,7 +37,7 @@ builtIns =
     binOps = ["_==_", "_&&_", "_||_", "_until_", "_!=_", "_==>_"]
     unOps = ["not_", "always_", "next_", "nextT_", "nextF_", "eventually_"]
     values = ["true", "false", "null"]
-    hofs = ["map","any","all"]
+    hofs = ["map", "any", "all"]
     hofAnn = toAnnotation (\(Function f id) v -> f v `unionDep` id)
 
 indirect :: Annotation -> Annotation
