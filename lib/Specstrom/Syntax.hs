@@ -10,6 +10,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Specstrom.Lexer (Position)
+import Data.Bifunctor(second)
 
 newtype Selector = Selector Text
   deriving (Show, Eq, Ord, Generic, Hashable, JSON.FromJSON, JSON.ToJSON, JSON.FromJSONKey, JSON.ToJSONKey)
@@ -25,12 +26,14 @@ data Lit
 data Expr p
   = Projection (Expr p) Text
   | Var Position Text
+  | Symbol Position Text
   | App (Expr p) (Expr p)
   | Index (Expr p) (Expr p)
   | Literal Position Lit
   | Freeze Position p (Expr p) (Expr p)
   | Lam Position Bool p (Expr p) -- Bool is if it is declared with "case" or not.
   | ListLiteral Position [Expr p]
+  | ObjectLiteral Position [(Name, Expr p)]
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 peelAps :: Expr p -> [Expr p] -> (Expr p, [Expr p])
@@ -42,6 +45,7 @@ unpeelAps e xs = foldl App e xs
 
 exprPos :: Expr p -> Position
 exprPos (Var p _) = p
+exprPos (Symbol p _) = p
 exprPos (App e1 _e2) = exprPos e1
 exprPos (Index e1 _e2) = exprPos e1
 exprPos (Literal p _) = p
@@ -49,6 +53,7 @@ exprPos (Projection e _) = exprPos e
 exprPos (Freeze p _ _ _) = p
 exprPos (Lam p _ _ _) = p
 exprPos (ListLiteral p _) = p
+exprPos (ObjectLiteral p _) = p
 
 type Name = Text
 
@@ -73,7 +78,7 @@ expand :: [Name] -> Glob -> [Name]
 expand names g =
   g >>= \x -> case asName x of
     Left n -> [n]
-    Right g -> filter (flip matches g) names
+    Right g' -> filter (flip matches g') names
 
 data BindPattern
   = Direct Pattern
@@ -81,9 +86,11 @@ data BindPattern
   deriving (Eq, Show)
 
 data Pattern
-  = VarP Name Position
+  = VarP Name Position  
   | ListP Position [Pattern]
+  | ObjectP Position [(Name, Pattern)]
   | ActionP Name Position [Pattern]
+  | SymbolP Name Position [Pattern]
   | IgnoreP Position
   | LitP Position Lit
   | BoolP Position Bool
@@ -101,6 +108,8 @@ bindPatternBoundVars (FunP n p ps) = [n]
 patternPos :: Pattern -> Position
 patternPos (VarP _ p) = p
 patternPos (ListP p _) = p
+patternPos (ObjectP p _) = p
+patternPos (SymbolP _ p _) = p
 patternPos (ActionP _ p _) = p
 patternPos (LitP p _) = p
 patternPos (BoolP p _) = p
@@ -110,7 +119,9 @@ patternPos (NullP p) = p
 patternVars :: Pattern -> [Name]
 patternVars (VarP n p) = [n]
 patternVars (ListP p ps) = concatMap patternVars ps
+patternVars (ObjectP p ps) = concatMap patternVars (map snd ps)
 patternVars (ActionP n p ps) = concatMap patternVars ps
+patternVars (SymbolP n p ps) = concatMap patternVars ps
 patternVars (LitP p _) = []
 patternVars (BoolP p _) = []
 patternVars (IgnoreP p) = []
@@ -140,12 +151,14 @@ instance MapPosition (Expr p) where
   mapPosition f expr = case expr of
     Projection e name -> Projection (mapPosition f e) name
     Var pos name -> Var (f pos) name
+    Symbol pos name -> Symbol (f pos) name
     App e1 e2 -> App (mapPosition f e1) (mapPosition f e2)
     Index e1 e2 -> Index (mapPosition f e1) (mapPosition f e2)
     Literal p lit -> Literal (f p) lit
     Freeze pos p e1 e2 -> Freeze pos p (mapPosition f e1) (mapPosition f e2)
     Lam pos b p body -> Lam (f pos) b p (mapPosition f body)
     ListLiteral p r -> ListLiteral (f p) (map (mapPosition f) r)
+    ObjectLiteral p r -> ObjectLiteral (f p) (map (second (mapPosition f)) r)
 
 instance MapPosition Pattern where
   mapPosition f (VarP name pos) = VarP name (f pos)
@@ -154,7 +167,9 @@ instance MapPosition Pattern where
   mapPosition f (BoolP pos b) = BoolP (f pos) b
   mapPosition f (LitP pos l) = LitP (f pos) l
   mapPosition f (ListP p ps) = ListP (f p) (map (mapPosition f) ps)
+  mapPosition f (ObjectP p ps) = ObjectP (f p) (map (second (mapPosition f)) ps)
   mapPosition f (ActionP n p ps) = ActionP n (f p) (map (mapPosition f) ps)
+  mapPosition f (SymbolP n p ps) = SymbolP n (f p) (map (mapPosition f) ps)
 
 instance MapPosition Body where
   mapPosition f (Local bind body) = Local (mapPosition f bind) (mapPosition f body)
@@ -171,5 +186,5 @@ instance MapPosition TopLevel where
   mapPosition f expr = case expr of
     Binding bind -> Binding (mapPosition f bind)
     ActionDecl bind -> ActionDecl (mapPosition f bind)
-    Properties pos g1 g2 expr -> Properties (f pos) g1 g2 (fmap (mapPosition f) expr)
+    Properties pos g1 g2 expr' -> Properties (f pos) g1 g2 (fmap (mapPosition f) expr')
     Imported name ts -> Imported name (map (mapPosition f) ts)

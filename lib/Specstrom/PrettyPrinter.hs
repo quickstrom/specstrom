@@ -8,6 +8,7 @@ module Specstrom.PrettyPrinter where
 import qualified Data.HashMap.Strict as M
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Text (Text)
+import Data.Bifunctor(second)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 import Prettyprinter.Render.Terminal
@@ -18,10 +19,13 @@ import Specstrom.Syntax
 import Specstrom.TypeInf
 
 prettyValue :: Evaluator.Value -> Doc AnsiStyle
+prettyValue (Evaluator.Action n [] _) = pretty n
 prettyValue (Evaluator.Action n vs _) = pretty n <> "(" <> sep (punctuate comma (map prettyValue vs)) <> ")"
 prettyValue (Evaluator.Closure (n, _, i) _ _ _) = "<<function:" <> pretty n <> "|" <> pretty (show i) <> ">>"
 prettyValue (Evaluator.Trivial) = "true"
 prettyValue (Evaluator.Absurd) = "false"
+prettyValue (Evaluator.Constructor n []) = symbol (":" <> pretty n)
+prettyValue (Evaluator.Constructor n vs) = symbol (":" <> pretty n) <> "(" <> sep (punctuate comma (map prettyValue vs)) <> ")"
 prettyValue (Evaluator.Null) = "null"
 prettyValue (Evaluator.List vs) = "[" <> sep (punctuate comma (map prettyValue vs)) <> "]"
 prettyValue (Evaluator.LitVal l) = prettyLit l
@@ -106,6 +110,9 @@ prettyToken (CharLitTok str) = literal (pretty (show str))
 prettyToken (IntLitTok str) = literal (pretty (show str))
 prettyToken (FloatLitTok str) = literal (pretty (show str))
 prettyToken (SelectorLitTok str) = literal ("`" <> pretty str <> "`")
+prettyToken LBrace = "{"
+prettyToken RBrace = "}"
+prettyToken Colon = ":"
 prettyToken LParen = "("
 prettyToken RParen = ")"
 prettyToken LBrack = "["
@@ -165,7 +172,9 @@ patternToExpr (LitP p l) = Literal p l
 patternToExpr (BoolP p l) = if l then Var p "true" else Var p "false"
 patternToExpr (NullP p) = Var p "null"
 patternToExpr (ListP p ps) = ListLiteral p (map patternToExpr ps)
+patternToExpr (ObjectP p ps) = ObjectLiteral p (map (second patternToExpr) ps)
 patternToExpr (ActionP n p ps) = unpeelAps (Var p n) (map patternToExpr ps)
+patternToExpr (SymbolP n p ps) = unpeelAps (Symbol p n) (map patternToExpr ps)
 
 bindPatternToExpr :: BindPattern -> Expr TempExpr
 bindPatternToExpr (FunP n p ps) = unpeelAps (Var p n) (map patternToExpr ps)
@@ -189,11 +198,13 @@ prettyExpr trm = renderTerm True trm
     renderTerm outer t
       | (x, []) <- peelAps t [] = case x of
         Var _ s -> ident s
+        Symbol _ s -> symbol (":" <> pretty s)
         Literal _p l -> prettyLit l
         Projection e pr -> renderTerm False e <> projection ("." <> pr)
         Index e e' -> renderTerm False e <> "[" <> renderTerm True e <> "]"
         App {} -> mempty -- Handled by peelAps
         ListLiteral _ ls -> "[" <> hsep (punctuate comma $ map (renderTerm True) ls) <> "]"
+        ObjectLiteral _ ls -> "{" <> hsep (punctuate comma $ map (\(i,e) -> pretty i <> ":" <+> renderTerm True e) ls) <> "}"
         Lam _ b n e ->
           (if outer then id else parens) $
             if b then "case" else "fun" <+> prettyPattern n <> "." <+> prettyExpr e
@@ -225,6 +236,10 @@ keyword = annotate bold
 
 literal :: Doc AnsiStyle -> Doc AnsiStyle
 literal = annotate (colorDull Cyan)
+
+symbol :: Doc AnsiStyle -> Doc AnsiStyle
+symbol = annotate (colorDull Magenta)
+
 
 ident :: Pretty p => p -> Doc AnsiStyle
 ident = annotate (color Black) . pretty

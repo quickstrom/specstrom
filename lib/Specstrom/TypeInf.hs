@@ -212,6 +212,9 @@ inferExp g (Var pos t) = case M.lookup t g of
   Just qt -> do
     ret <- instantiate mempty qt
     pure (ret, mempty)
+inferExp g e | (Symbol pos n, as) <- peelAps e [] = do
+  ss <- inferExpsValue g as
+  pure (Value, ss)
 inferExp g (App e1 e2) = do
   (t1, s1) <- inferExp g e1
   (t2, s2) <- inferExp (substGamma s1 g) e2
@@ -234,6 +237,13 @@ inferExp g (Literal {}) = pure (Value, mempty)
 inferExp g (ListLiteral _ es) = do
   ss <- inferExpsValue g es
   pure (Value, ss)
+inferExp g (ObjectLiteral p es) =
+  let ns = map fst es
+  in if ns /= nub ns then 
+      typeError p $ [StrE "Duplicate fields in object literal:"] ++ map VarNameE (ns \\ nub ns)
+  else do
+    ss <- inferExpsValue g (map snd es)
+    pure (Value, ss)
 inferExp g (Freeze _ (VarP n _) e1 e2) = do
   (t1, s1) <- inferExp g e1
   (t2, s2) <- inferExp (M.insert n (Ty t1) (substGamma s1 g)) e2

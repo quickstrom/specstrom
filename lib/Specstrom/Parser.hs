@@ -125,7 +125,9 @@ parseTopLevel search t ((p, Reserved Import) : ts) = case ts of
       (t', inc) <- loadModule search p n t
       fmap (Imported n inc :) <$> parseTopLevel search t' ts''
     ((p', _) : _) -> throwError $ ExpectedSemicolon p'
+    [] -> error "impossible?"
   ((p', _) : _) -> throwError $ ExpectedModuleName p'
+  [] -> error "impossible?"
 parseTopLevel search t ((p, Reserved Syntax) : ts) = do
   (ts', t') <- wrap (parseSyntax t p ts)
   parseTopLevel search t' ts'
@@ -147,9 +149,12 @@ parseTopLevel search t ((p, Reserved Check) : ts) = do
           case rest'' of
             ((_, Semi) : rest''') -> fmap (Properties p g1 g2 (Just g3) :) <$> parseTopLevel search t rest'''
             ((p', _) : _) -> throwError $ ExpectedSemicolon p
+            [] -> error "impossible?"
         ((_, Semi) : rest'') -> fmap (Properties p g1 g2 Nothing :) <$> parseTopLevel search t rest'' --TODO add default
         ((p', _) : _) -> throwError $ ExpectedSemicolonOrWhen p'
+        [] -> error "impossible?"
     ((p', _) : _) -> throwError $ ExpectedWith p'
+    [] -> error "impossible?"
 parseTopLevel search t [] = pure (t, [])
 parseTopLevel search t [(p, EOF)] = pure (t, [])
 parseTopLevel search t ((p, tok) : ts) = throwError $ TrailingGarbage p tok
@@ -163,7 +168,9 @@ parseBind t p ts = do
       case rest of
         ((_, Semi) : rest') -> Right (rest', Bind pat body)
         ((p', _) : _) -> Left $ ExpectedSemicolon p'
+        [] -> error "impossible?"
     ((p', _) : _) -> Left $ ExpectedEquals p'
+    [] -> error "impossible?"
 
 parseSyntax :: Table -> Position -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Table)
 parseSyntax t p ts = do
@@ -219,10 +226,12 @@ patFromAnyExpr t (Var p n)
   | n == "false" = pure (BoolP p False)
   | n `elem` t = pure (ActionP n p [])
   | otherwise = pure (VarP n p)
+patFromAnyExpr t (ObjectLiteral p es) = ObjectP p <$> mapM (traverse (patFromAnyExpr t)) es
 patFromAnyExpr t (Literal p l) = pure $ LitP p l
 patFromAnyExpr t (ListLiteral p es) = ListP p <$> mapM (patFromAnyExpr t) es
 patFromAnyExpr t x@(App {}) = case peelAps x [] of
   (Var p n, args) | n `elem` t -> ActionP n p <$> mapM (patFromAnyExpr t) args
+  (Symbol p n, args) -> SymbolP n p <$> mapM (patFromAnyExpr t) args
   _ -> Nothing
 patFromAnyExpr t _ = Nothing
 
@@ -260,23 +269,27 @@ grammar table = mdo
   ident <-
     rule $
       (variable <?> "identifier")
+        <|> (symbol <?> "symbol")
         <|> (literal <?> "literal")
   atom <-
     rule $
       ident
-        <|> lparen *> expr <* rparen
-        <|> ListLiteral . fst <$> lbrack <*> argList <* rbrack
-  normalProj <- rule $ atom <|> Projection <$> normalProj <*> projection
+        <|> ((lparen *> expr <* rparen) <?> "parenthesised expression")
+        <|> ((ListLiteral . fst <$> lbrack <*> argList <* rbrack) <?> "list literal")
+        <|> ((ObjectLiteral . fst <$> lbrace <*> fieldList <* rbrace) <?> "object literal")
+  fieldList <-
+    rule $ (:) <$> ((,) <$> rawName <* isToken Colon ":" <*> expr) <*> (isToken Comma "," *> fieldList <|> pure [])
+        <|> pure []
   argList <-
-    rule $
-      (:) <$> expr <*> (isToken Comma "," *> argList <|> pure [])
+    rule $ (:) <$> expr <*> (isToken Comma "," *> argList <|> pure [])
         <|> pure []
   normalApp <-
-    rule $
-      normalProj
-        <|> app <$> normalApp <* lparen <*> argList <* rparen
-        <|> Index <$> normalApp <* lbrack <*> expr <* rbrack
-  expr <- mixfixExpression tbl normalApp makeAp
+     rule $ atom 
+        <|> ((Projection <$> normalApp <*> projection) <?> "field projection")
+        <|> ((app <$> normalApp <* lparen <*> argList <* rparen) <?> "function application")
+        <|> ((Index <$> normalApp <* lbrack <*> expr <* rbrack) <?> "array indexing")
+  expr' <- mixfixExpression tbl normalApp makeAp 
+  expr <- rule $ expr' <?> "expression"
   return expr
   where
     app x [] = x
@@ -301,14 +314,22 @@ grammar table = mdo
       ]
     lbrack = satisfy ((== LBrack) . snd) <?> "left bracket"
     rbrack = satisfy ((== RBrack) . snd) <?> "right bracket"
+    lbrace = satisfy ((== LBrace) . snd) <?> "left brace"
+    rbrace = satisfy ((== RBrace) . snd) <?> "right brace"
     lparen = satisfy ((== LParen) . snd) <?> "left parenthesis"
     rparen = satisfy ((== RParen) . snd) <?> "right parenthesis"
+    colon = satisfy ((== Colon) . snd) <?> "colon"
     identToken s = isToken (Ident s) s
     isToken s t = satisfy ((== s) . snd) <?> t
     projection = terminal $ \(p, t) ->
       case t of
         ProjectionTok s -> pure s
         _ -> Nothing
+    rawName = terminal $ \(p, t) ->
+      case t of
+        Ident s -> pure s
+        _ -> Nothing        
+    symbol =  Symbol . fst <$> colon <*> rawName
     variable = terminal $ \(p, t) ->
       case t of
         Ident s -> guard (s `notElem` mixfixParts) >> pure (Var p s)

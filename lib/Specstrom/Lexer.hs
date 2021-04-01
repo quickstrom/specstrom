@@ -25,6 +25,9 @@ data Token
   | RParen
   | LBrack
   | RBrack
+  | LBrace
+  | RBrace
+  | Colon
   | Semi
   | Comma
   | Dot
@@ -76,7 +79,7 @@ readLiteral' delimiter rest =
         _ -> Nothing
 
 reserved :: Char -> Bool
-reserved c = isSpace c || c `elem` ("();,.[]" :: [Char])
+reserved c = isSpace c || c `elem` ("();,.[]:{}" :: [Char])
 
 lexer :: Position -> Text -> Either LexerError [(Position, Token)]
 lexer p t
@@ -125,8 +128,11 @@ lexer p t
     Just (')', cs) -> ((p, RParen) :) <$> lexer (nextCol p) cs
     Just ('[', cs) -> ((p, LBrack) :) <$> lexer (nextCol p) cs
     Just (']', cs) -> ((p, RBrack) :) <$> lexer (nextCol p) cs
+    Just ('{', cs) -> ((p, LBrace) :) <$> lexer (nextCol p) cs
+    Just ('}', cs) -> ((p, RBrace) :) <$> lexer (nextCol p) cs
     Just (';', cs) -> ((p, Semi) :) <$> lexer (nextCol p) cs
     Just (',', cs) -> ((p, Comma) :) <$> lexer (nextCol p) cs
+    Just (':', cs) -> ((p, Colon) :) <$> lexer (nextCol p) cs
     Just ('.', cs) ->
       let (candidate, rest) = Text.break reserved cs
        in if Text.null candidate

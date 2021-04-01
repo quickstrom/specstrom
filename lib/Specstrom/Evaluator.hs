@@ -137,11 +137,12 @@ data Value
   | -- thunks (not returned by force)
     Thunk Thunk
   | Frozen State Thunk
-  | Matched Thunk Pattern Name
+  | Matched Thunk Bool Pattern Name -- bool determines if null is returned or crash
   | -- Residual formulae
     Residual Residual
   | -- Actions
     Action Name [Value] (Maybe Int)
+  | Constructor Name [Value]
   | -- Values
     Trivial
   | Absurd
@@ -178,12 +179,15 @@ evaluateActionBind g (Bind _ _) = evalError "impossible"
 evaluateBind' :: Env -> Env -> Bind -> Eval Env
 evaluateBind' g g' (Bind (Direct (VarP n _)) e) = M.insert n <$> evaluateBody g' e <*> pure g
 evaluateBind' g g' (Bind (Direct pat) e) = do
-  Thunk t <- evaluateBody g' e
-  pure (withPatternsDelayed pat t g)
+  t <- evaluateBody g' e
+  Just g'' <- withPatternsDelayed True (evalError "impossible") pat t g 
+  pure g''
 evaluateBind' g g' (Bind (FunP n p pats) e) = pure (M.insert n (Closure (n, p, 0) g' pats e) g)
 
-withPatternsDelayed :: Pattern -> Thunk -> Env -> Env
-withPatternsDelayed pat t g = M.union (M.fromList (map (\v -> (v, Matched t pat v)) (patternVars pat))) g
+-- boolean tracks if this is a let expression or a function binding
+withPatternsDelayed :: Bool -> State -> Pattern -> Value -> Env -> Eval (Maybe Env)
+withPatternsDelayed b _ pat (Thunk t) g = pure $ pure $ M.union (M.fromList (map (\v -> (v, Matched t b pat v)) (patternVars pat))) g
+withPatternsDelayed _ s pat v g = withPatterns s pat v g
 
 withPatterns :: State -> Pattern -> Value -> Env -> Eval (Maybe Env)
 withPatterns s (IgnoreP p) v g = pure (Just g)
@@ -204,11 +208,21 @@ withPatterns s (LitP p l) v g = do
     LitVal l' | l == l' -> pure (Just g)
     _ -> pure Nothing
 withPatterns s (VarP n p) v g = pure (Just $ M.insert n v g)
+withPatterns s (ObjectP p ps) v g = do
+  v' <- force s v
+  case v' of
+    Object fs | all (`elem` M.keys fs) (map fst ps) -> withPatternses s (map snd ps) (map ((\(Just x) -> x) . (fs M.!?) . fst) ps) g
+    _ -> pure Nothing
 withPatterns s (ListP p ps) v g = do
   v' <- force s v
   case v' of
     List ls | length ls == length ps -> withPatternses s ps ls g
     _ -> pure Nothing
+withPatterns s (SymbolP n p ps) v g = do
+  v' <- force s v
+  case v' of
+    Constructor n' ls | n == n' && length ls == length ps -> withPatternses s ps ls g
+    _ -> pure Nothing    
 withPatterns s (ActionP n p ps) v g = do
   v' <- force s v
   case v' of
@@ -253,14 +267,17 @@ app s v v2 =
     Op MkPrimAction [v11, v12, v13] -> makePrimAction s v11 v12 v13 v2
     Action a args t -> do
       v2' <- force s v2
-      pure (Action a (args ++ [v2]) t)
+      pure (Action a (args ++ [v2']) t)
+    Constructor a args -> do
+      v2' <- force s v2
+      pure (Constructor a (args ++ [v2']))
     Closure (n, p, ai) g' [pat] body -> do
-      mg'' <- withPatterns s pat v2 g'
+      mg'' <- withPatternsDelayed False s pat v2 g'
       case mg'' of
         Nothing -> pure Null
         Just g'' -> evaluateBody g'' body -- If we want backtraces, add (n,p,ai) to a stack while running this
     Closure (n, p, ai) g' (pat : pats) body -> do
-      mg'' <- withPatterns s pat v2 g'
+      mg'' <- withPatternsDelayed False s pat v2 g'
       case mg'' of
         Nothing -> pure Null
         Just g'' -> pure (Closure (n, p, ai + 1) g'' pats body)
@@ -292,6 +309,7 @@ evaluate s g (Projection e t) = do
     List (Object m : _) | Just v <- M.lookup t m -> pure v
     Object m | Just v <- M.lookup t m -> pure v
     _ -> evalError "Cannot take projection of a non-object (or list of objects)"
+evaluate s g (Symbol _ t) = pure $ Constructor t []
 evaluate s g (Var p t) = case M.lookup t g of
   Just v -> pure v
   Nothing -> evalError ("Impossible: variable '" <> Text.unpack t <> "' not found in environment (type checker found it though)")
@@ -307,6 +325,9 @@ evaluate s g (Lam p b pat e) = pure (Closure (if b then "case" else "fun", p, 0)
 evaluate s g (ListLiteral p ls) = do
   vs <- mapM (evaluate s g) ls
   pure (List vs)
+evaluate s g (ObjectLiteral p ls) = do
+  vs <- mapM (traverse (evaluate s g)) ls
+  pure (Object $ M.fromList vs)  
 evaluate s g (Freeze p pat e1 e2) = do
   v1 <- Frozen s <$> newThunk g e1
   mg' <- withPatterns s pat v1 g
@@ -335,11 +356,11 @@ deepForce s v = do
 force :: State -> Value -> Eval Value
 force _ (Frozen s' t) = forceThunk t s'
 force s (Thunk t) = forceThunk t s
-force s (Matched t pat v) = do
+force s (Matched t b pat v) = do
   val <- forceThunk t s
   g <- withPatterns s pat val mempty
   case g >>= M.lookup v of
-    Nothing -> evalError "Pattern match failure in let binding"
+    Nothing -> if b then evalError "Pattern match failure in let binding" else pure Null
     Just v' -> force s v'
 force s v = pure v
 
@@ -392,6 +413,7 @@ areEqual s v1 v2 = do
     areEqual' Null Null = pure True
     areEqual' (List as) (List bs) | length as == length bs = and <$> zipWithM (areEqual s) as bs
     areEqual' (Action n as x) (Action m bs y) | n == m && length as == length bs && x == y = and <$> zipWithM (areEqual s) as bs
+    areEqual' (Constructor n as) (Constructor m bs) | n == m && length as == length bs = and <$> zipWithM (areEqual s) as bs
     areEqual' (Object as) (Object bs) = undefined -- for now
     areEqual' (LitVal l) (LitVal l') = pure $ l == l'
     areEqual' _ _ = pure False
@@ -554,10 +576,11 @@ resetThunks (Op o vs) = Op o <$> traverse resetThunks vs
 resetThunks (Thunk t) = Thunk <$> resetThunk t
 resetThunks (Frozen s t) = pure $ Frozen s t -- should be safe? Never need to re-evaluate frozen stuff.
 resetThunks (Residual r) = pure $ Residual r -- that all gets cleared out later
-resetThunks (Matched t p v) = Matched <$> resetThunk t <*> pure p <*> pure v
+resetThunks (Matched t b p v) = Matched <$> resetThunk t <*> pure b <*> pure p <*> pure v
 resetThunks (Object o) = Object <$> traverse resetThunks o
 resetThunks (List o) = List <$> traverse resetThunks o
 resetThunks (Action n o t) = Action n <$> traverse resetThunks o <*> pure t
+resetThunks (Constructor n o) = Constructor n <$> traverse resetThunks o 
 resetThunks (Absurd) = pure Absurd
 resetThunks (Trivial) = pure Trivial
 resetThunks (Null) = pure Null
