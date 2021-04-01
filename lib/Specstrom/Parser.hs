@@ -278,17 +278,20 @@ grammar table = mdo
         <|> ((ListLiteral . fst <$> lbrack <*> argList <* rbrack) <?> "list literal")
         <|> ((ObjectLiteral . fst <$> lbrace <*> fieldList <* rbrace) <?> "object literal")
   fieldList <-
-    rule $ (:) <$> ((,) <$> rawName <* isToken Colon ":" <*> expr) <*> (isToken Comma "," *> fieldList <|> pure [])
+    rule $
+      (:) <$> ((,) <$> rawName <* isToken Colon ":" <*> expr) <*> (isToken Comma "," *> fieldList <|> pure [])
         <|> pure []
   argList <-
-    rule $ (:) <$> expr <*> (isToken Comma "," *> argList <|> pure [])
+    rule $
+      (:) <$> expr <*> (isToken Comma "," *> argList <|> pure [])
         <|> pure []
   normalApp <-
-     rule $ atom 
+    rule $
+      atom
         <|> ((Projection <$> normalApp <*> projection) <?> "field projection")
         <|> ((app <$> normalApp <* lparen <*> argList <* rparen) <?> "function application")
         <|> ((Index <$> normalApp <* lbrack <*> expr <* rbrack) <?> "array indexing")
-  expr' <- mixfixExpression tbl normalApp makeAp 
+  expr' <- mixfixExpression tbl normalApp makeAp
   expr <- rule $ expr' <?> "expression"
   return expr
   where
@@ -328,8 +331,8 @@ grammar table = mdo
     rawName = terminal $ \(p, t) ->
       case t of
         Ident s -> pure s
-        _ -> Nothing        
-    symbol =  Symbol . fst <$> colon <*> rawName
+        _ -> Nothing
+    symbol = Symbol . fst <$> colon <*> rawName
     variable = terminal $ \(p, t) ->
       case t of
         Ident s -> guard (s `notElem` mixfixParts) >> pure (Var p s)

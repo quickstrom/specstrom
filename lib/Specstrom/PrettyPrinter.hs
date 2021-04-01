@@ -5,10 +5,10 @@
 
 module Specstrom.PrettyPrinter where
 
+import Data.Bifunctor (second)
 import qualified Data.HashMap.Strict as M
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Text (Text)
-import Data.Bifunctor(second)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 import Prettyprinter.Render.Terminal
@@ -204,7 +204,7 @@ prettyExpr trm = renderTerm True trm
         Index e e' -> renderTerm False e <> "[" <> renderTerm True e <> "]"
         App {} -> mempty -- Handled by peelAps
         ListLiteral _ ls -> "[" <> hsep (punctuate comma $ map (renderTerm True) ls) <> "]"
-        ObjectLiteral _ ls -> "{" <> hsep (punctuate comma $ map (\(i,e) -> pretty i <> ":" <+> renderTerm True e) ls) <> "}"
+        ObjectLiteral _ ls -> "{" <> hsep (punctuate comma $ map (\(i, e) -> pretty i <> ":" <+> renderTerm True e) ls) <> "}"
         Lam _ b n e ->
           (if outer then id else parens) $
             if b then "case" else "fun" <+> prettyPattern n <> "." <+> prettyExpr e
@@ -239,7 +239,6 @@ literal = annotate (colorDull Cyan)
 
 symbol :: Doc AnsiStyle -> Doc AnsiStyle
 symbol = annotate (colorDull Magenta)
-
 
 ident :: Pretty p => p -> Doc AnsiStyle
 ident = annotate (color Black) . pretty

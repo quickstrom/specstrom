@@ -180,7 +180,7 @@ evaluateBind' :: Env -> Env -> Bind -> Eval Env
 evaluateBind' g g' (Bind (Direct (VarP n _)) e) = M.insert n <$> evaluateBody g' e <*> pure g
 evaluateBind' g g' (Bind (Direct pat) e) = do
   t <- evaluateBody g' e
-  Just g'' <- withPatternsDelayed True (evalError "impossible") pat t g 
+  Just g'' <- withPatternsDelayed True (evalError "impossible") pat t g
   pure g''
 evaluateBind' g g' (Bind (FunP n p pats) e) = pure (M.insert n (Closure (n, p, 0) g' pats e) g)
 
@@ -222,7 +222,7 @@ withPatterns s (SymbolP n p ps) v g = do
   v' <- force s v
   case v' of
     Constructor n' ls | n == n' && length ls == length ps -> withPatternses s ps ls g
-    _ -> pure Nothing    
+    _ -> pure Nothing
 withPatterns s (ActionP n p ps) v g = do
   v' <- force s v
   case v' of
@@ -327,7 +327,7 @@ evaluate s g (ListLiteral p ls) = do
   pure (List vs)
 evaluate s g (ObjectLiteral p ls) = do
   vs <- mapM (traverse (evaluate s g)) ls
-  pure (Object $ M.fromList vs)  
+  pure (Object $ M.fromList vs)
 evaluate s g (Freeze p pat e1 e2) = do
   v1 <- Frozen s <$> newThunk g e1
   mg' <- withPatterns s pat v1 g
@@ -580,7 +580,7 @@ resetThunks (Matched t b p v) = Matched <$> resetThunk t <*> pure b <*> pure p <
 resetThunks (Object o) = Object <$> traverse resetThunks o
 resetThunks (List o) = List <$> traverse resetThunks o
 resetThunks (Action n o t) = Action n <$> traverse resetThunks o <*> pure t
-resetThunks (Constructor n o) = Constructor n <$> traverse resetThunks o 
+resetThunks (Constructor n o) = Constructor n <$> traverse resetThunks o
 resetThunks (Absurd) = pure Absurd
 resetThunks (Trivial) = pure Trivial
 resetThunks (Null) = pure Null

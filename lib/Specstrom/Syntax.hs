@@ -5,12 +5,12 @@
 module Specstrom.Syntax where
 
 import qualified Data.Aeson as JSON
+import Data.Bifunctor (second)
 import Data.Hashable (Hashable)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Specstrom.Lexer (Position)
-import Data.Bifunctor(second)
 
 newtype Selector = Selector Text
   deriving (Show, Eq, Ord, Generic, Hashable, JSON.FromJSON, JSON.ToJSON, JSON.FromJSONKey, JSON.ToJSONKey)
@@ -86,7 +86,7 @@ data BindPattern
   deriving (Eq, Show)
 
 data Pattern
-  = VarP Name Position  
+  = VarP Name Position
   | ListP Position [Pattern]
   | ObjectP Position [(Name, Pattern)]
   | ActionP Name Position [Pattern]

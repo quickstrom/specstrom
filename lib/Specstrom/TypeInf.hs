@@ -239,11 +239,11 @@ inferExp g (ListLiteral _ es) = do
   pure (Value, ss)
 inferExp g (ObjectLiteral p es) =
   let ns = map fst es
-  in if ns /= nub ns then 
-      typeError p $ [StrE "Duplicate fields in object literal:"] ++ map VarNameE (ns \\ nub ns)
-  else do
-    ss <- inferExpsValue g (map snd es)
-    pure (Value, ss)
+   in if ns /= nub ns
+        then typeError p $ [StrE "Duplicate fields in object literal:"] ++ map VarNameE (ns \\ nub ns)
+        else do
+          ss <- inferExpsValue g (map snd es)
+          pure (Value, ss)
 inferExp g (Freeze _ (VarP n _) e1 e2) = do
   (t1, s1) <- inferExp g e1
   (t2, s2) <- inferExp (M.insert n (Ty t1) (substGamma s1 g)) e2
