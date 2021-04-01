@@ -1,6 +1,4 @@
-action click!(x) = #act("click",false,[x.ref],null) when x.enabled;
-
-action loaded? = #act("loaded",true,[],null);
+import quickstrom;
 
 action disable! = click!(`button`);
 

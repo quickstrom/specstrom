@@ -13,6 +13,8 @@ action click!(x) = for element in x. #act("click",false,[element.ref],null) when
 
 action changed?(x) = #act("changed",true,[x.ref],null);
 
+action loaded? = #act("loaded",true,[],null);
+
 action noop! = #act("noop",false,[],null);
 
 // bindings can take arguments.
