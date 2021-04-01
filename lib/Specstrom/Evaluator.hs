@@ -18,7 +18,7 @@ import Specstrom.Syntax
 
 type Env = M.HashMap Name Value
 
-type State = (Maybe [Value],M.HashMap Selector Value)
+type State = (Maybe [Value], M.HashMap Selector Value)
 
 data Thunk = T Env (Expr Pattern) (IORef (Maybe Value))
 
@@ -310,7 +310,7 @@ evaluate s g (Projection e t) = do
     Object m | Just v <- M.lookup t m -> pure v
     _ -> evalError "Cannot take projection of a non-object (or list of objects)"
 evaluate s g (Symbol _ t) = pure $ Constructor t []
-evaluate s g (Var p "happened") = case fst s of 
+evaluate s g (Var p "happened") = case fst s of
   Just v -> pure (List v)
   Nothing -> evalError "Set 'happened' of actions is not available when computing actions"
 evaluate s g (Var p t) = case M.lookup t g of

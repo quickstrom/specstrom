@@ -245,8 +245,8 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
                   send output (RequestAction primaction)
                   run ReadingQueue {formula = r, stateVersion, lastState = lastState, sentAction = Sent (primaction, action)}
 
-toEvaluatorState :: Maybe [(Name,[Evaluator.Value])] -> State -> Evaluator.State
-toEvaluatorState mb s = (fmap (map (\(n,vs) -> Evaluator.Action n vs Nothing)) mb,fmap toEvaluatorValue s)
+toEvaluatorState :: Maybe [(Name, [Evaluator.Value])] -> State -> Evaluator.State
+toEvaluatorState mb s = (fmap (map (\(n, vs) -> Evaluator.Action n vs Nothing)) mb, fmap toEvaluatorValue s)
 
 toJSONValue :: Evaluator.State -> Evaluator.Value -> Evaluator.Eval JSON.Value
 toJSONValue st v = do
