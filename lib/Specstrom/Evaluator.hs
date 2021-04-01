@@ -238,12 +238,15 @@ withPatternses s (p : ps) (v : vs) g = do
     Nothing -> pure Nothing
     Just g' -> withPatternses s ps vs g'
 
+isSelectorLit :: Lit -> Bool
+isSelectorLit (SelectorLit {}) = True
+isSelectorLit _ = False
 delayedEvaluate :: State -> Env -> Expr Pattern -> Eval Value
--- note that any call to "evaluate" here must not in turn call "force" or we will get dangerous strictness.
-delayedEvaluate s g v@(Var {}) = evaluate s g v
-delayedEvaluate s g v@(Literal {}) = evaluate s g v
+-- note that any call to "evaluate" here must not in turn call "force" or consult the state we will get dangerous strictness.
+delayedEvaluate s g v@(Var p n) | n /= "happened" = evaluate s g v
+delayedEvaluate s g v@(Literal _ l) | not (isSelectorLit l) = evaluate s g v
 delayedEvaluate s g v@(Lam {}) = evaluate s g v
-delayedEvaluate s g v@(ListLiteral {}) = evaluate s g v
+--delayedEvaluate s g v@(ListLiteral {}) = evaluate s g v
 delayedEvaluate s g e = Thunk <$> newThunk g e
 
 appAll :: State -> Value -> [Value] -> Eval Value
@@ -264,20 +267,17 @@ app s v v2 =
     Op o [v1, v1']
       | o /= MkPrimAction -> ternaryOp o s v1 v1' v2
       | otherwise -> pure (Op o [v1, v1', v2])
-    Op MkPrimAction [v11, v12, v13] -> makePrimAction s v11 v12 v13 v2
     Action a args t -> do
-      v2' <- force s v2
-      pure (Action a (args ++ [v2']) t)
+      pure (Action a (args ++ [v2]) t)
     Constructor a args -> do
-      v2' <- force s v2
-      pure (Constructor a (args ++ [v2']))
+      pure (Constructor a (args ++ [v2]))
     Closure (n, p, ai) g' [pat] body -> do
-      mg'' <- withPatternsDelayed False s pat v2 g'
+      mg'' <- withPatterns s pat v2 g'
       case mg'' of
         Nothing -> pure Null
         Just g'' -> evaluateBody g'' body -- If we want backtraces, add (n,p,ai) to a stack while running this
     Closure (n, p, ai) g' (pat : pats) body -> do
-      mg'' <- withPatternsDelayed False s pat v2 g'
+      mg'' <- withPatterns s pat v2 g'
       case mg'' of
         Nothing -> pure Null
         Just g'' -> pure (Closure (n, p, ai + 1) g'' pats body)

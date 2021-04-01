@@ -5,9 +5,9 @@ let any(f,ls) = disjunction(map(f,ls));
 syntax _??_ 3 right;
 let _??_(x,y) = if x == null then y else x;
 syntax _|_ -2 right;
-syntax match__ -3 right;
+syntax match_on_ -3 right;
 let (f | g)(x) = f(x) ?? g(x);
-let match x f = f(x);
+let match x on f = f(x);
 
 action click!(x) = for element in x. #act("click",false,[element.ref],null) when element.enabled;
 
