@@ -241,6 +241,7 @@ withPatternses s (p : ps) (v : vs) g = do
 isSelectorLit :: Lit -> Bool
 isSelectorLit (SelectorLit {}) = True
 isSelectorLit _ = False
+
 delayedEvaluate :: State -> Env -> Expr Pattern -> Eval Value
 -- note that any call to "evaluate" here must not in turn call "force" or consult the state we will get dangerous strictness.
 delayedEvaluate s g v@(Var p n) | n /= "happened" = evaluate s g v
