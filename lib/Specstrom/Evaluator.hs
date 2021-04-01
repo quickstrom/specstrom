@@ -18,7 +18,7 @@ import Specstrom.Syntax
 
 type Env = M.HashMap Name Value
 
-type State = M.HashMap Selector Value
+type State = (Maybe [Value],M.HashMap Selector Value)
 
 data Thunk = T Env (Expr Pattern) (IORef (Maybe Value))
 
@@ -310,6 +310,9 @@ evaluate s g (Projection e t) = do
     Object m | Just v <- M.lookup t m -> pure v
     _ -> evalError "Cannot take projection of a non-object (or list of objects)"
 evaluate s g (Symbol _ t) = pure $ Constructor t []
+evaluate s g (Var p "happened") = case fst s of 
+  Just v -> pure (List v)
+  Nothing -> evalError "Set 'happened' of actions is not available when computing actions"
 evaluate s g (Var p t) = case M.lookup t g of
   Just v -> pure v
   Nothing -> evalError ("Impossible: variable '" <> Text.unpack t <> "' not found in environment (type checker found it though)")
@@ -317,7 +320,7 @@ evaluate s g (App e1 e2) = do
   v <- force s =<< evaluate s g e1
   v2 <- delayedEvaluate s g e2 -- TODO avoid thunking everything when safe
   app s v v2
-evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l s of
+evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l (snd s) of
   Nothing -> evalError ("Can't find '" <> Text.unpack sel <> "' in the state (analysis failed?)")
   Just ls -> pure ls
 evaluate s g (Literal p l) = pure (LitVal l)

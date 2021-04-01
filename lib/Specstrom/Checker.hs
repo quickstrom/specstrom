@@ -12,7 +12,7 @@ module Specstrom.Checker where
 
 import qualified Control.Concurrent.Async as Async
 import Control.Exception (BlockedIndefinitelyOnSTM (..), catch)
-import Control.Monad (unless, void, (<=<))
+import Control.Monad (unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Writer (WriterT, runWriterT, tell)
 import qualified Data.Aeson as JSON
@@ -21,7 +21,6 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
-import Data.Maybe (catMaybes)
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
 import Data.Traversable (for)
@@ -174,7 +173,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
         Performed _state -> error "Was not expecting an action to be performed. Trace must begin with an initial event."
         Event event firstState -> do
           expectedPrims <-
-            let f = extractActions Nothing actionEnv (toEvaluatorState firstState)
+            let f = extractActions Nothing actionEnv (toEvaluatorState Nothing firstState)
              in case expectedEvent of
                   Just ev -> liftIO $ f ev
                   Nothing -> liftIO $ concat <$> mapM f actions
@@ -184,7 +183,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
               -- the `happened` variable should be map snd as a list of action values..
               tell [TraceAction (map fst as), TraceState firstState]
               let timeout = maximumTimeout (map fst as)
-              ifResidual firstState initialFormula $ \r ->
+              ifResidual (map snd as) firstState initialFormula $ \r ->
                 run
                   ReadingQueue
                     { formula = r,
@@ -200,9 +199,9 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
       case msg of
         Just (Performed nextState) -> case sentAction of
           Sent (primact, val) -> do
-            nextFormula <- liftIO (Evaluator.step r (toEvaluatorState nextState))
+            nextFormula <- liftIO (Evaluator.step r (toEvaluatorState (Just [val]) nextState))
             tell [TraceAction [primact], TraceState nextState]
-            ifResidual nextState nextFormula $ \r' ->
+            ifResidual [val] nextState nextFormula $ \r' ->
               run
                 ReadingQueue
                   { formula = r',
@@ -212,15 +211,15 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
                   }
           _ -> error "Not expecting a performed"
         Just (Event event nextState) -> do
-          expectedPrims <- liftIO $ concat <$> mapM (extractActions Nothing actionEnv (toEvaluatorState nextState)) actions
+          expectedPrims <- liftIO $ concat <$> mapM (extractActions Nothing actionEnv (toEvaluatorState Nothing nextState)) actions
           case filter (actionMatches event . fst) expectedPrims of
             [] -> run ReadingQueue {formula = r, stateVersion, lastState, sentAction}
             as -> do
               tell [TraceAction (map fst as), TraceState nextState]
               let timeout = maximumTimeout (map fst as)
               -- the `happened` variable should be map snd as a list of action values..
-              nextFormula <- liftIO (Evaluator.step r (toEvaluatorState nextState))
-              ifResidual nextState nextFormula $ \r' ->
+              nextFormula <- liftIO (Evaluator.step r (toEvaluatorState (Just (map snd as)) nextState))
+              ifResidual (map snd as) nextState nextFormula $ \r' ->
                 run
                   ReadingQueue
                     { formula = r',
@@ -233,7 +232,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
           case Evaluator.stop r of
             Just v -> pure (Probably v)
             Nothing -> do
-              possiblePrims <- liftIO $ concat <$> mapM (extractActions Nothing actionEnv (toEvaluatorState lastState)) actions
+              possiblePrims <- liftIO $ concat <$> mapM (extractActions Nothing actionEnv (toEvaluatorState Nothing lastState)) actions
               let acts = filter (not . isEvent . fst) possiblePrims
               -- actvals <- liftIO $ mapM (Evaluator.force (toEvaluatorState lastState) <=< Evaluator.resetThunks) actions
               --let acts = catMaybes $ flip map actvals $ \v -> case v of Evaluator.Action a@(Evaluator.A b _) | not (Evaluator.isEvent b) -> Just a; _ -> Nothing
@@ -246,18 +245,18 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
                   send output (RequestAction primaction)
                   run ReadingQueue {formula = r, stateVersion, lastState = lastState, sentAction = Sent (primaction, action)}
 
-toEvaluatorState :: State -> Evaluator.State
-toEvaluatorState = fmap toEvaluatorValue
+toEvaluatorState :: Maybe [(Name,[Evaluator.Value])] -> State -> Evaluator.State
+toEvaluatorState mb s = (fmap (map (\(n,vs) -> Evaluator.Action n vs Nothing)) mb,fmap toEvaluatorValue s)
 
 toJSONValue :: Evaluator.State -> Evaluator.Value -> Evaluator.Eval JSON.Value
-toJSONValue s v = do
-  v' <- Evaluator.force s v
+toJSONValue st v = do
+  v' <- Evaluator.force st v
   case v' of
     Evaluator.LitVal (Syntax.StringLit s) -> pure $ JSON.String s
     Evaluator.LitVal (Syntax.IntLit i) -> pure $ JSON.Number (fromIntegral i)
     Evaluator.LitVal (Syntax.FloatLit i) -> pure $ JSON.Number (Scientific.fromFloatDigits i)
-    Evaluator.Object o -> JSON.Object <$> traverse (toJSONValue s) o
-    Evaluator.List o -> JSON.Array . Vector.fromList <$> traverse (toJSONValue s) o
+    Evaluator.Object o -> JSON.Object <$> traverse (toJSONValue st) o
+    Evaluator.List o -> JSON.Array . Vector.fromList <$> traverse (toJSONValue st) o
     Evaluator.Trivial -> pure $ JSON.Bool True
     Evaluator.Absurd -> pure $ JSON.Bool False
     Evaluator.Null -> pure JSON.Null
@@ -275,9 +274,9 @@ toEvaluatorValue = \case
   JSON.Bool False -> Evaluator.Absurd
   JSON.Null -> Evaluator.Null
 
-ifResidual :: State -> Evaluator.Value -> (Evaluator.Residual -> Interpret m Validity) -> Interpret m Validity
-ifResidual state formula f = do
-  formula' <- liftIO (Evaluator.force (toEvaluatorState state) formula)
+ifResidual :: [(Name, [Evaluator.Value])] -> State -> Evaluator.Value -> (Evaluator.Residual -> Interpret m Validity) -> Interpret m Validity
+ifResidual as state formula f = do
+  formula' <- liftIO (Evaluator.force (toEvaluatorState (Just as) state) formula)
   case formula' of
     Evaluator.Trivial -> pure (Definitely True)
     Evaluator.Absurd -> pure (Definitely False)

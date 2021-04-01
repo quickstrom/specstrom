@@ -8,7 +8,6 @@ import Data.List (nub, (\\))
 import qualified Data.Map as M
 import Data.Text (Text)
 import qualified Data.Text as T
-import Debug.Trace
 import Specstrom.Lexer (Position)
 import Specstrom.Syntax
 
@@ -21,9 +20,9 @@ substGamma = fmap . substQType
 
 substQType :: Subst -> QType -> QType
 substQType s (Ty t) = Ty (subst s t)
-substQType s (Forall x t) = Forall x (substQType (remove x s) t)
+substQType s (Forall x t) = Forall x (substQType (remove s) t)
   where
-    remove x (Subst s) = Subst $ filter ((/= x) . fst) s
+    remove (Subst sub) = Subst $ filter ((/= x) . fst) sub
 
 subst :: Subst -> Type -> Type
 subst s Value = Value
@@ -53,8 +52,7 @@ builtInTypes =
       ("true", Ty Value),
       ("false", Ty Value),
       ("null", Ty Value),
-      --    ("noop!", Ty Value),
-      --    ("loaded?", Ty Value),
+      ("happened", Ty Value),
       ("_when_", val3),
       ("_timeout_", val3),
       ("_||_", val3),

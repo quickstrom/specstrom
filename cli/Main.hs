@@ -3,16 +3,14 @@
 
 module Main where
 
-import Control.Applicative (many)
-import Data.Text (Text, pack)
+import Data.Text (Text)
 import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty, line)
 import Options.Applicative
 import Prettyprinter.Render.Terminal (renderIO)
 import REPL (repl)
 import qualified Specstrom.Checker as Checker
 import Specstrom.PrettyPrinter
-import System.Environment
-import System.IO (BufferMode (LineBuffering), hPutStrLn, hSetBuffering, stderr, stdout)
+import System.IO (BufferMode (LineBuffering), hSetBuffering, stderr, stdout)
 import Util
 
 data CliOptions = CliOptions

@@ -33,15 +33,15 @@ builtIns =
            ("#act", toAnnotation (\(Value x1 y1) (Value x2 y2) (Value x3 y3) (Value x4 y4) -> Value (x1 <> x2 <> x3 <> x4) (y1 <> y2 <> y3 <> y4)))
          ]
       ++ zip hofs (repeat $ hofAnn)
-      ++ [ ("foldl", toAnnotation (\(Function f id) v x -> case f v `unionDep` id of Function f' id' -> f' x `unionDep` id')),
-           ("foldr", toAnnotation (\(Function f id) v x -> case f x `unionDep` id of Function f' id' -> f' v `unionDep` id'))
+      ++ [ ("foldl", toAnnotation (\(Function f ind) v x -> case f v `unionDep` ind of Function f' ind' -> f' x `unionDep` ind')),
+           ("foldr", toAnnotation (\(Function f ind) v x -> case f x `unionDep` ind of Function f' ind' -> f' v `unionDep` ind'))
          ]
   where
     binOps = ["_==_", "_&&_", "_||_", "_until_", "_!=_", "_==>_", "_+_", "_-_", "_/_", "_*_", "_%_", "_>_", "_<_", "_>=_", "_<=_"]
     unOps = ["not_", "always_", "next_", "nextT_", "nextF_", "eventually_"]
-    values = ["true", "false", "null"]
+    values = ["true", "false", "null", "happened"]
     hofs = ["map"]
-    hofAnn = toAnnotation (\(Function f id) v -> f v `unionDep` id)
+    hofAnn = toAnnotation (\(Function f ind) v -> f v `unionDep` ind)
 
 indirect :: Annotation -> Annotation
 indirect (Value a b) = Value mempty (a <> b)

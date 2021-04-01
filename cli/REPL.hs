@@ -1,7 +1,6 @@
 module REPL where
 
 import Control.Monad.Except
-import Control.Monad.Trans
 import qualified Data.Aeson as JSON
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Foldable (foldl')
@@ -15,7 +14,6 @@ import Specstrom.PrettyPrinter
 import Specstrom.Syntax as Syntax
 import qualified Specstrom.TypeInf as TypeInf
 import System.Console.Haskeline
-import System.Console.Haskeline.MonadException
 import System.IO (hPutStrLn, stderr, stdout)
 import Util
 
@@ -108,6 +106,12 @@ checkTopLevel evalEnv actionEnv analysisEnv tl = case tl of
     pure (e', acte', ae')
   Properties {} -> pure (evalEnv, actionEnv, analysisEnv)
 
+checkTopLevels ::
+  Evaluator.Env ->
+  Evaluator.Env -> -- action bodies
+  Analysis.AnalysisEnv ->
+  [TopLevel] ->
+  IO (Evaluator.Env, Evaluator.Env, Analysis.AnalysisEnv)
 checkTopLevels ee ae ane [] = pure (ee, ae, ane)
 checkTopLevels ee ae ane (x : xs) = do
   (ee', ae', ane') <- checkTopLevel ee ae ane x
