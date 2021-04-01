@@ -138,9 +138,10 @@ extractActions act actionEnv s v = do
       asInteger (Evaluator.LitVal (Syntax.IntLit i)) = Just i
       asInteger _ = Nothing
   case v' of
-    Evaluator.Action n args t ->
+    Evaluator.Action n args' t ->
       case M.lookup n actionEnv of
         Just v1 -> do
+          args <- mapM (Evaluator.force s) args'
           r <- Evaluator.appAll s v1 args
           map (first (applyTimeout t) . second (const $ (n, args))) <$> extractActions (Just (n, args)) actionEnv s r
         Nothing -> error $ "action not found"

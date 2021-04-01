@@ -243,11 +243,13 @@ isSelectorLit (SelectorLit {}) = True
 isSelectorLit _ = False
 
 delayedEvaluate :: State -> Env -> Expr Pattern -> Eval Value
--- note that any call to "evaluate" here must not in turn call "force" or consult the state we will get dangerous strictness.
+-- note that any call to "evaluate" here must not in turn call "force" or consult the state or we will get dangerous strictness.
+-- Adding more cases here can make things faster but can also cause incorrectness if it is too strict
 delayedEvaluate s g v@(Var p n) | n /= "happened" = evaluate s g v
 delayedEvaluate s g v@(Literal _ l) | not (isSelectorLit l) = evaluate s g v
 delayedEvaluate s g v@(Lam {}) = evaluate s g v
---delayedEvaluate s g v@(ListLiteral {}) = evaluate s g v
+delayedEvaluate s g v@(ListLiteral {}) = evaluate s g v
+delayedEvaluate s g v@(ObjectLiteral {}) = evaluate s g v
 delayedEvaluate s g e = Thunk <$> newThunk g e
 
 appAll :: State -> Value -> [Value] -> Eval Value
@@ -327,10 +329,10 @@ evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l (snd s
 evaluate s g (Literal p l) = pure (LitVal l)
 evaluate s g (Lam p b pat e) = pure (Closure (if b then "case" else "fun", p, 0) g [pat] (Done e))
 evaluate s g (ListLiteral p ls) = do
-  vs <- mapM (evaluate s g) ls
+  vs <- mapM (delayedEvaluate s g) ls
   pure (List vs)
 evaluate s g (ObjectLiteral p ls) = do
-  vs <- mapM (traverse (evaluate s g)) ls
+  vs <- mapM (traverse (delayedEvaluate s g)) ls
   pure (Object $ M.fromList vs)
 evaluate s g (Freeze p pat e1 e2) = do
   v1 <- Frozen s <$> newThunk g e1
