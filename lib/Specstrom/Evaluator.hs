@@ -6,13 +6,11 @@ module Specstrom.Evaluator where
 
 import Control.Exception (Exception, throw)
 import Control.Monad (MonadPlus (mzero), filterM, zipWithM)
-import qualified Data.Aeson as JSON
 import Data.Fixed (mod')
 import Data.Foldable (foldlM, foldrM)
 import qualified Data.HashMap.Strict as M
 import Data.IORef
 import qualified Data.Text as Text
-import GHC.Generics (Generic)
 import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax
 
@@ -254,7 +252,7 @@ delayedEvaluate s g e = Thunk <$> newThunk g e
 
 appAll :: State -> Value -> [Value] -> Eval Value
 appAll s v [] = pure v
-appAll s v (x : xs) = app s v x >>= \v' -> appAll s v' xs
+appAll s v (x : xs) = force s v >>= \v' -> app s v' x >>= \v' -> appAll s v' xs
 
 app :: State -> Value -> Value -> Eval Value
 app s v v2 =
@@ -285,6 +283,7 @@ app s v v2 =
         Nothing -> pure Null
         Just g'' -> pure (Closure (n, p, ai + 1) g'' pats body)
     Null -> pure Null
+    Thunk (T _ e _) -> evalError $ (show e)
 
 evaluate :: State -> Env -> Expr Pattern -> Eval Value
 evaluate s g (Index e1 e2) = do
@@ -356,6 +355,8 @@ deepForce s v = do
   v' <- force s v
   case v' of
     List ls -> List <$> mapM (deepForce s) ls
+    Action n ls t -> Action n <$> mapM (deepForce s) ls <*> pure t
+    Constructor n ls -> Constructor n <$> mapM (deepForce s) ls
     Object m -> Object <$> traverse (deepForce s) m
     _ -> pure v'
 
@@ -572,9 +573,9 @@ binaryNumOp s v1 v2 op = do
     numOp Multiplication = (*)
 
 resetThunk :: Thunk -> Eval Thunk
-resetThunk (T e exp ior) = do
+resetThunk (T e expr ior) = do
   writeIORef ior Nothing
-  (\e' -> T e' exp ior) <$> traverse resetThunks e
+  (\e' -> T e' expr ior) <$> traverse resetThunks e
 
 resetThunks :: Value -> Eval Value
 resetThunks (Closure a e b c) = (\e' -> Closure a e' b c) <$> traverse resetThunks e

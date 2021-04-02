@@ -114,8 +114,8 @@ generalise g t =
       ts = nub (tv t)
    in quantify (ts \\ gs) t
   where
-    quantify [] t = Ty t
-    quantify (x : xs) t = Forall x (quantify xs t)
+    quantify [] ty = Ty ty
+    quantify (x : xs) ty = Forall x (quantify xs ty)
 
 unify :: Position -> Type -> Type -> TC Subst
 unify p (Arrow e1 e2) (Arrow t1 t2) = do
@@ -203,7 +203,7 @@ inferFun g (pat : rest) bod = do
   pure (Arrow Value t, s)
 
 inferExp :: Context -> Expr Pattern -> TC (Type, Subst)
-inferExp g (Projection e t) = do
+inferExp g (Projection e _) = do
   (t, s) <- inferExp g e
   s' <- unify (exprPos e) t Value
   pure (Value, s <> s')
@@ -212,6 +212,7 @@ inferExp g (Var pos t) = case M.lookup t g of
   Just qt -> do
     ret <- instantiate mempty qt
     pure (ret, mempty)
+inferExp g (Symbol pos n) = pure (Value, mempty)
 inferExp g e | (Symbol pos n, as) <- peelAps e [] = do
   ss <- inferExpsValue g as
   pure (Value, ss)

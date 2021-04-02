@@ -100,13 +100,13 @@ analysePattern ann (ActionP n _ ps) = concatMap (\(i, p) -> analysePattern (proj
 analysePattern ann (SymbolP n _ ps) = concatMap (\(i, p) -> analysePattern (projectAnnotation (ConstructorElement n i) ann) p) (zip [0 ..] ps)
 
 analysePatternLet :: Annotation -> Pattern -> AnalysisEnv -> AnalysisEnv
-analysePatternLet ann pat g =
-  let x = analysePattern ann pat
+analysePatternLet a pat g =
+  let x = analysePattern a pat
    in M.union (M.fromList [(n, foldr (flip Indirect) ann (map snd x)) | (Just n, ann) <- x]) g
 
 withAnalysePatternLocal :: Annotation -> Pattern -> AnalysisEnv -> (AnalysisEnv -> Annotation) -> Annotation
-withAnalysePatternLocal ann pat g f =
-  let x = analysePattern ann pat
+withAnalysePatternLocal a pat g f =
+  let x = analysePattern a pat
       g' = M.union (M.fromList [(n, ann) | (Just n, ann) <- x]) g
    in foldr (flip Indirect) (f g') (map snd x)
 
