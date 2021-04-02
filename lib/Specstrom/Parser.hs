@@ -174,10 +174,12 @@ parseBind t p ts = do
 
 parseSyntax :: Table -> Position -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Table)
 parseSyntax t p ts = do
-  (n, assoc, i, ts') <- case ts of
-    ((_, Ident n) : (_, IntLitTok i) : (_, Semi) : ts') -> pure (n, NonAssoc, i, ts')
-    ((_, Ident n) : (_, IntLitTok i) : (_, Ident "left") : (_, Semi) : ts') -> pure (n, LeftAssoc, i, ts')
-    ((_, Ident n) : (_, IntLitTok i) : (_, Ident "right") : (_, Semi) : ts') -> pure (n, RightAssoc, i, ts')
+  let isIdent x = case x of Ident {} ->  True; _ -> False
+      fromIdent x = case x of Ident i -> i; _ -> error "Impossible"
+  (n, assoc, i, ts') <- case span (isIdent . snd) ts of
+    (ids@(_:_), (_, IntLitTok i) : (_, Semi) : ts') -> pure (map (fromIdent . snd) ids, NonAssoc, i, ts')
+    (ids@(_:_), (_, IntLitTok i) : (_, Ident "left") : (_, Semi) : ts') -> pure (map (fromIdent . snd) ids, LeftAssoc, i, ts')
+    (ids@(_:_), (_, IntLitTok i) : (_, Ident "right") : (_, Semi) : ts') -> pure (map (fromIdent . snd) ids, RightAssoc, i, ts')
     _ -> Left $ MalformedSyntaxDeclaration p
   if i < 0
     then insertSyntax p n (- i) assoc (reverse $ fst (snd t)) >>= \t' -> Right (ts', second (first (const $ reverse t')) t)
@@ -192,12 +194,12 @@ parseBindingBody t ((p, Reserved Let) : ts) = do
   fmap (Local b) <$> parseBindingBody t rest
 parseBindingBody t ts = fmap Done <$> parseExpressionTo Semi t ts
 
-insertSyntax :: Position -> Name -> Int -> Associativity -> [[(Holey Text, Associativity)]] -> Either ParseError [[(Holey Text, Associativity)]]
+insertSyntax :: Position -> [Name] -> Int -> Associativity -> [[(Holey Text, Associativity)]] -> Either ParseError [[(Holey Text, Associativity)]]
 insertSyntax p n i a t
-  | any ((holey n `elem`) . map fst) t = Left $ SyntaxAlreadyDeclared n p
+  | any ((concatMap holey n `elem`) . map fst) t = Left $ SyntaxAlreadyDeclared (mconcat n) p
   | otherwise = Right $ go i t
   where
-    go 0 (r : rs) = ((holey n, a) : r) : rs
+    go 0 (r : rs) = ((concatMap holey n, a) : r) : rs
     go n' (r : rs) = r : (go (n' -1) rs)
     go n' [] = go n' [[]]
 
@@ -317,8 +319,8 @@ grammar table = mdo
       ]
     lbrack = satisfy ((== LBrack) . snd) <?> "left bracket"
     rbrack = satisfy ((== RBrack) . snd) <?> "right bracket"
-    lbrace = satisfy ((== LBrace) . snd) <?> "left brace"
-    rbrace = satisfy ((== RBrace) . snd) <?> "right brace"
+    lbrace = identToken "{"
+    rbrace = identToken "}"
     lparen = satisfy ((== LParen) . snd) <?> "left parenthesis"
     rparen = satisfy ((== RParen) . snd) <?> "right parenthesis"
     colon = satisfy ((== Colon) . snd) <?> "colon"

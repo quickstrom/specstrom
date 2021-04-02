@@ -5,17 +5,17 @@ let any(f,ls) = disjunction(map(f,ls));
 syntax _??_ 3 right;
 let _??_(x,y) = if x == null then y else x;
 syntax _|_ -2 right;
-syntax match_on_ -3 right;
+syntax match_{_} -3 right;
 let (f | g)(x) = f(x) ?? g(x);
-let match x on f = f(x);
+let match x { f } = f(x);
 
-action click!(x) = for element in x. #act("click",false,[element.ref],null) when element.enabled;
+action click!(x) = for element in x. { id: "click", event: false, args: [element.ref] } when element.enabled;
 
-action changed?(x) = #act("changed",true,[x.ref],null);
+action changed?(x) = for element in x. { id: "changed", event: true, args: [x.ref]};
 
-action loaded? = #act("loaded",true,[],null);
+action loaded? = { id: "loaded", event: true, args: [] };
 
-action noop! = #act("noop",false,[],null);
+action noop! = {id:"noop",event:false,args:[]};
 
 // bindings can take arguments.
 let transition(a, b) = a && next b;

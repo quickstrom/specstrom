@@ -25,8 +25,6 @@ data Token
   | RParen
   | LBrack
   | RBrack
-  | LBrace
-  | RBrace
   | Colon
   | Semi
   | Comma
@@ -78,8 +76,12 @@ readLiteral' delimiter rest =
         Just (x, xs) | x == delimiter -> Just (chunk, xs)
         _ -> Nothing
 
-reserved :: Char -> Bool
-reserved c = isSpace c || c `elem` ("();,.[]:{}" :: [Char])
+
+isAlphaIdentChar :: Char -> Bool
+isAlphaIdentChar c = isAlpha c || isDigit c || c `elem` ("'!?@#$" :: [Char])
+
+isSymbolIdentChar :: Char -> Bool
+isSymbolIdentChar c = not (isSpace c || isAlphaNum c || c `elem` ("();,.:[]" :: [Char]))
 
 lexer :: Position -> Text -> Either LexerError [(Position, Token)]
 lexer p t
@@ -128,19 +130,21 @@ lexer p t
     Just (')', cs) -> ((p, RParen) :) <$> lexer (nextCol p) cs
     Just ('[', cs) -> ((p, LBrack) :) <$> lexer (nextCol p) cs
     Just (']', cs) -> ((p, RBrack) :) <$> lexer (nextCol p) cs
-    Just ('{', cs) -> ((p, LBrace) :) <$> lexer (nextCol p) cs
-    Just ('}', cs) -> ((p, RBrace) :) <$> lexer (nextCol p) cs
     Just (';', cs) -> ((p, Semi) :) <$> lexer (nextCol p) cs
     Just (',', cs) -> ((p, Comma) :) <$> lexer (nextCol p) cs
     Just (':', cs) -> ((p, Colon) :) <$> lexer (nextCol p) cs
     Just ('.', cs) ->
-      let (candidate, rest) = Text.break reserved cs
+      let (candidate, rest) = Text.break (not . isAlphaIdentChar) cs
        in if Text.null candidate
             then ((p, Dot) :) <$> lexer (nextCol p) cs
             else ((p, ProjectionTok candidate) :) <$> lexer (advance candidate p) rest
-    Just (c, cs) ->
-      let (candidate, rest) = Text.break reserved t
+    Just (c, cs) | isAlpha c ->
+      let (candidate, rest) = Text.break (not . isAlphaIdentChar) t
        in ((p, fromCandidate candidate) :) <$> lexer (advance candidate p) rest
+    Just (c, cs) | isSymbolIdentChar c ->
+      let (candidate, rest) = Text.break (not . isSymbolIdentChar) t
+       in ((p, fromCandidate candidate) :) <$> lexer (advance candidate p) rest
+    _ -> error "Impossible"
 
 fromCandidate :: Text -> Token
 fromCandidate "=" = Reserved Define
