@@ -174,12 +174,12 @@ parseBind t p ts = do
 
 parseSyntax :: Table -> Position -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Table)
 parseSyntax t p ts = do
-  let isIdent x = case x of Ident {} ->  True; _ -> False
+  let isIdent x = case x of Ident {} -> True; _ -> False
       fromIdent x = case x of Ident i -> i; _ -> error "Impossible"
   (n, assoc, i, ts') <- case span (isIdent . snd) ts of
-    (ids@(_:_), (_, IntLitTok i) : (_, Semi) : ts') -> pure (map (fromIdent . snd) ids, NonAssoc, i, ts')
-    (ids@(_:_), (_, IntLitTok i) : (_, Ident "left") : (_, Semi) : ts') -> pure (map (fromIdent . snd) ids, LeftAssoc, i, ts')
-    (ids@(_:_), (_, IntLitTok i) : (_, Ident "right") : (_, Semi) : ts') -> pure (map (fromIdent . snd) ids, RightAssoc, i, ts')
+    (ids@(_ : _), (_, IntLitTok i) : (_, Semi) : ts') -> pure (map (fromIdent . snd) ids, NonAssoc, i, ts')
+    (ids@(_ : _), (_, IntLitTok i) : (_, Ident "left") : (_, Semi) : ts') -> pure (map (fromIdent . snd) ids, LeftAssoc, i, ts')
+    (ids@(_ : _), (_, IntLitTok i) : (_, Ident "right") : (_, Semi) : ts') -> pure (map (fromIdent . snd) ids, RightAssoc, i, ts')
     _ -> Left $ MalformedSyntaxDeclaration p
   if i < 0
     then insertSyntax p n (- i) assoc (reverse $ fst (snd t)) >>= \t' -> Right (ts', second (first (const $ reverse t')) t)

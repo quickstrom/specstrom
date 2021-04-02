@@ -76,7 +76,6 @@ readLiteral' delimiter rest =
         Just (x, xs) | x == delimiter -> Just (chunk, xs)
         _ -> Nothing
 
-
 isAlphaIdentChar :: Char -> Bool
 isAlphaIdentChar c = isAlpha c || isDigit c || c `elem` ("'!?@#$" :: [Char])
 
@@ -138,12 +137,14 @@ lexer p t
        in if Text.null candidate
             then ((p, Dot) :) <$> lexer (nextCol p) cs
             else ((p, ProjectionTok candidate) :) <$> lexer (advance candidate p) rest
-    Just (c, cs) | isAlpha c ->
-      let (candidate, rest) = Text.break (not . isAlphaIdentChar) t
-       in ((p, fromCandidate candidate) :) <$> lexer (advance candidate p) rest
-    Just (c, cs) | isSymbolIdentChar c ->
-      let (candidate, rest) = Text.break (not . isSymbolIdentChar) t
-       in ((p, fromCandidate candidate) :) <$> lexer (advance candidate p) rest
+    Just (c, cs)
+      | isAlpha c ->
+        let (candidate, rest) = Text.break (not . isAlphaIdentChar) t
+         in ((p, fromCandidate candidate) :) <$> lexer (advance candidate p) rest
+    Just (c, cs)
+      | isSymbolIdentChar c ->
+        let (candidate, rest) = Text.break (not . isSymbolIdentChar) t
+         in ((p, fromCandidate candidate) :) <$> lexer (advance candidate p) rest
     _ -> error "Impossible"
 
 fromCandidate :: Text -> Token
