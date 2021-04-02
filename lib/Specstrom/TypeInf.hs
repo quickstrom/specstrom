@@ -51,7 +51,7 @@ builtInTypes =
       ("_!=_", val3),
       ("true", Ty Value),
       ("false", Ty Value),
-      ("null", Ty Value),
+      ("null", Forall "a" (Ty (TyVar "a"))),
       ("happened", Ty Value),
       ("_when_", val3),
       ("_timeout_", val3),
@@ -75,8 +75,7 @@ builtInTypes =
       ("map", hof),
       ("foldl", hof2),
       ("foldr", hof2),
-      ("if_then_else_", Forall "a" (Ty (Arrow Value (Arrow (TyVar "a") (Arrow (TyVar "a") (TyVar "a")))))),
-      ("#act", Ty (Arrow Value (Arrow Value (Arrow Value (Arrow Value Value)))))
+      ("if_then_else_", Forall "a" (Ty (Arrow Value (Arrow (TyVar "a") (Arrow (TyVar "a") (TyVar "a"))))))
     ]
   where
     val3 = Ty (Arrow Value (Arrow Value Value))
@@ -168,6 +167,9 @@ inferBind g (Bind (Direct (VarP n _)) bod) = do
   let qt = generalise g t
   pure (M.insert n qt (substGamma s g), s)
 inferBind g (Bind (Direct (IgnoreP _)) bod) = do
+  (t, s) <- inferBody g bod
+  pure (substGamma s g, s)
+inferBind g (Bind (Direct (NullP _)) bod) = do
   (t, s) <- inferBody g bod
   pure (substGamma s g, s)
 inferBind g (Bind (Direct pat) bod) = do

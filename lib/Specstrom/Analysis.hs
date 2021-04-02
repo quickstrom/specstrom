@@ -11,7 +11,22 @@ import Specstrom.Syntax
 
 type AnalysisEnv = M.HashMap Name Annotation
 
-data Annotation = Value Dep Dep | Function (Annotation -> Annotation) Dep
+data Projection = Field Name | ListElement | ActionElement Name Int | ConstructorElement Name Int
+
+data Annotation = FromSelector Selector [Projection]
+                | Function (Annotation -> Annotation)
+                | List Annotation
+                | Constant
+                | Action Name [Annotation]
+                | Constructor Name [Annotation]
+                | Object [(Name,Annotation)]
+                | Branch Annotation Annotation
+                | Indirect Annotation Annotation
+                | PossibleError
+
+
+
+-- data Annotation = Value Dep Dep | Function (Annotation -> Annotation) Dep
 
 class ToAnnotation a where
   toAnnotation :: a -> Annotation
@@ -20,52 +35,43 @@ instance ToAnnotation Annotation where
   toAnnotation = id
 
 instance (ToAnnotation b) => ToAnnotation (Annotation -> b) where
-  toAnnotation f = Function (toAnnotation . f) mempty
+  toAnnotation f = Function (toAnnotation . f)
 
 builtIns :: AnalysisEnv
 builtIns =
   M.fromList $
-    zip values (repeat (Value mempty mempty))
-      ++ zip binOps (repeat $ toAnnotation mergeIndirect)
-      ++ zip unOps (repeat $ toAnnotation indirect)
-      ++ [ ("if_then_else_", toAnnotation (\(Value a b) t e -> mergeDirect t e `unionDep` (a <> b))),
-           ("_when_", toAnnotation (\(Value a b) (Value c d) -> Value a (b <> c <> d))),
-           ("#act", toAnnotation (\(Value x1 y1) (Value x2 y2) (Value x3 y3) (Value x4 y4) -> Value (x1 <> x2 <> x3 <> x4) (y1 <> y2 <> y3 <> y4)))
+    zip values (repeat Constant)
+      ++ zip binOps (repeat $ toAnnotation (\a b -> Indirect (Indirect Constant a) b) )
+      ++ zip unOps (repeat $ toAnnotation (Indirect Constant) )
+      ++ [ ("if_then_else_", toAnnotation (\a t e -> Indirect (Branch t e) a)),
+           ("_when_", toAnnotation Indirect)
          ]
       ++ zip hofs (repeat $ hofAnn)
-      ++ [ ("foldl", toAnnotation (\(Function f ind) v x -> case f v `unionDep` ind of Function f' ind' -> f' x `unionDep` ind')),
-           ("foldr", toAnnotation (\(Function f ind) v x -> case f x `unionDep` ind of Function f' ind' -> f' v `unionDep` ind'))
+      ++ [ ("foldl", toAnnotation (\f v x -> applyAnnotation (applyAnnotation f v) (projectAnnotation ListElement x))),
+           ("foldr", toAnnotation (\f v x -> applyAnnotation (applyAnnotation f (projectAnnotation ListElement x)) v))
          ]
   where
     binOps = ["_==_", "_&&_", "_||_", "_until_", "_!=_", "_==>_", "_+_", "_-_", "_/_", "_*_", "_%_", "_>_", "_<_", "_>=_", "_<=_"]
     unOps = ["not_", "always_", "next_", "nextT_", "nextF_", "eventually_"]
     values = ["true", "false", "null", "happened"]
     hofs = ["map"]
-    hofAnn = toAnnotation (\(Function f ind) v -> f v `unionDep` ind)
-
-indirect :: Annotation -> Annotation
-indirect (Value a b) = Value mempty (a <> b)
-indirect x = x
-
-mergeDirect :: Annotation -> Annotation -> Annotation
-mergeDirect (Value a _) (Function f b) = error "Impossible"
-mergeDirect (Function f a) (Value b _) = error "Impossible"
-mergeDirect (Value a c) (Value b d) = Value (a <> b) (c <> d)
-mergeDirect (Function f a) (Function g b) = Function (\x -> mergeDirect (f x) (g x)) (a <> b)
-
-mergeIndirect :: Annotation -> Annotation -> Annotation
-mergeIndirect (Value a _) (Function f b) = error "Impossible"
-mergeIndirect (Function f a) (Value b _) = error "Impossible"
-mergeIndirect (Value a c) (Value b d) = Value mempty (a <> c <> b <> d)
-mergeIndirect (Function f a) (Function g b) = Function (\x -> mergeIndirect (f x) (g x)) (a <> b)
-
-unionDep :: Annotation -> Dep -> Annotation
-unionDep (Value x d) d' = Value x (d <> d')
-unionDep (Function f d) d' = Function f (d <> d')
+    hofAnn = toAnnotation (\f v -> List (applyAnnotation f (projectAnnotation ListElement v) ))
 
 depOf :: Annotation -> Dep
-depOf (Value d d') = d <> d'
-depOf (Function _ d) = d
+depOf (Function _) = mempty
+depOf (Indirect a b) = depOf a <> depOf b
+depOf (Branch a b) = depOf a <> depOf b
+depOf (List a) = depOf a
+depOf (Constant) = mempty
+depOf (PossibleError) = mempty
+depOf (Action _ as) = foldMap depOf as
+depOf (Constructor _ as) = foldMap depOf as
+depOf (Object as) = foldMap (depOf . snd) as
+depOf (FromSelector sel proj) = go (dep sel) proj
+  where 
+    go d [] = d
+    go d (Field f:ps) = go (project f d) ps
+    go d (_:ps) = go d ps -- for now we only support fields.
 
 analyseBody :: AnalysisEnv -> Body -> Annotation
 analyseBody g (Done e) = analyseExpr g e
@@ -73,46 +79,84 @@ analyseBody g (Local b r) = analyseBody (analyseBind g b) r
 
 analyseBodyWithParams :: AnalysisEnv -> [Pattern] -> Body -> Annotation
 analyseBodyWithParams g [] b = analyseBody g b
-analyseBodyWithParams g (p : ps) b = Function f mempty
+analyseBodyWithParams g (p : ps) b = Function f
   where
-    f a =
-      let new = M.fromList (zip (patternVars p) (repeat a))
-          g' = M.union g new
-       in analyseBodyWithParams g' ps b
+    f a = withAnalysePatternLocal a p g $ \g' -> analyseBodyWithParams g' ps b
 
 analyseBind :: AnalysisEnv -> Bind -> AnalysisEnv
-analyseBind g (Bind (Direct pat) body) =
-  let a = analyseBody g body
-      new = M.fromList (zip (patternVars pat) (repeat a))
-   in M.union g new
+analyseBind g (Bind (Direct pat) body) = analysePatternLet (analyseBody g body) pat g
 analyseBind g (Bind (FunP n _ pats) body) =
   let a = analyseBodyWithParams g pats body
-      new = M.fromList [(n, a)]
-   in M.union g new
+   in M.insert n a g
+
+
+analysePattern ::  Annotation -> Pattern -> [(Maybe Name, Annotation)]
+analysePattern ann (VarP n _) = [(Just n, ann)]
+analysePattern ann (IgnoreP _) = [(Nothing, ann)]
+analysePattern ann (LitP _ _) = [(Nothing, ann)]
+analysePattern ann (BoolP _ _) = [(Nothing, ann)]
+analysePattern ann (NullP _) = [(Nothing, ann)]
+analysePattern ann (ListP _ ps) = concatMap (analysePattern (projectAnnotation ListElement ann)) ps
+analysePattern ann (ObjectP _ ps) = concatMap (\(n,p) -> analysePattern (projectAnnotation (Field n) ann) p) ps
+analysePattern ann (ActionP n _ ps) = concatMap (\(i,p) -> analysePattern (projectAnnotation (ActionElement n i) ann) p) (zip [0..] ps)
+analysePattern ann (SymbolP n _ ps) = concatMap (\(i,p) -> analysePattern (projectAnnotation (ConstructorElement n i) ann) p) (zip [0..] ps)
+
+analysePatternLet :: Annotation -> Pattern -> AnalysisEnv ->  AnalysisEnv
+analysePatternLet ann pat g = let 
+    x = analysePattern ann pat
+ in M.union (M.fromList [(n,foldr (flip Indirect) ann (map snd x)) | (Just n, ann) <- x]) g
+
+withAnalysePatternLocal :: Annotation -> Pattern -> AnalysisEnv -> (AnalysisEnv -> Annotation) -> Annotation
+withAnalysePatternLocal ann pat g f = let 
+    x = analysePattern ann pat 
+    g' = M.union (M.fromList [(n,ann) | (Just n, ann) <- x]) g    
+ in foldr (flip Indirect) (f g') (map snd x)
+
+
+projectAnnotation :: Projection -> Annotation -> Annotation
+projectAnnotation p (Branch b1 b2) = Branch (projectAnnotation p b1) (projectAnnotation p b2)
+projectAnnotation p (Indirect d ind) = Indirect (projectAnnotation p d) ind
+projectAnnotation p PossibleError = PossibleError
+projectAnnotation p Constant = PossibleError
+projectAnnotation p (FromSelector n ps) = FromSelector n (ps ++ [p])
+projectAnnotation (Field f) (Object m) | Just v <- lookup f m = v
+projectAnnotation (Field f) (List o) = projectAnnotation (Field f) o
+projectAnnotation (ActionElement n i) (Action m ds) 
+    | n == m, i < length ds = ds !! i 
+    | otherwise = PossibleError
+projectAnnotation (ConstructorElement n i) (Constructor m ds) 
+    | n == m, i < length ds = ds !! i 
+    | otherwise = PossibleError
+projectAnnotation ListElement (List p) = p
+projectAnnotation _ _ = PossibleError
+
+branch :: Annotation -> Annotation -> Annotation
+branch = Branch
+
+
+applyAnnotation :: Annotation -> Annotation -> Annotation
+applyAnnotation a b = case a of
+  Function f ->  f b
+  Action n ls -> Action n (ls ++ [b])
+  Constructor n ls -> Constructor n (ls ++ [b])
+  Branch x y -> Branch (applyAnnotation x b) (applyAnnotation y b)
+  Indirect x y -> Indirect (applyAnnotation x b) y
+  _ -> PossibleError
 
 analyseExpr :: AnalysisEnv -> Expr Pattern -> Annotation
-analyseExpr g (Projection e t) | Value d ind <- analyseExpr g e = Value (project t d) ind
+analyseExpr g (Projection e t) = projectAnnotation (Field t) (analyseExpr g e)
+analyseExpr g (Index a b) = Indirect (projectAnnotation ListElement (analyseExpr g a)) (analyseExpr g b)
+analyseExpr g (Symbol _ t) = Constructor t []
+analyseExpr g (App a b) = applyAnnotation (analyseExpr g a) (analyseExpr g b)
+analyseExpr g (ListLiteral _ ls) = List (foldr branch Constant (map (analyseExpr g) ls))
+analyseExpr g (ObjectLiteral _ ls) = Object $ map (fmap (analyseExpr g)) ls
+analyseExpr _ (Literal _ (SelectorLit l)) = FromSelector l []
+analyseExpr _ (Literal _ _) = Constant
 analyseExpr g (Var _ t) | Just d <- M.lookup t g = d
-analyseExpr g (Index a b) = analyseExpr g a `unionDep` depOf (analyseExpr g b)
-analyseExpr g e@(App {})
-  | (Symbol pos n, as) <- peelAps e [] =
-    foldr mergeDirect (Value mempty mempty) $ map (analyseExpr g) as
-analyseExpr g (App a b) | Function f d <- analyseExpr g a = f (analyseExpr g b) `unionDep` d
-analyseExpr g (ListLiteral _ ls) = foldr mergeDirect (Value mempty mempty) $ map (analyseExpr g) ls
-analyseExpr g (ObjectLiteral _ ls) = foldr mergeDirect (Value mempty mempty) $ map (analyseExpr g) (map snd ls)
-analyseExpr _ (Literal _ (SelectorLit l)) = Value (dep l) mempty
-analyseExpr _ (Literal _ _) = Value mempty mempty
-analyseExpr g (Freeze _ pat e2 e3) =
-  let a = analyseExpr g e2
-      new = M.fromList (zip (patternVars pat) (repeat a))
-      g' = M.union g new
-   in analyseExpr g' e3 `unionDep` depOf a
-analyseExpr g (Lam _ _ pat e) = Function f mempty
+analyseExpr g (Freeze _ pat e2 e3) = withAnalysePatternLocal (analyseExpr g e2) pat g $ \g' -> analyseExpr g' e3
+analyseExpr g (Lam _ _ pat e) = Function f
   where
-    f a =
-      let new = M.fromList (zip (patternVars pat) (repeat a))
-          g' = M.union g new
-       in analyseExpr g' e
+    f a = withAnalysePatternLocal a pat g $ \g' -> analyseExpr g' e
 analyseExpr _ expr = error ("Impossible, can't analyse: " <> show expr)
 
 analyseTopLevels :: [TopLevel] -> AnalysisEnv
