@@ -302,15 +302,21 @@ grammar table = mdo
     tbl =
       map (map $ first $ map $ fmap identToken) (fst (snd table))
         ++ [ [ ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+               ([Just (isToken (Reserved Fun) "fun"), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc),
                ([Just (isToken (Reserved Case) "case"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+               ([Just (isToken (Reserved Case) "case"), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc),
                ([Just (identToken "for"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+               ([Just (identToken "for"), Nothing, Just (identToken "in"), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc),
                ([Just (identToken "forall"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
-               ([Just (identToken "exists"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)
+               ([Just (identToken "forall"), Nothing, Just (identToken "in"), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc),
+               ([Just (identToken "exists"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+               ([Just (identToken "exists"), Nothing, Just (identToken "in"), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc)
              ],
              [ ([Nothing, Just (isToken (Reserved When) "when"), Nothing], LeftAssoc),
                ([Nothing, Just (identToken "timeout"), Nothing], LeftAssoc)
              ],
-             [([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)]
+             [ ([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)
+             , ([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc)]
            ]
         ++ map (map $ first $ map $ fmap identToken) (fst table)
 
@@ -346,6 +352,12 @@ grammar table = mdo
       (Var p "exists_in_._", [a1, a2, a3]) -> App (App (Var p "any") (Lam p False (E a1) a3)) a2
       (Var p "fun_._", [a1, a2]) -> Lam p False (E a1) a2
       (Var p "case_._", [a1, a2]) -> Lam p True (E a1) a2
+      (Var p "freeze_=_{_}", [a1, a2, a3]) -> Freeze p (E a1) a2 a3
+      (Var p "for_in_{_}", [a1, a2, a3]) -> App (App (Var p "map") (Lam p False (E a1) a3)) a2
+      (Var p "forall_in_{_}", [a1, a2, a3]) -> App (App (Var p "all") (Lam p False (E a1) a3)) a2
+      (Var p "exists_in_{_}", [a1, a2, a3]) -> App (App (Var p "any") (Lam p False (E a1) a3)) a2
+      (Var p "fun_{_}", [a1, a2]) -> Lam p False (E a1) a2
+      (Var p "case_{_}", [a1, a2]) -> Lam p True (E a1) a2
       _ -> unpeelAps (unholey hol) as
     unholey ls = Var (getPosition ls) (foldMap (fromMaybe "_") (map (fmap (unident . snd)) ls))
       where
