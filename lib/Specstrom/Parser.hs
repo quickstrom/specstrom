@@ -315,8 +315,9 @@ grammar table = mdo
              [ ([Nothing, Just (isToken (Reserved When) "when"), Nothing], LeftAssoc),
                ([Nothing, Just (identToken "timeout"), Nothing], LeftAssoc)
              ],
-             [ ([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (isToken Dot "."), Nothing], RightAssoc)
-             , ([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc)]
+             [ ([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+               ([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc)
+             ]
            ]
         ++ map (map $ first $ map $ fmap identToken) (fst table)
 
