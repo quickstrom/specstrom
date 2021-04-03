@@ -42,7 +42,7 @@ builtIns =
     zip values (repeat Constant)
       ++ zip binOps (repeat $ toAnnotation (\a b -> Indirect (Indirect Constant a) b))
       ++ zip unOps (repeat $ toAnnotation (Indirect Constant))
-      ++ [ ("if_then_else_", toAnnotation (\a t e -> Indirect (Branch t e) a)),
+      ++ [ ("if_{_}else{_}", toAnnotation (\a t e -> Indirect (Branch t e) a)),
            ("_when_", toAnnotation Indirect)
          ]
       ++ zip hofs (repeat $ hofAnn)

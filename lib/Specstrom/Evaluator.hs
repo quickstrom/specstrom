@@ -93,7 +93,7 @@ primOpVar op = case op of
   Subtraction -> "_-_"
   Multiplication -> "_*_"
   Division -> "_/_"
-  IfThenElse -> "if_then_else_"
+  IfThenElse -> "if_{_}else{_}"
   MkPrimAction -> "#act"
   Map -> "map"
   Foldr -> "foldr"

@@ -75,7 +75,7 @@ builtInTypes =
       ("map", hof),
       ("foldl", hof2),
       ("foldr", hof2),
-      ("if_then_else_", Forall "a" (Ty (Arrow Value (Arrow (TyVar "a") (Arrow (TyVar "a") (TyVar "a"))))))
+      ("if_{_}else{_}", Forall "a" (Ty (Arrow Value (Arrow (TyVar "a") (Arrow (TyVar "a") (TyVar "a"))))))
     ]
   where
     val3 = Ty (Arrow Value (Arrow Value Value))

@@ -53,8 +53,8 @@ builtIns :: ([[(Holey Text, Associativity)]], ([[(Holey Text, Associativity)]], 
 builtIns =
   (\x -> (x, ([], []))) $
     (map . map)
-      (first holey)
-      [ [ ("if_then_else_", RightAssoc)
+      (first (concatMap holey . Text.words))
+      [ [ ("if_{_} else {_}", RightAssoc)
         ],
         [ ("_==>_", RightAssoc)
         ],
