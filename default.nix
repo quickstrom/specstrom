@@ -4,5 +4,5 @@ let
   haskellPackages = pkgs.haskell.packages.${compiler};
 in {
   inherit haskellPackages;
-  specstrom = haskellPackages.callCabal2nix "specstrom" "${src}" { };
+  specstrom = pkgs.haskell.lib.justStaticExecutables (haskellPackages.callCabal2nix "specstrom" "${src}" { });
 }
