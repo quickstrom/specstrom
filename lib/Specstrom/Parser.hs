@@ -54,7 +54,8 @@ builtIns =
   (\x -> (x, ([], []))) $
     (map . map)
       (first (concatMap holey . Text.words))
-      [ [ ("if_{_} else {_}", RightAssoc)
+      [ [ ("if_{_} else {_}", RightAssoc),
+          ("always {_} _", NonAssoc)
         ],
         [ ("_==>_", RightAssoc)
         ],
@@ -62,11 +63,9 @@ builtIns =
         [("_&&_", RightAssoc)],
         [("_until_", RightAssoc)],
         [ ("not_", RightAssoc),
-          ("always__", RightAssoc),
           ("nextT_", RightAssoc),
           ("nextF_", RightAssoc),
-          ("next_", RightAssoc),
-          ("eventually_", RightAssoc)
+          ("next_", RightAssoc)
         ],
         [ ("_==_", NonAssoc),
           ("_!=_", NonAssoc),

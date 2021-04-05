@@ -78,7 +78,7 @@ primOpVar op = case op of
   NextF -> "nextF_"
   NextT -> "nextT_"
   NextD -> "next_"
-  Always -> "always__"
+  Always -> "always{_}_"
   Not -> "not_"
   And -> "_&&_"
   Or -> "_||_"
@@ -453,14 +453,19 @@ binaryOp Always s v1 v2 =
       v1' <- force s v1
       v2' <- force s v2
       case v1' of
-        LitVal (IntLit n) ->
+        LitVal (IntLit n) -> do
+          let mkResidual =
+                let nextOp =
+                      if n > 0
+                        then Next Demand
+                        else Next AssumeTrue
+                 in nextOp <$> newThunk g (App (App (Var dummyPosition (primOpVar Always)) (Literal dummyPosition (IntLit (n - 1)))) e)
           case v2' of
             Absurd -> pure Absurd
             Trivial -> do
-              residual <- Next AssumeTrue <$> newThunk g e
-              pure (Residual residual)
+              Residual <$> mkResidual
             Residual r -> do
-              residual <- Next AssumeTrue <$> newThunk g e
+              residual <- mkResidual
               pure (Residual (Conjunction r residual))
             _ -> evalError ("Always expects formula, got: " <> show v2')
     v -> pure v

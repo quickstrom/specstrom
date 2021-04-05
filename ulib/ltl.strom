@@ -1,6 +1,8 @@
-let eventuallyN(n, p) = 
-    if n == 0 
-    then p || nextF (eventuallyN(0, p))
-    else p || next (eventuallyN((n - 1), p));
+syntax always_ 6;
+let always p = always {100} p;
 
-let eventually n = eventuallyN(100, p);
+syntax eventually {_}_ 0;
+let eventually {n} p = not (always {n} (not p));
+
+syntax eventually_ 0 right;
+let eventually p = eventually {100} p;

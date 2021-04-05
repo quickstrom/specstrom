@@ -67,8 +67,8 @@ expr =
     [ -- Var <$> position <*> name,
       -- Literal <$> position <*> literal
       Gen.subterm boolExpr (App (Var dummyPosition "next_")),
-      Gen.subterm boolExpr (App (Var dummyPosition "eventually_")),
-      Gen.subterm2 intExpr boolExpr (App . App (Var dummyPosition "always__")),
+      -- Gen.subterm boolExpr (App (Var dummyPosition "eventually_")),
+      Gen.subterm2 intExpr boolExpr (App . App (Var dummyPosition "always{_}_")),
       Gen.subterm2 boolExpr boolExpr (App . App (Var dummyPosition "_until_"))
     ]
     [ Gen.subterm expr (App (Var dummyPosition "not_")),
