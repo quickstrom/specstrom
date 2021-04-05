@@ -5,7 +5,7 @@
 module Specstrom.Evaluator where
 
 import Control.Exception (Exception, throwIO)
-import Control.Monad (MonadPlus (mzero), filterM, zipWithM)
+import Control.Monad (MonadPlus (mzero), filterM, (<=<), zipWithM)
 import Data.Fixed (mod')
 import Data.Foldable (foldlM, foldrM)
 import qualified Data.HashMap.Strict as M
@@ -247,6 +247,7 @@ delayedEvaluate :: State -> Env -> Expr TopPattern -> Eval Value
 -- note that any call to "evaluate" here must not in turn call "force" or consult the state or we will get dangerous strictness.
 -- Adding more cases here can make things faster but can also cause incorrectness if it is too strict
 delayedEvaluate s g v@(Lam {}) = evaluate s g v
+delayedEvaluate s g v@(Var _ n) | Just (Thunk {}) <- M.lookup n g = evaluate s g v
 delayedEvaluate s g e = Thunk <$> newThunk g e
 
 appAll :: State -> Value -> [Value] -> Eval Value
@@ -337,7 +338,7 @@ evaluate s g (Var p t) = case M.lookup t g of
   Nothing -> evalError ("Impossible: variable '" <> Text.unpack t <> "' not found in environment (type checker found it though)")
 evaluate s g (App e1 e2) = do
   v <- force s =<< evaluate s g e1
-  v2 <- (if isLazy v then delayedEvaluate else evaluate) s g e2 -- TODO avoid thunking everything when safe
+  v2 <- (if isLazy v then delayedEvaluate s g else force s <=< evaluate s g) e2 -- TODO avoid thunking everything when safe
   app s v v2
 evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l (snd s) of
   Nothing -> evalError ("Can't find '" <> Text.unpack sel <> "' in the state (analysis failed?)")
@@ -345,10 +346,10 @@ evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l (snd s
 evaluate s g (Literal p l) = pure (LitVal l)
 evaluate s g (Lam p b pat e) = pure (Closure (if b then "case" else "fun", p, 0) g [pat] (Done e))
 evaluate s g (ListLiteral p ls) = do
-  vs <- mapM (evaluate s g) ls
+  vs <- mapM (force s <=< evaluate s g) ls
   pure (List vs)
 evaluate s g (ObjectLiteral p ls) = do
-  vs <- mapM (traverse (evaluate s g)) ls
+  vs <- mapM (traverse (force s <=< evaluate s g)) ls
   pure (Object $ M.fromList vs)
 evaluate s g (Freeze p (LazyP n pos) e1 e2) = do
   v1 <- delayedEvaluate s g e1
@@ -357,7 +358,7 @@ evaluate s g (Freeze p (LazyP n pos) e1 e2) = do
     Just g' -> evaluate s g' e2
     _ -> evalError "Pattern match failure in freeze"
 evaluate s g (Freeze p (MatchP pat) e1 e2) = do
-  v1 <- evaluate s g e1
+  v1 <- force s =<< evaluate s g e1
   mg' <- withPatterns s pat v1 g
   case mg' of
     Just g' -> evaluate s g' e2
@@ -397,31 +398,22 @@ makePrimAction s v1 v2 v3 v4 = do
   pure (Object (M.fromList [("id", v1'), ("event", v2'), ("args", v3'), ("timeout", v4')]))
 
 ternaryOp :: PrimOp -> State -> Value -> Value -> Value -> Eval Value
-ternaryOp IfThenElse s v1 v2 v3 = do
-  v1' <- force s v1
+ternaryOp IfThenElse s v1' v2 v3 = do
   case v1' of
     Trivial -> pure v2
     Absurd -> pure v3
     _ -> evalError "Expected boolean in if condition"
-ternaryOp Foldr s v1 v2 v3 = do
-  func <- force s v1
-  zero <- force s v2
-  list <- force s v3
+ternaryOp Foldr s func zero list = do
   case list of
     List ls -> foldrM (\a b -> appAll s func [a, b]) zero ls
     x -> appAll s func [x, zero]
-ternaryOp Foldl s v1 v2 v3 = do
-  func <- force s v1
-  zero <- force s v2
-  list <- force s v3
+ternaryOp Foldl s func zero list = do
   case list of
     List ls -> foldlM (\a b -> appAll s func [a, b]) zero ls
     x -> appAll s func [zero, x]
 
 areEqual :: State -> Value -> Value -> Eval Bool
-areEqual s v1 v2 = do
-  v1' <- force s v1
-  v2' <- force s v2
+areEqual s v1' v2' = do
   areEqual' v1' v2'
   where
     areEqual' :: Value -> Value -> Eval Bool
@@ -442,8 +434,7 @@ areEqual s v1 v2 = do
     areEqual' _ _ = pure False
 
 unaryOp :: PrimOp -> State -> Value -> Eval Value
-unaryOp Not s v = do
-  v' <- force s v
+unaryOp Not s v' = do
   case v' of
     Absurd -> pure Trivial
     Trivial -> pure Absurd
@@ -462,10 +453,9 @@ negateResidual (Next st (T g e v)) = do
   Next st' <$> newThunk g (App (Var dummyPosition "not_") e)
 
 binaryOp :: PrimOp -> State -> Value -> Value -> Eval Value
-binaryOp Always s v1 v2 =
+binaryOp Always s v1' v2 =
   case v2 of
     Thunk (T g e _) -> do
-      v1' <- force s v1
       v2' <- force s v2
       case v1' of
         LitVal (IntLit n) -> do
@@ -484,8 +474,7 @@ binaryOp Always s v1 v2 =
               pure (Residual (Conjunction r residual))
             _ -> evalError ("Always expects formula, got: " <> show v2')
     v -> pure v
-binaryOp Implies s v1 v2 = do
-  v1' <- force s v1
+binaryOp Implies s v1' v2 = do
   case v1' of
     Absurd -> pure Trivial
     Trivial -> force s v2
@@ -497,8 +486,7 @@ binaryOp Implies s v1 v2 = do
         Residual r' -> pure (Residual (Implication r r'))
         _ -> evalError "Implies expects formulae"
     _ -> evalError "Implies expects formulae"
-binaryOp And s v1 v2 = do
-  v1' <- force s v1
+binaryOp And s v1' v2 = do
   case v1' of
     Absurd -> pure Absurd
     Trivial -> force s v2
@@ -510,8 +498,7 @@ binaryOp And s v1 v2 = do
         Residual r' -> pure (Residual (Conjunction r r'))
         _ -> evalError "And expects formulae"
     _ -> evalError "And expects formulae"
-binaryOp Or s v1 v2 = do
-  v1' <- force s v1
+binaryOp Or s v1' v2 = do
   case v1' of
     Trivial -> pure Trivial
     Absurd -> force s v2
@@ -540,29 +527,21 @@ binaryOp WhenAct s v1 v2 = do
     Trivial -> pure v1
     Absurd -> pure Null
     _ -> evalError "Expected boolean in when condition"
-binaryOp TimeoutAct s v1 v2 = do
-  v1' <- force s v1
-  v2' <- force s v2
+binaryOp TimeoutAct s v1' v2' = do
   t <- case v2' of
     LitVal (IntLit i) -> pure i
     _ -> evalError "Timeout expects an integer timeout"
   case v1' of
     Action act args _ -> pure (Action act args (Just t))
     _ -> evalError "Timeout expects an action"
-binaryOp Map s v1 v2 = do
-  v1' <- force s v1
-  v2' <- force s v2
-  let notNull x = do
-        x' <- force s x
-        pure $ case x' of Null -> False; _ -> True
+binaryOp Map s v1' v2' = do
+  let notNull x = pure $ case x of Null -> False; _ -> True
   case v2' of
     List ls -> List <$> (filterM notNull =<< mapM (app s v1') ls)
     r -> app s v1' v2'
 
 binaryCmpOp :: State -> Value -> Value -> PrimOp -> IO Value
-binaryCmpOp s v1 v2 op = do
-  v1' <- force s v1
-  v2' <- force s v2
+binaryCmpOp s v1' v2' op = do
   let toVal x = if x then Trivial else Absurd
   case (v1', v2') of
     (LitVal (IntLit i1), LitVal (IntLit i2))
@@ -571,7 +550,7 @@ binaryCmpOp s v1 v2 op = do
       | otherwise -> pure (toVal (cmpOp op i1 i2))
     (LitVal (IntLit i1), LitVal (FloatLit i2)) -> binaryCmpOp s (LitVal (FloatLit $ fromIntegral i1)) (LitVal (FloatLit i2)) op
     (LitVal (FloatLit i1), LitVal (IntLit i2)) -> binaryCmpOp s (LitVal (FloatLit i1)) (LitVal (FloatLit $ fromIntegral i2)) op
-    _ -> evalError (show op <> " expects numeric types, but got: " <> show v1 <> " and " <> show v2)
+    _ -> evalError (show op <> " expects numeric types, but got: " <> show v1' <> " and " <> show v2')
   where
     cmpOp Less = (<)
     cmpOp Greater = (>)
@@ -579,9 +558,7 @@ binaryCmpOp s v1 v2 op = do
     cmpOp GreaterEq = (>=)
 
 binaryNumOp :: State -> Value -> Value -> PrimOp -> IO Value
-binaryNumOp s v1 v2 op = do
-  v1' <- force s v1
-  v2' <- force s v2
+binaryNumOp s v1' v2' op = do
   case (v1', v2') of
     (LitVal (IntLit i1), LitVal (IntLit i2))
       | op == Division -> pure (LitVal (IntLit (i1 `div` i2)))
@@ -593,7 +570,7 @@ binaryNumOp s v1 v2 op = do
       | otherwise -> pure (LitVal (FloatLit (numOp op i1 i2)))
     (LitVal (IntLit i1), LitVal (FloatLit i2)) -> binaryNumOp s (LitVal (FloatLit $ fromIntegral i1)) (LitVal (FloatLit i2)) op
     (LitVal (FloatLit i1), LitVal (IntLit i2)) -> binaryNumOp s (LitVal (FloatLit i1)) (LitVal (FloatLit $ fromIntegral i2)) op
-    _ -> evalError (show op <> " expects numeric types, but got: " <> show v1 <> " and " <> show v2)
+    _ -> evalError (show op <> " expects numeric types, but got: " <> show v1' <> " and " <> show v2')
   where
     numOp Addition = (+)
     numOp Subtraction = (-)
@@ -608,15 +585,7 @@ resetThunks :: Value -> Eval Value
 resetThunks (Closure a e b c) = (\e' -> Closure a e' b c) <$> traverse resetThunks e
 resetThunks (Op o vs) = Op o <$> traverse resetThunks vs
 resetThunks (Thunk t) = Thunk <$> resetThunk t
-resetThunks (Residual r) = pure $ Residual r -- that all gets cleared out later
-resetThunks (Object o) = Object <$> traverse resetThunks o
-resetThunks (List o) = List <$> traverse resetThunks o
-resetThunks (Action n o t) = Action n <$> traverse resetThunks o <*> pure t
-resetThunks (Constructor n o) = Constructor n <$> traverse resetThunks o
-resetThunks (Absurd) = pure Absurd
-resetThunks (Trivial) = pure Trivial
-resetThunks (Null) = pure Null
-resetThunks (LitVal l) = pure $ LitVal l
+resetThunks e = pure e -- nothing else can contain a thunk
 
 -- The output value will be Trivial if the formula is now true, Absurd if false,
 -- Or another Residual if still requiring more states.
