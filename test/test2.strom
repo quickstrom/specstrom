@@ -1,7 +1,5 @@
 import ltl;
 
-let test = `accessor` until `funky`;
-
-let prop = not (eventually `blah`) && next test until test;
+let ~prop = not (eventually `blah`) && next `blah`;
 
 check prop with *;

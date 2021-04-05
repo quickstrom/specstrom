@@ -76,7 +76,7 @@ analyseBody :: AnalysisEnv -> Body -> Annotation
 analyseBody g (Done e) = analyseExpr g e
 analyseBody g (Local b r) = analyseBody (analyseBind g b) r
 
-analyseBodyWithParams :: AnalysisEnv -> [Pattern] -> Body -> Annotation
+analyseBodyWithParams :: AnalysisEnv -> [TopPattern] -> Body -> Annotation
 analyseBodyWithParams g [] b = analyseBody g b
 analyseBodyWithParams g (p : ps) b = Function f
   where
@@ -87,6 +87,10 @@ analyseBind g (Bind (Direct pat) body) = analysePatternLet (analyseBody g body) 
 analyseBind g (Bind (FunP n _ pats) body) =
   let a = analyseBodyWithParams g pats body
    in M.insert n a g
+
+analyseTopPattern :: Annotation -> TopPattern -> [(Maybe Name, Annotation)]
+analyseTopPattern ann (LazyP n _) = [(Just n, ann)]
+analyseTopPattern ann (MatchP p) = analysePattern ann p
 
 analysePattern :: Annotation -> Pattern -> [(Maybe Name, Annotation)]
 analysePattern ann (VarP n _) = [(Just n, ann)]
@@ -99,14 +103,14 @@ analysePattern ann (ObjectP _ ps) = concatMap (\(n, p) -> analysePattern (projec
 analysePattern ann (ActionP n _ ps) = concatMap (\(i, p) -> analysePattern (projectAnnotation (ActionElement n i) ann) p) (zip [0 ..] ps)
 analysePattern ann (SymbolP n _ ps) = concatMap (\(i, p) -> analysePattern (projectAnnotation (ConstructorElement n i) ann) p) (zip [0 ..] ps)
 
-analysePatternLet :: Annotation -> Pattern -> AnalysisEnv -> AnalysisEnv
+analysePatternLet :: Annotation -> TopPattern -> AnalysisEnv -> AnalysisEnv
 analysePatternLet a pat g =
-  let x = analysePattern a pat
+  let x = analyseTopPattern a pat
    in M.union (M.fromList [(n, foldr (flip Indirect) ann (map snd x)) | (Just n, ann) <- x]) g
 
-withAnalysePatternLocal :: Annotation -> Pattern -> AnalysisEnv -> (AnalysisEnv -> Annotation) -> Annotation
+withAnalysePatternLocal :: Annotation -> TopPattern -> AnalysisEnv -> (AnalysisEnv -> Annotation) -> Annotation
 withAnalysePatternLocal a pat g f =
-  let x = analysePattern a pat
+  let x = analyseTopPattern a pat
       g' = M.union (M.fromList [(n, ann) | (Just n, ann) <- x]) g
    in foldr (flip Indirect) (f g') (map snd x)
 
@@ -139,7 +143,7 @@ applyAnnotation a b = case a of
   Indirect x y -> Indirect (applyAnnotation x b) y
   _ -> PossibleError
 
-analyseExpr :: AnalysisEnv -> Expr Pattern -> Annotation
+analyseExpr :: AnalysisEnv -> Expr TopPattern -> Annotation
 analyseExpr g (Projection e t) = projectAnnotation (Field t) (analyseExpr g e)
 analyseExpr g (Index a b) = Indirect (projectAnnotation ListElement (analyseExpr g a)) (analyseExpr g b)
 analyseExpr g (Symbol _ t) = Constructor t []

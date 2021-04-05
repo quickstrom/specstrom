@@ -51,7 +51,7 @@ loop opts tbl g e e' s ae = flip catch (\(Evaluator.Error er) -> outputStrLn er 
       | rest == "unset analysis" -> loop (opts {showAnalysis = False}) tbl g e e' s ae
       | rest == "unset types" -> loop (opts {showTypes = False}) tbl g e e' s ae
       | rest == "quit" -> pure ()
-      | rest == "debug" -> liftIO (print tbl) >> loop opts tbl g e e' s ae
+      | rest == "debug" -> liftIO (print (e,e')) >> loop opts tbl g e e' s ae
       | rest == "state" -> pure () -- for now
       | otherwise -> liftIO $ hPutStrLn stderr "Invalid meta-command"
     Just x -> do
@@ -93,11 +93,11 @@ checkTopLevel ::
   IO (Evaluator.Env, Evaluator.Env, Analysis.AnalysisEnv)
 checkTopLevel evalEnv actionEnv analysisEnv tl = case tl of
   Binding b@(Syntax.Bind pat _) -> do
-    evalEnv' <- Evaluator.evaluateBind evalEnv b
+    evalEnv' <- Evaluator.evaluateBind mempty evalEnv b
     let analysisEnv' = Analysis.analyseBind analysisEnv b
     pure (evalEnv', actionEnv, analysisEnv')
   ActionDecl b@(Syntax.Bind pat _) -> do
-    actionEnv' <- Evaluator.evaluateBind' actionEnv evalEnv b
+    actionEnv' <- Evaluator.evaluateBind' mempty actionEnv evalEnv b
     evalEnv' <- Evaluator.evaluateActionBind evalEnv b
     let analysisEnv' = Analysis.analyseBind analysisEnv b
     pure (evalEnv', actionEnv', analysisEnv')

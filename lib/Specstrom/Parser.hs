@@ -32,7 +32,7 @@ holey t =
 data ParseError
   = MalformedSyntaxDeclaration Position
   | SyntaxAlreadyDeclared Name Position
-  | ExpectedPattern (Expr Pattern)
+  | ExpectedPattern (Expr TopPattern)
   | ExpectedPattern' (Expr TempExpr)
   | ExpectedSemicolon Position
   | ExpectedSemicolonOrWhen Position
@@ -80,7 +80,8 @@ builtIns =
         [ ("_*_", LeftAssoc),
           ("_/_", LeftAssoc),
           ("_%_", LeftAssoc)
-        ]
+        ],
+        [ ("~_", NonAssoc) ]
       ]
 
 parseGlob :: [(Position, Token)] -> Either ParseError ([(Position, Token)], Glob)
@@ -112,7 +113,7 @@ loadImmediate search t txt = case lexer ("<immediate>", 1, 1) txt of
   Left e -> throwError $ LexerFailure e
   Right toks -> parseTopLevel search t toks
 
-immediateExpr :: Table -> Text -> Either ParseError (Expr Pattern)
+immediateExpr :: Table -> Text -> Either ParseError (Expr TopPattern)
 immediateExpr tbl txt = case lexer ("<immediate>", 1, 1) txt of
   Left e -> throwError $ LexerFailure e
   Right toks -> snd <$> parseExpressionTo EOF tbl toks
@@ -206,10 +207,10 @@ parseBindPattern :: Table -> [(Position, Token)] -> Either ParseError ([(Positio
 parseBindPattern t ts = do
   (ts', e) <- parseExpressionTo (Reserved Define) t ts
   case peelAps e [] of
-    (Var p n, es) | not (null es),
+    (Var p n, es) | not (null es), n /= "~_",
                     n `notElem` (snd $ snd t) -> do
       es' <- mapM (patFromExpr (snd $ snd t)) es
-      let ns = concatMap patternVars es'
+      let ns = concatMap topPatternVars es'
           uniques = nub ns
           dupes = ns \\ uniques
       if uniques /= ns
@@ -219,36 +220,39 @@ parseBindPattern t ts = do
       p <- patFromExpr (snd $ snd t) e
       pure (ts', Direct p)
 
-patFromAnyExpr :: [Name] -> Expr e -> Maybe Pattern
-patFromAnyExpr t (Var p n)
-  | n == "_" = pure (IgnoreP p)
-  | n == "null" = pure (NullP p)
-  | n == "true" = pure (BoolP p True)
-  | n == "false" = pure (BoolP p False)
-  | n `elem` t = pure (ActionP n p [])
-  | otherwise = pure (VarP n p)
-patFromAnyExpr t (ObjectLiteral p es) = ObjectP p <$> mapM (traverse (patFromAnyExpr t)) es
-patFromAnyExpr t (Literal p l) = pure $ LitP p l
-patFromAnyExpr t (ListLiteral p es) = ListP p <$> mapM (patFromAnyExpr t) es
-patFromAnyExpr t x@(App {}) = case peelAps x [] of
-  (Var p n, args) | n `elem` t -> ActionP n p <$> mapM (patFromAnyExpr t) args
-  (Symbol p n, args) -> SymbolP n p <$> mapM (patFromAnyExpr t) args
-  _ -> Nothing
-patFromAnyExpr t _ = Nothing
+patFromAnyExpr :: [Name] -> Expr e -> Maybe TopPattern
+patFromAnyExpr ns (App (Var p "~_") (Var _ n)) | n `notElem` ns = Just $ LazyP n p
+patFromAnyExpr ns e = MatchP <$> helper ns e
+  where
+    helper t (Var p n)
+      | n == "_" = pure (IgnoreP p)
+      | n == "null" = pure (NullP p)
+      | n == "true" = pure (BoolP p True)
+      | n == "false" = pure (BoolP p False)
+      | n `elem` t = pure (ActionP n p [])
+      | otherwise = pure (VarP n p)
+    helper t (ObjectLiteral p es) = ObjectP p <$> mapM (traverse (helper t)) es
+    helper t (Literal p l) = pure $ LitP p l
+    helper t (ListLiteral p es) = ListP p <$> mapM (helper t) es
+    helper t x@(App {}) = case peelAps x [] of
+      (Var p n, args) | n `elem` t -> ActionP n p <$> mapM (helper t) args
+      (Symbol p n, args) -> SymbolP n p <$> mapM (helper t) args
+      _ -> Nothing
+    helper t _ = Nothing
 
-patFromExpr :: [Name] -> Expr Pattern -> Either ParseError Pattern
+patFromExpr :: [Name] -> Expr TopPattern -> Either ParseError TopPattern
 patFromExpr t e = case patFromAnyExpr t e of
   Just e' -> pure e'
   Nothing -> Left $ ExpectedPattern e
 
-patFromExpr' :: [Name] -> Expr TempExpr -> Either ParseError Pattern
+patFromExpr' :: [Name] -> Expr TempExpr -> Either ParseError TopPattern
 patFromExpr' t e = case patFromAnyExpr t e of
   Just e' -> pure e'
   Nothing -> Left $ ExpectedPattern' e
 
 newtype TempExpr = E (Expr TempExpr) deriving (Show)
 
-parseExpressionTo :: Token -> Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Expr Pattern)
+parseExpressionTo :: Token -> Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Expr TopPattern)
 parseExpressionTo terminator t ts =
   let (candidate, ts') = break ((\x -> x == terminator || x == EOF) . snd) ts
    in case fullParses (parser $ grammar t) candidate of

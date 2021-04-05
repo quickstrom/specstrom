@@ -1,9 +1,9 @@
 import quickstrom;
 
-action disable! = click!(`button`);
+action ~disable! = click!(`button`);
 
-let active = not (`foo`.disabled && `bar`.disabled);
+let ~active = not (`foo`.disabled && `bar`.disabled);
 
-let prop = active && next (always (not active));
+let ~prop = active && next (always (not active));
 
 check prop with disable! when loaded?;

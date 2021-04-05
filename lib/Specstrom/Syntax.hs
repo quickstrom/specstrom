@@ -81,8 +81,13 @@ expand names g =
     Right g' -> filter (flip matches g') names
 
 data BindPattern
-  = Direct Pattern
-  | FunP Name Position [Pattern]
+  = Direct TopPattern
+  | FunP Name Position [TopPattern]
+  deriving (Eq, Show)
+
+data TopPattern 
+  = LazyP Name Position
+  | MatchP Pattern
   deriving (Eq, Show)
 
 data Pattern
@@ -98,11 +103,15 @@ data Pattern
   deriving (Eq, Show)
 
 bindPatternVars :: BindPattern -> [Name]
-bindPatternVars (FunP n p ps) = n : concatMap patternVars ps
-bindPatternVars (Direct p) = patternVars p
+bindPatternVars (FunP n p ps) = n : concatMap topPatternVars ps
+bindPatternVars (Direct p) = topPatternVars p
+
+topPatternVars :: TopPattern -> [Name]
+topPatternVars (LazyP n p) = [n]
+topPatternVars (MatchP p) = patternVars p
 
 bindPatternBoundVars :: BindPattern -> [Name]
-bindPatternBoundVars (Direct p) = patternVars p
+bindPatternBoundVars (Direct p) = topPatternVars p
 bindPatternBoundVars (FunP n p ps) = [n]
 
 patternPos :: Pattern -> Position
@@ -130,7 +139,7 @@ patternVars (NullP p) = []
 data Bind = Bind BindPattern Body
   deriving (Eq, Show)
 
-data Body = Local Bind Body | Done (Expr Pattern)
+data Body = Local Bind Body | Done (Expr TopPattern)
   deriving (Eq, Show)
 
 bodyPosition :: Body -> Position
@@ -140,14 +149,14 @@ bodyPosition (Done e) = exprPos e
 data TopLevel
   = Binding Bind
   | ActionDecl Bind
-  | Properties Position Glob Glob (Maybe (Expr Pattern))
+  | Properties Position Glob Glob (Maybe (Expr TopPattern))
   | Imported Text [TopLevel]
   deriving (Eq, Show)
 
 class MapPosition a where
   mapPosition :: (Position -> Position) -> a -> a
 
-instance MapPosition (Expr p) where
+instance MapPosition p => MapPosition (Expr p) where
   mapPosition f expr = case expr of
     Projection e name -> Projection (mapPosition f e) name
     Var pos name -> Var (f pos) name
@@ -155,10 +164,14 @@ instance MapPosition (Expr p) where
     App e1 e2 -> App (mapPosition f e1) (mapPosition f e2)
     Index e1 e2 -> Index (mapPosition f e1) (mapPosition f e2)
     Literal p lit -> Literal (f p) lit
-    Freeze pos p e1 e2 -> Freeze pos p (mapPosition f e1) (mapPosition f e2)
-    Lam pos b p body -> Lam (f pos) b p (mapPosition f body)
+    Freeze pos p e1 e2 -> Freeze pos (mapPosition f p) (mapPosition f e1) (mapPosition f e2)
+    Lam pos b p body -> Lam (f pos) b (mapPosition f p) (mapPosition f body)
     ListLiteral p r -> ListLiteral (f p) (map (mapPosition f) r)
     ObjectLiteral p r -> ObjectLiteral (f p) (map (second (mapPosition f)) r)
+
+instance MapPosition TopPattern where
+  mapPosition f (LazyP n p) = LazyP n (f p)
+  mapPosition f (MatchP p) = MatchP (mapPosition f p)
 
 instance MapPosition Pattern where
   mapPosition f (VarP name pos) = VarP name (f pos)

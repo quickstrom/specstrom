@@ -163,6 +163,9 @@ prettyLit (SelectorLit (Selector s)) = literal ("`" <> pretty s <> "`")
 prettyLit (IntLit s) = literal (pretty (show s))
 prettyLit (FloatLit s) = literal (pretty (show s))
 
+topPatternToExpr :: TopPattern -> Expr TempExpr
+topPatternToExpr (LazyP p n) = App (Var n "~_") (Var n p)
+topPatternToExpr (MatchP p) = patternToExpr p
 patternToExpr :: Pattern -> Expr TempExpr
 patternToExpr (VarP p n) = Var n p
 patternToExpr (IgnoreP p) = Var p "_"
@@ -175,11 +178,14 @@ patternToExpr (ActionP n p ps) = unpeelAps (Var p n) (map patternToExpr ps)
 patternToExpr (SymbolP n p ps) = unpeelAps (Symbol p n) (map patternToExpr ps)
 
 bindPatternToExpr :: BindPattern -> Expr TempExpr
-bindPatternToExpr (FunP n p ps) = unpeelAps (Var p n) (map patternToExpr ps)
-bindPatternToExpr (Direct p) = patternToExpr p
+bindPatternToExpr (FunP n p ps) = unpeelAps (Var p n) (map topPatternToExpr ps)
+bindPatternToExpr (Direct p) = topPatternToExpr p
 
 class PrettyPattern a where
   prettyPattern :: a -> Doc AnsiStyle
+
+instance PrettyPattern TopPattern where
+  prettyPattern p = prettyExpr (topPatternToExpr p)
 
 instance PrettyPattern Pattern where
   prettyPattern p = prettyExpr (patternToExpr p)

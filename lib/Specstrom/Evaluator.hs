@@ -19,7 +19,7 @@ type Env = M.HashMap Name Value
 
 type State = (Maybe [Value], M.HashMap Selector Value)
 
-data Thunk = T Env (Expr Pattern) (IORef (Maybe Value))
+data Thunk = T Env (Expr TopPattern) (IORef (Maybe Value))
 
 instance Show Thunk where
   show _ = "<thunk>"
@@ -131,12 +131,12 @@ data Residual
 
 data Value
   = -- function values
-    Closure (Name, Position, Int) Env [Pattern] Body
+    Closure (Name, Position, Int) Env [TopPattern] Body
   | Op PrimOp [Value]
   | -- thunks (not returned by force)
     Thunk Thunk
-  | Frozen State Thunk
-  | Matched Thunk Bool Pattern Name -- bool determines if null is returned or crash
+  -- | Frozen State Thunk
+  -- | Matched Thunk Bool TopPattern Name -- bool determines if null is returned or crash
   | -- Residual formulae
     Residual Residual
   | -- Actions
@@ -160,33 +160,36 @@ type Eval = IO
 evalError :: String -> Eval a
 evalError = throwIO . Error
 
-evaluateBody :: Env -> Body -> Eval Value
-evaluateBody g (Local b r) = evaluateBind g b >>= \g' -> evaluateBody g' r
-evaluateBody g (Done e) = Thunk <$> newThunk g e
 
-newThunk :: Env -> Expr Pattern -> Eval Thunk
+delayedEvaluateBody :: State -> Env -> Body -> Eval Value
+delayedEvaluateBody s g (Local b r) = evaluateBind s g b >>= \g' -> evaluateBody s g' r
+delayedEvaluateBody s g (Done e) = delayedEvaluate s g e
+
+evaluateBody :: State -> Env -> Body -> Eval Value
+evaluateBody s g (Local b r) = evaluateBind s g b >>= \g' -> evaluateBody s g' r
+evaluateBody s g (Done e) = evaluate s g e
+
+newThunk :: Env -> Expr TopPattern -> Eval Thunk
 newThunk g e = T g e <$> newIORef Nothing
 
-evaluateBind :: Env -> Bind -> Eval Env
-evaluateBind g b = evaluateBind' g g b
+evaluateBind :: State -> Env -> Bind -> Eval Env
+evaluateBind s g b = evaluateBind' s g g b
 
 evaluateActionBind :: Env -> Bind -> Eval Env
-evaluateActionBind g (Bind (Direct (VarP n _)) _) = pure (M.insert n (Action n [] Nothing) g)
+evaluateActionBind g (Bind (Direct (MatchP (VarP n _))) _) = pure (M.insert n (Action n [] Nothing) g)
+evaluateActionBind g (Bind (Direct (LazyP n _)) _) = pure (M.insert n (Action n [] Nothing) g)
 evaluateActionBind g (Bind (FunP n _ _) _) = pure (M.insert n (Action n [] Nothing) g)
 evaluateActionBind g (Bind _ _) = evalError "impossible"
 
-evaluateBind' :: Env -> Env -> Bind -> Eval Env
-evaluateBind' g g' (Bind (Direct (VarP n _)) e) = M.insert n <$> evaluateBody g' e <*> pure g
-evaluateBind' g g' (Bind (Direct pat) e) = do
-  t <- evaluateBody g' e
-  Just g'' <- withPatternsDelayed True (error "impossible") pat t g
+evaluateBind' :: State -> Env -> Env -> Bind -> Eval Env
+evaluateBind' s g g' (Bind (Direct (LazyP n _)) e) = M.insert n <$> delayedEvaluateBody s g' e <*> pure g
+evaluateBind' s g g' (Bind (Direct (MatchP (VarP n _))) e) = M.insert n <$> evaluateBody s g' e <*> pure g
+evaluateBind' s g g' (Bind (Direct (MatchP pat)) e) = do
+  t <- evaluateBody s g' e
+  Just g'' <- withPatterns s pat t g
   pure g''
-evaluateBind' g g' (Bind (FunP n p pats) e) = pure (M.insert n (Closure (n, p, 0) g' pats e) g)
+evaluateBind' s g g' (Bind (FunP n p pats) e) = pure (M.insert n (Closure (n, p, 0) g' pats e) g)
 
--- boolean tracks if this is a let expression or a function binding
-withPatternsDelayed :: Bool -> State -> Pattern -> Value -> Env -> Eval (Maybe Env)
-withPatternsDelayed b _ pat (Thunk t) g = pure $ pure $ M.union (M.fromList (map (\v -> (v, Matched t b pat v)) (patternVars pat))) g
-withPatternsDelayed _ s pat v g = withPatterns s pat v g
 
 withPatterns :: State -> Pattern -> Value -> Env -> Eval (Maybe Env)
 withPatterns s (IgnoreP p) v g = pure (Just g)
@@ -241,19 +244,23 @@ isSelectorLit :: Lit -> Bool
 isSelectorLit (SelectorLit {}) = True
 isSelectorLit _ = False
 
-delayedEvaluate :: State -> Env -> Expr Pattern -> Eval Value
+delayedEvaluate :: State -> Env -> Expr TopPattern -> Eval Value
 -- note that any call to "evaluate" here must not in turn call "force" or consult the state or we will get dangerous strictness.
 -- Adding more cases here can make things faster but can also cause incorrectness if it is too strict
-delayedEvaluate s g v@(Var p n) | n /= "happened" = evaluate s g v
-delayedEvaluate s g v@(Literal _ l) | not (isSelectorLit l) = evaluate s g v
 delayedEvaluate s g v@(Lam {}) = evaluate s g v
-delayedEvaluate s g v@(ListLiteral {}) = evaluate s g v
-delayedEvaluate s g v@(ObjectLiteral {}) = evaluate s g v
 delayedEvaluate s g e = Thunk <$> newThunk g e
 
 appAll :: State -> Value -> [Value] -> Eval Value
 appAll s v [] = pure v
 appAll s v (x : xs) = force s v >>= \v' -> app s v' x >>= \v' -> appAll s v' xs
+
+-- if the next argument to this thing should be delayed or not
+isLazy :: Value -> Bool
+isLazy (Op o []) | o `elem` [NextT, NextF, NextD, WhenAct] = True
+isLazy (Op o [_]) | o `elem` [And,Or,Implies,IfThenElse,WhenAct,Always] = True
+isLazy (Op IfThenElse [_,_])  = True
+isLazy (Closure _ _ (LazyP {}:pats) _) = True
+isLazy _ = False
 
 app :: State -> Value -> Value -> Eval Value
 app s v v2 =
@@ -273,20 +280,30 @@ app s v v2 =
       pure (Action a (args ++ [v2]) t)
     Constructor a args -> do
       pure (Constructor a (args ++ [v2]))
-    Closure (n, p, ai) g' [pat] body -> do
+    Closure (n, p, ai) g' [MatchP pat] body -> do
       mg'' <- withPatterns s pat v2 g'
       case mg'' of
         Nothing -> pure Null
-        Just g'' -> evaluateBody g'' body -- If we want backtraces, add (n,p,ai) to a stack while running this
-    Closure (n, p, ai) g' (pat : pats) body -> do
+        Just g'' -> evaluateBody s g'' body
+    Closure (n, p, ai) g' [LazyP nam pos] body -> do
+      mg'' <- withPatterns s (VarP nam pos) v2 g'
+      case mg'' of
+        Nothing -> pure Null
+        Just g'' -> evaluateBody s g'' body
+    Closure (n, p, ai) g' (MatchP pat : pats) body -> do
       mg'' <- withPatterns s pat v2 g'
+      case mg'' of
+        Nothing -> pure Null
+        Just g'' -> pure (Closure (n, p, ai + 1) g'' pats body)
+    Closure (n, p, ai) g' (LazyP nam pos : pats) body -> do 
+      mg'' <- withPatterns s (VarP nam pos) v2 g'
       case mg'' of
         Nothing -> pure Null
         Just g'' -> pure (Closure (n, p, ai + 1) g'' pats body)
     Null -> pure Null
     Thunk (T _ e _) -> evalError $ (show e)
 
-evaluate :: State -> Env -> Expr Pattern -> Eval Value
+evaluate :: State -> Env -> Expr TopPattern -> Eval Value
 evaluate s g (Index e1 e2) = do
   v' <- force s =<< evaluate s g e1
   i' <- force s =<< evaluate s g e2
@@ -321,7 +338,7 @@ evaluate s g (Var p t) = case M.lookup t g of
   Nothing -> evalError ("Impossible: variable '" <> Text.unpack t <> "' not found in environment (type checker found it though)")
 evaluate s g (App e1 e2) = do
   v <- force s =<< evaluate s g e1
-  v2 <- delayedEvaluate s g e2 -- TODO avoid thunking everything when safe
+  v2 <- (if isLazy v then delayedEvaluate else evaluate) s g e2 -- TODO avoid thunking everything when safe
   app s v v2
 evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l (snd s) of
   Nothing -> evalError ("Can't find '" <> Text.unpack sel <> "' in the state (analysis failed?)")
@@ -329,13 +346,19 @@ evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l (snd s
 evaluate s g (Literal p l) = pure (LitVal l)
 evaluate s g (Lam p b pat e) = pure (Closure (if b then "case" else "fun", p, 0) g [pat] (Done e))
 evaluate s g (ListLiteral p ls) = do
-  vs <- mapM (delayedEvaluate s g) ls
+  vs <- mapM (evaluate s g) ls
   pure (List vs)
 evaluate s g (ObjectLiteral p ls) = do
-  vs <- mapM (traverse (delayedEvaluate s g)) ls
+  vs <- mapM (traverse (evaluate s g)) ls
   pure (Object $ M.fromList vs)
-evaluate s g (Freeze p pat e1 e2) = do
-  v1 <- Frozen s <$> newThunk g e1
+evaluate s g (Freeze p (LazyP n pos) e1 e2) = do
+  v1 <- delayedEvaluate s g e1
+  mg' <- withPatterns s (VarP n pos) v1 g
+  case mg' of
+    Just g' -> evaluate s g' e2
+    _ -> evalError "Pattern match failure in freeze"
+evaluate s g (Freeze p (MatchP pat) e1 e2) = do
+  v1 <- evaluate s g e1
   mg' <- withPatterns s pat v1 g
   case mg' of
     Just g' -> evaluate s g' e2
@@ -362,14 +385,7 @@ deepForce s v = do
     _ -> pure v'
 
 force :: State -> Value -> Eval Value
-force _ (Frozen s' t) = forceThunk t s'
 force s (Thunk t) = forceThunk t s
-force s (Matched t b pat v) = do
-  val <- forceThunk t s
-  g <- withPatterns s pat val mempty
-  case g >>= M.lookup v of
-    Nothing -> if b then evalError "Pattern match failure in let binding" else pure Null
-    Just v' -> force s v'
 force s v = pure v
 
 makePrimAction :: State -> Value -> Value -> Value -> Value -> Eval Value
@@ -593,9 +609,7 @@ resetThunks :: Value -> Eval Value
 resetThunks (Closure a e b c) = (\e' -> Closure a e' b c) <$> traverse resetThunks e
 resetThunks (Op o vs) = Op o <$> traverse resetThunks vs
 resetThunks (Thunk t) = Thunk <$> resetThunk t
-resetThunks (Frozen s t) = pure $ Frozen s t -- should be safe? Never need to re-evaluate frozen stuff.
 resetThunks (Residual r) = pure $ Residual r -- that all gets cleared out later
-resetThunks (Matched t b p v) = Matched <$> resetThunk t <*> pure b <*> pure p <*> pure v
 resetThunks (Object o) = Object <$> traverse resetThunks o
 resetThunks (List o) = List <$> traverse resetThunks o
 resetThunks (Action n o t) = Action n <$> traverse resetThunks o <*> pure t

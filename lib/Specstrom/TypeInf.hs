@@ -152,27 +152,35 @@ inferBody g (Local b rest) = do
   pure (t, s <> s')
 
 inferActionBind :: Context -> Bind -> TC (Context, Subst)
-inferActionBind g (Bind (Direct (VarP n p)) bod) = do
+inferActionBind g (Bind (Direct (LazyP n p)) bod) = do
+  (t, s) <- inferBody g bod
+  ss <- unify p t Value
+  pure (M.insert n (Ty Value) (substGamma (s <> ss) g), s <> ss)
+inferActionBind g (Bind (Direct (MatchP (VarP n p))) bod) = do
   (t, s) <- inferBody g bod
   ss <- unify p t Value
   pure (M.insert n (Ty Value) (substGamma (s <> ss) g), s <> ss)
 inferActionBind g (Bind (FunP n _ lams) bod) = do
   (t, s) <- inferActionFun g lams bod
   pure (M.insert n (Ty t) (substGamma s g), s)
-inferActionBind g (Bind (Direct p) bod) = typeError (patternPos p) [StrE "Action binding cannot use a pattern of the form", PtnE p]
+inferActionBind g (Bind (Direct (MatchP p)) bod) = typeError (patternPos p) [StrE "Action binding cannot use a pattern of the form", PtnE p]
 
 inferBind :: Context -> Bind -> TC (Context, Subst)
-inferBind g (Bind (Direct (VarP n _)) bod) = do
+inferBind g (Bind (Direct (LazyP n _)) bod) = do
   (t, s) <- inferBody g bod
   let qt = generalise g t
   pure (M.insert n qt (substGamma s g), s)
-inferBind g (Bind (Direct (IgnoreP _)) bod) = do
+inferBind g (Bind (Direct (MatchP (VarP n _))) bod) = do
+  (t, s) <- inferBody g bod
+  let qt = generalise g t
+  pure (M.insert n qt (substGamma s g), s)
+inferBind g (Bind (Direct (MatchP (IgnoreP _))) bod) = do
   (t, s) <- inferBody g bod
   pure (substGamma s g, s)
-inferBind g (Bind (Direct (NullP _)) bod) = do
+inferBind g (Bind (Direct (MatchP (NullP _))) bod) = do
   (t, s) <- inferBody g bod
   pure (substGamma s g, s)
-inferBind g (Bind (Direct pat) bod) = do
+inferBind g (Bind (Direct (MatchP pat)) bod) = do
   (t, s) <- inferBody g bod
   ss <- unify (bodyPosition bod) t Value
   pure (M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) (substGamma (s <> ss) g), s <> ss)
@@ -181,28 +189,40 @@ inferBind g (Bind (FunP n _ lams) bod) = do
   let qt = generalise g t
   pure (M.insert n qt (substGamma s g), s)
 
-inferActionFun :: Context -> [Pattern] -> Body -> TC (Type, Subst)
+inferActionFun :: Context -> [TopPattern] -> Body -> TC (Type, Subst)
 inferActionFun g [] bod = do
   (t, s) <- inferBody g bod
   ss <- unify (bodyPosition bod) t Value
   pure (Value, s <> ss)
 inferActionFun g (pat : rest) bod = do
-  let g' = M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) g
+  let g' = M.union (M.fromList (zip (topPatternVars pat) (repeat (Ty Value)))) g
   (t, s) <- inferActionFun g' rest bod
   pure (Arrow Value t, s)
 
-inferFun :: Context -> [Pattern] -> Body -> TC (Type, Subst)
+inferFun :: Context -> [TopPattern] -> Body -> TC (Type, Subst)
 inferFun g [] bod = inferBody g bod
-inferFun g (VarP n _ : rest) bod = do
+inferFun g (MatchP (IgnoreP _) : rest) bod = do
+  alpha <- fresh
+  (t, s) <- inferFun g rest bod
+  pure (Arrow (subst s alpha) t, s)
+inferFun g (MatchP (NullP _) : rest) bod = do
+  alpha <- fresh
+  (t, s) <- inferFun g rest bod
+  pure (Arrow (subst s alpha) t, s)
+inferFun g (LazyP n _ : rest) bod = do
   alpha <- fresh
   (t, s) <- inferFun (M.insert n (Ty alpha) g) rest bod
   pure (Arrow (subst s alpha) t, s)
-inferFun g (pat : rest) bod = do
+inferFun g (MatchP (VarP n _) : rest) bod = do
+  alpha <- fresh
+  (t, s) <- inferFun (M.insert n (Ty alpha) g) rest bod
+  pure (Arrow (subst s alpha) t, s)
+inferFun g (MatchP pat : rest) bod = do
   let g' = M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) g
   (t, s) <- inferFun g' rest bod
   pure (Arrow Value t, s)
 
-inferExp :: Context -> Expr Pattern -> TC (Type, Subst)
+inferExp :: Context -> Expr TopPattern -> TC (Type, Subst)
 inferExp g (Projection e _) = do
   (t, s) <- inferExp g e
   s' <- unify (exprPos e) t Value
@@ -222,16 +242,20 @@ inferExp g (App e1 e2) = do
   alpha <- fresh
   s3 <- unify (exprPos e1) (subst s2 t1) (Arrow t2 alpha)
   pure (subst s3 alpha, s1 <> s2 <> s3)
-inferExp g (Lam p _ (VarP n _) e) = do
+inferExp g (Lam p _ (MatchP (VarP n _)) e) = do
   alpha <- fresh
   (t, s) <- inferExp (M.insert n (Ty alpha) g) e
   pure (Arrow (subst s alpha) t, s)
-inferExp g (Lam p _ (IgnoreP _) e) = do
+inferExp g (Lam p _ (LazyP n _) e) = do
+  alpha <- fresh
+  (t, s) <- inferExp (M.insert n (Ty alpha) g) e
+  pure (Arrow (subst s alpha) t, s)
+inferExp g (Lam p _ (MatchP (IgnoreP _)) e) = do
   alpha <- fresh
   (t, s) <- inferExp g e
   pure (Arrow (subst s alpha) t, s)
 inferExp g (Lam p _ pat e) = do
-  let g' = M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) g
+  let g' = M.union (M.fromList (zip (topPatternVars pat) (repeat (Ty Value)))) g
   (t, s) <- inferExp g' e
   pure (Arrow Value t, s)
 inferExp g (Literal {}) = pure (Value, mempty)
@@ -245,18 +269,22 @@ inferExp g (ObjectLiteral p es) =
         else do
           ss <- inferExpsValue g (map snd es)
           pure (Value, ss)
-inferExp g (Freeze _ (VarP n _) e1 e2) = do
+inferExp g (Freeze _ (LazyP n _) e1 e2) = do
   (t1, s1) <- inferExp g e1
   (t2, s2) <- inferExp (M.insert n (Ty t1) (substGamma s1 g)) e2
   pure (t2, s1 <> s2)
-inferExp g (Freeze _ (IgnoreP _) e1 e2) = do
+inferExp g (Freeze _ (MatchP (VarP n _)) e1 e2) = do
+  (t1, s1) <- inferExp g e1
+  (t2, s2) <- inferExp (M.insert n (Ty t1) (substGamma s1 g)) e2
+  pure (t2, s1 <> s2)
+inferExp g (Freeze _ (MatchP (IgnoreP _)) e1 e2) = do
   (t1, s1) <- inferExp g e1
   (t2, s2) <- inferExp (substGamma s1 g) e2
   pure (t2, s1 <> s2)
 inferExp g (Freeze p pat e1 e2) = do
   (t1, s1) <- inferExp g e1
   ss <- unify p t1 Value
-  let g' = M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) (substGamma (s1 <> ss) g)
+  let g' = M.union (M.fromList (zip (topPatternVars pat) (repeat (Ty Value)))) (substGamma (s1 <> ss) g)
   (t2, s2) <- inferExp g' e2
   pure (t2, s1 <> ss <> s2)
 inferExp g (Index e1 e2) = do
@@ -266,7 +294,7 @@ inferExp g (Index e1 e2) = do
   s4 <- unify (exprPos e1) t2 Value
   pure (t2, s1 <> s2 <> s3 <> s4)
 
-inferExpsValue :: Context -> [Expr Pattern] -> TC Subst
+inferExpsValue :: Context -> [Expr TopPattern] -> TC Subst
 inferExpsValue g [] = pure mempty
 inferExpsValue g (e : es) = do
   (t, s) <- inferExp g e
@@ -275,7 +303,7 @@ inferExpsValue g (e : es) = do
   s'' <- inferExpsValue (substGamma ss g) es
   pure (ss <> s'')
 
-inferExpImmediate :: Context -> Expr Pattern -> Either (Position, [TypeErrorBit]) Type
+inferExpImmediate :: Context -> Expr TopPattern -> Either (Position, [TypeErrorBit]) Type
 inferExpImmediate g e = runTC (fst <$> inferExp g e)
 
 inferTopLevels :: Context -> [TopLevel] -> Either (Position, [TypeErrorBit]) Context

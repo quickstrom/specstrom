@@ -1,8 +1,8 @@
 syntax always_ 6;
-let always p = always {100} p;
+let always ~p = always {100} p;
 
 syntax eventually {_}_ 0;
-let eventually {n} p = not (always {n} (not p));
+let eventually {n} ~p = not (always {n} (not p));
 
 syntax eventually_ 0 right;
-let eventually p = eventually {100} p;
+let eventually ~p = eventually {100} p;

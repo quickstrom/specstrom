@@ -13,7 +13,7 @@ import qualified Hedgehog.Range as Range
 import qualified Specstrom.Checker.Protocol as Protocol
 import qualified Specstrom.Dependency as Dependency
 import Specstrom.Lexer (dummyPosition)
-import Specstrom.Syntax (Expr (..), Lit (..), Name, Pattern, Selector (..))
+import Specstrom.Syntax (Expr (..), Lit (..), Name, TopPattern, Selector (..))
 
 name :: Gen Name
 name = ("n" <>) . Text.pack . show @Int <$> Gen.integral (Range.linear 1 100)
@@ -32,10 +32,10 @@ literal =
     ]
 
 -- | * Expr
-literalExpr :: Gen (Expr Pattern)
+literalExpr :: Gen (Expr TopPattern)
 literalExpr = Literal dummyPosition <$> literal
 
-intExpr :: Gen (Expr Pattern)
+intExpr :: Gen (Expr TopPattern)
 intExpr =
   Gen.recursive
     Gen.choice
@@ -45,7 +45,7 @@ intExpr =
       Gen.subterm2 intExpr intExpr (App . App (Var dummyPosition "_-_"))
     ]
 
-boolExpr :: Gen (Expr Pattern)
+boolExpr :: Gen (Expr TopPattern)
 boolExpr =
   Gen.recursive
     Gen.choice
@@ -60,7 +60,7 @@ boolExpr =
       Gen.subterm2 boolExpr boolExpr (App . App (Var dummyPosition "_==>_"))
     ]
 
-expr :: Gen (Expr Pattern)
+expr :: Gen (Expr TopPattern)
 expr =
   Gen.recursive
     Gen.choice
