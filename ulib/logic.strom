@@ -1,0 +1,4 @@
+let conjunction = foldr(_&&_,true);
+let disjunction = foldr(_||_,false);
+let all(f,ls) = conjunction(map(f,ls));
+let any(f,ls) = disjunction(map(f,ls));

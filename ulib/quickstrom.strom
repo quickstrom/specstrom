@@ -1,16 +1,5 @@
-let conjunction = foldr(_&&_,true);
-let disjunction = foldr(_||_,false);
-let all(f,ls) = conjunction(map(f,ls));
-let any(f,ls) = disjunction(map(f,ls));
-syntax _??_ 3 right;
-let _??_(x,y) = if x == null {y} else {x};
-syntax _|_ -2 right;
-let (f | g)(x) = f(x) ?? g(x);
-syntax match_{ |_} -3 right;
-syntax match_{|_} -3 right;
-let match x { | f } = f(x);
-syntax if_{_} 0;
-let if x { e } = if x { e } else { null };
+import control;
+import logic;
 
 action click!(x) = for element in x. { id: "click", event: false, args: [element.ref] } when element.enabled;
 
