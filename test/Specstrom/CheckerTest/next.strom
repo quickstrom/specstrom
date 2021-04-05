@@ -4,6 +4,6 @@ action disable! = click!(`button`);
 
 let active = not (`foo`.disabled && `bar`.disabled);
 
-let prop = active && next (not active) && always (active || not active);
+let prop = active && next (not active) && always 10 (active || not active);
 
 check prop with disable! when loaded?;
