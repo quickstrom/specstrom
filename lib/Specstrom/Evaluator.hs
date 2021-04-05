@@ -5,7 +5,7 @@
 module Specstrom.Evaluator where
 
 import Control.Exception (Exception, throwIO)
-import Control.Monad (MonadPlus (mzero), filterM, (<=<), zipWithM)
+import Control.Monad (MonadPlus (mzero), filterM, zipWithM, (<=<))
 import Data.Fixed (mod')
 import Data.Foldable (foldlM, foldrM)
 import qualified Data.HashMap.Strict as M
