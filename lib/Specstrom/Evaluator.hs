@@ -4,7 +4,7 @@
 
 module Specstrom.Evaluator where
 
-import Control.Exception (Exception, throw)
+import Control.Exception (Exception, throwIO)
 import Control.Monad (MonadPlus (mzero), filterM, zipWithM)
 import Data.Fixed (mod')
 import Data.Foldable (foldlM, foldrM)
@@ -152,12 +152,12 @@ data Value
 
 data EvalError = Error String deriving (Show)
 
-type Eval = IO
-
 instance Exception EvalError
 
-evalError :: String -> a
-evalError = throw . Error
+type Eval = IO
+
+evalError :: String -> Eval a
+evalError = throwIO . Error
 
 evaluateBody :: Env -> Body -> Eval Value
 evaluateBody g (Local b r) = evaluateBind g b >>= \g' -> evaluateBody g' r
@@ -178,7 +178,7 @@ evaluateBind' :: Env -> Env -> Bind -> Eval Env
 evaluateBind' g g' (Bind (Direct (VarP n _)) e) = M.insert n <$> evaluateBody g' e <*> pure g
 evaluateBind' g g' (Bind (Direct pat) e) = do
   t <- evaluateBody g' e
-  Just g'' <- withPatternsDelayed True (evalError "impossible") pat t g
+  Just g'' <- withPatternsDelayed True (error "impossible") pat t g
   pure g''
 evaluateBind' g g' (Bind (FunP n p pats) e) = pure (M.insert n (Closure (n, p, 0) g' pats e) g)
 

@@ -23,6 +23,7 @@ common shared
                      , base >=4.13 && <5
                      , bytestring
                      , containers
+                     , exceptions
                      , prettyprinter
                      , text
                      , hashable

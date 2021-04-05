@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -11,8 +9,9 @@
 module Specstrom.Checker where
 
 import qualified Control.Concurrent.Async as Async
-import Control.Exception (BlockedIndefinitelyOnSTM (..), catch)
-import Control.Monad (unless, void)
+import Control.Exception (BlockedIndefinitelyOnSTM (..))
+import Control.Monad (unless)
+import Control.Monad.Catch (MonadCatch, MonadThrow, catch)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Writer (WriterT, runWriterT, tell)
 import qualified Data.Aeson as JSON
@@ -40,15 +39,12 @@ checkAllStdio :: [TopLevel] -> IO ()
 checkAllStdio ts = do
   (interpreterRecv, interpreterSend) <- newChannel
   (executorRecv, executorSend) <- newChannel
-  Async.withAsync (readStdinTo executorSend) $ \inputDone ->
-    Async.withAsync (writeStdoutFrom interpreterRecv) $ \outputDone -> do
+  Async.withAsync (readStdinTo executorSend) $ \_inputDone ->
+    Async.withAsync (writeStdoutFrom interpreterRecv) $ \_outputDone -> do
       Async.withAsync (checkAll executorRecv interpreterSend ts) $ \checkerDone -> do
-        Async.wait inputDone
-        -- TODO: add notion of channel being closed instead of relying on the STM exception
-        void (Async.wait outputDone) `catch` \case
-          BlockedIndefinitelyOnSTM {} -> fail "Checker failed due to premature end of input."
-        Async.wait checkerDone `catch` \case
-          BlockedIndefinitelyOnSTM {} -> fail "Checker failed due to premature end of input."
+        Async.wait checkerDone
+          `catch` \BlockedIndefinitelyOnSTM {} -> fail "Checker failed due to premature end of input."
+          `catch` \(Evaluator.Error msg) -> fail msg
 
 checkAll :: Receive ExecutorMessage -> Send InterpreterMessage -> [TopLevel] -> IO ()
 checkAll input output ts = do
@@ -102,7 +98,7 @@ data InterpreterState
   = AwaitingInitialEvent
   | ReadingQueue {formula :: Evaluator.Residual, stateVersion :: Natural, lastState :: State, sentAction :: SentAction}
 
-type Interpret m a = MonadIO m => WriterT Trace m a
+type Interpret m a = (MonadIO m, MonadCatch m, MonadThrow m) => WriterT Trace m a
 
 logInfo :: MonadIO m => String -> m ()
 logInfo = liftIO . hPutStrLn stderr . ("INFO " <>)
@@ -110,15 +106,17 @@ logInfo = liftIO . hPutStrLn stderr . ("INFO " <>)
 logErr :: MonadIO m => String -> m ()
 logErr = liftIO . hPutStrLn stderr
 
-readStdinTo :: MonadIO m => Send ExecutorMessage -> m ()
+readStdinTo :: (MonadFail m, MonadIO m) => Send ExecutorMessage -> m ()
 readStdinTo output = do
   eof <- liftIO isEOF
   unless eof $ do
     line <- liftIO getLine
     case JSON.eitherDecodeStrict (BS.pack line) of
-      Left err -> logErr ("Input message parsing failed: " <> err)
-      Right msg -> send output msg
-    readStdinTo output
+      Left err ->
+        fail ("Input message parsing failed: " <> err)
+      Right msg -> do
+        send output msg
+        readStdinTo output
 
 writeStdoutFrom :: Receive InterpreterMessage -> IO [Result]
 writeStdoutFrom output = do
@@ -167,8 +165,9 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
   send output End
   pure (Result valid trace)
   where
-    run :: InterpreterState -> Interpret m Validity
+    run :: MonadFail m => InterpreterState -> Interpret m Validity
     run s@AwaitingInitialEvent = do
+      logInfo "Awaiting initial event"
       msg <- receive input
       case msg of
         Performed _state -> error "Was not expecting an action to be performed. Trace must begin with an initial event."
@@ -179,8 +178,11 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
                   Just ev -> liftIO $ f ev
                   Nothing -> liftIO $ concat <$> mapM f actions
           case filter (actionMatches event . fst) expectedPrims of
-            [] -> run AwaitingInitialEvent
+            [] -> do
+              logErr (show event <> " does not match any of the expected primitive events: " <> show expectedPrims)
+              run AwaitingInitialEvent
             as -> do
+              logInfo ("Got initial event: " <> show event)
               -- the `happened` variable should be map snd as a list of action values..
               tell [TraceAction (map fst as), TraceState firstState]
               let timeout = maximumTimeout (map fst as)
@@ -196,6 +198,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
           logErr "Was not expecting a stale when awaiting initial event."
           run s
     run ReadingQueue {formula = r, stateVersion, lastState, sentAction} = do
+      logInfo "Reading queue"
       msg <- case sentAction of None -> tryReceive input; WaitingTimeout i -> tryReceiveTimeout input i; Sent _ -> Just <$> receive input
       case msg of
         Just (Performed nextState) -> case sentAction of
@@ -275,13 +278,11 @@ toEvaluatorValue = \case
   JSON.Bool False -> Evaluator.Absurd
   JSON.Null -> Evaluator.Null
 
-ifResidual :: [(Name, [Evaluator.Value])] -> State -> Evaluator.Value -> (Evaluator.Residual -> Interpret m Validity) -> Interpret m Validity
+ifResidual :: (MonadFail m) => [(Name, [Evaluator.Value])] -> State -> Evaluator.Value -> (Evaluator.Residual -> Interpret m Validity) -> Interpret m Validity
 ifResidual as state formula f = do
   formula' <- liftIO (Evaluator.force (toEvaluatorState (Just as) state) formula)
   case formula' of
     Evaluator.Trivial -> pure (Definitely True)
     Evaluator.Absurd -> pure (Definitely False)
     Evaluator.Residual r -> f r
-    v -> do
-      logErr ("Unexpected value: " <> show v)
-      pure (Probably False)
+    v -> fail ("Unexpected value: " <> show v)
