@@ -33,7 +33,17 @@ literal =
 
 -- | * Expr
 literalExpr :: Gen (Expr Pattern)
-literalExpr = Literal <$> pure dummyPosition <*> literal
+literalExpr = Literal dummyPosition <$> literal
+
+intExpr :: Gen (Expr Pattern)
+intExpr =
+  Gen.recursive
+    Gen.choice
+    [ Literal dummyPosition . IntLit <$> Gen.integral (Range.linear 0 10)
+    ]
+    [ Gen.subterm2 intExpr intExpr (App . App (Var dummyPosition "_+_")),
+      Gen.subterm2 intExpr intExpr (App . App (Var dummyPosition "_-_"))
+    ]
 
 boolExpr :: Gen (Expr Pattern)
 boolExpr =
@@ -56,9 +66,9 @@ expr =
     Gen.choice
     [ -- Var <$> position <*> name,
       -- Literal <$> position <*> literal
-      Gen.subterm boolExpr (App (Var dummyPosition "always_")),
       Gen.subterm boolExpr (App (Var dummyPosition "next_")),
       Gen.subterm boolExpr (App (Var dummyPosition "eventually_")),
+      Gen.subterm2 intExpr boolExpr (App . App (Var dummyPosition "always__")),
       Gen.subterm2 boolExpr boolExpr (App . App (Var dummyPosition "_until_"))
     ]
     [ Gen.subterm expr (App (Var dummyPosition "not_")),
