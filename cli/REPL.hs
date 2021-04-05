@@ -51,7 +51,7 @@ loop opts tbl g e e' s ae = flip catch (\(Evaluator.Error er) -> outputStrLn er 
       | rest == "unset analysis" -> loop (opts {showAnalysis = False}) tbl g e e' s ae
       | rest == "unset types" -> loop (opts {showTypes = False}) tbl g e e' s ae
       | rest == "quit" -> pure ()
-      | rest == "debug" -> liftIO (print (e,e')) >> loop opts tbl g e e' s ae
+      | rest == "debug" -> liftIO (print (e, e')) >> loop opts tbl g e e' s ae
       | rest == "state" -> pure () -- for now
       | otherwise -> liftIO $ hPutStrLn stderr "Invalid meta-command"
     Just x -> do

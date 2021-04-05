@@ -13,7 +13,7 @@ import qualified Hedgehog.Range as Range
 import qualified Specstrom.Checker.Protocol as Protocol
 import qualified Specstrom.Dependency as Dependency
 import Specstrom.Lexer (dummyPosition)
-import Specstrom.Syntax (Expr (..), Lit (..), Name, TopPattern, Selector (..))
+import Specstrom.Syntax (Expr (..), Lit (..), Name, Selector (..), TopPattern)
 
 name :: Gen Name
 name = ("n" <>) . Text.pack . show @Int <$> Gen.integral (Range.linear 1 100)

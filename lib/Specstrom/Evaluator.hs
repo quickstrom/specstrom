@@ -135,9 +135,10 @@ data Value
   | Op PrimOp [Value]
   | -- thunks (not returned by force)
     Thunk Thunk
-  -- | Frozen State Thunk
-  -- | Matched Thunk Bool TopPattern Name -- bool determines if null is returned or crash
   | -- Residual formulae
+
+    -- | Frozen State Thunk
+    -- | Matched Thunk Bool TopPattern Name -- bool determines if null is returned or crash
     Residual Residual
   | -- Actions
     Action Name [Value] (Maybe Int)
@@ -159,7 +160,6 @@ type Eval = IO
 
 evalError :: String -> Eval a
 evalError = throwIO . Error
-
 
 delayedEvaluateBody :: State -> Env -> Body -> Eval Value
 delayedEvaluateBody s g (Local b r) = evaluateBind s g b >>= \g' -> evaluateBody s g' r
@@ -189,7 +189,6 @@ evaluateBind' s g g' (Bind (Direct (MatchP pat)) e) = do
   Just g'' <- withPatterns s pat t g
   pure g''
 evaluateBind' s g g' (Bind (FunP n p pats) e) = pure (M.insert n (Closure (n, p, 0) g' pats e) g)
-
 
 withPatterns :: State -> Pattern -> Value -> Env -> Eval (Maybe Env)
 withPatterns s (IgnoreP p) v g = pure (Just g)
@@ -257,9 +256,9 @@ appAll s v (x : xs) = force s v >>= \v' -> app s v' x >>= \v' -> appAll s v' xs
 -- if the next argument to this thing should be delayed or not
 isLazy :: Value -> Bool
 isLazy (Op o []) | o `elem` [NextT, NextF, NextD, WhenAct] = True
-isLazy (Op o [_]) | o `elem` [And,Or,Implies,IfThenElse,WhenAct,Always] = True
-isLazy (Op IfThenElse [_,_])  = True
-isLazy (Closure _ _ (LazyP {}:pats) _) = True
+isLazy (Op o [_]) | o `elem` [And, Or, Implies, IfThenElse, WhenAct, Always] = True
+isLazy (Op IfThenElse [_, _]) = True
+isLazy (Closure _ _ (LazyP {} : pats) _) = True
 isLazy _ = False
 
 app :: State -> Value -> Value -> Eval Value
@@ -295,7 +294,7 @@ app s v v2 =
       case mg'' of
         Nothing -> pure Null
         Just g'' -> pure (Closure (n, p, ai + 1) g'' pats body)
-    Closure (n, p, ai) g' (LazyP nam pos : pats) body -> do 
+    Closure (n, p, ai) g' (LazyP nam pos : pats) body -> do
       mg'' <- withPatterns s (VarP nam pos) v2 g'
       case mg'' of
         Nothing -> pure Null

@@ -81,7 +81,7 @@ builtIns =
           ("_/_", LeftAssoc),
           ("_%_", LeftAssoc)
         ],
-        [ ("~_", NonAssoc) ]
+        [("~_", NonAssoc)]
       ]
 
 parseGlob :: [(Position, Token)] -> Either ParseError ([(Position, Token)], Glob)
@@ -207,7 +207,8 @@ parseBindPattern :: Table -> [(Position, Token)] -> Either ParseError ([(Positio
 parseBindPattern t ts = do
   (ts', e) <- parseExpressionTo (Reserved Define) t ts
   case peelAps e [] of
-    (Var p n, es) | not (null es), n /= "~_",
+    (Var p n, es) | not (null es),
+                    n /= "~_",
                     n `notElem` (snd $ snd t) -> do
       es' <- mapM (patFromExpr (snd $ snd t)) es
       let ns = concatMap topPatternVars es'

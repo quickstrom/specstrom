@@ -85,7 +85,7 @@ data BindPattern
   | FunP Name Position [TopPattern]
   deriving (Eq, Show)
 
-data TopPattern 
+data TopPattern
   = LazyP Name Position
   | MatchP Pattern
   deriving (Eq, Show)

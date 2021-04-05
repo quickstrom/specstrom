@@ -166,6 +166,7 @@ prettyLit (FloatLit s) = literal (pretty (show s))
 topPatternToExpr :: TopPattern -> Expr TempExpr
 topPatternToExpr (LazyP p n) = App (Var n "~_") (Var n p)
 topPatternToExpr (MatchP p) = patternToExpr p
+
 patternToExpr :: Pattern -> Expr TempExpr
 patternToExpr (VarP p n) = Var n p
 patternToExpr (IgnoreP p) = Var p "_"
