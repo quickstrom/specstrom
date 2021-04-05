@@ -13,6 +13,7 @@ import Data.IORef
 import qualified Data.Text as Text
 import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax
+import qualified Debug.Trace as Debug
 
 type Env = M.HashMap Name Value
 
@@ -41,11 +42,11 @@ data PrimOp
     NextF
   | NextT
   | NextD
-  | Always
   | Not
   | -- binary
     And
   | Or
+  | Always
   | Implies
   | WhenAct
   | TimeoutAct
@@ -77,7 +78,7 @@ primOpVar op = case op of
   NextF -> "nextF_"
   NextT -> "nextT_"
   NextD -> "next_"
-  Always -> "always_"
+  Always -> "always__"
   Not -> "not_"
   And -> "_&&_"
   Or -> "_||_"
@@ -426,17 +427,6 @@ areEqual s v1 v2 = do
     areEqual' _ _ = pure False
 
 unaryOp :: PrimOp -> State -> Value -> Eval Value
-unaryOp Always s v@(Thunk (T g e _)) = do
-  v' <- force s v
-  case v' of
-    Absurd -> pure Absurd
-    Trivial -> do
-      residual <- Next AssumeTrue <$> newThunk g e
-      pure (Residual residual)
-    Residual r -> do
-      residual <- Next AssumeTrue <$> newThunk g e
-      pure (Residual (Conjunction r residual))
-    _ -> evalError "Always expects formula"
 unaryOp Not s v = do
   v' <- force s v
   case v' of
@@ -457,6 +447,23 @@ negateResidual (Next st (T g e v)) = do
   Next st' <$> newThunk g (App (Var dummyPosition "not_") e)
 
 binaryOp :: PrimOp -> State -> Value -> Value -> Eval Value
+binaryOp Always s v1 v2 = 
+  case v2 of 
+    Thunk (T g e _) -> do
+      v1' <- force s v1
+      v2' <- force s v2
+      case v1' of
+        LitVal (IntLit n) ->
+          case v2' of
+            Absurd -> pure Absurd
+            Trivial -> do
+              residual <- Next AssumeTrue <$> newThunk g e
+              pure (Residual residual)
+            Residual r -> do
+              residual <- Next AssumeTrue <$> newThunk g e
+              pure (Residual (Conjunction r residual))
+            _ -> evalError ("Always expects formula, got: " <> show v2')
+    v -> pure v
 binaryOp Implies s v1 v2 = do
   v1' <- force s v1
   case v1' of

@@ -62,7 +62,7 @@ builtIns =
         [("_&&_", RightAssoc)],
         [("_until_", RightAssoc)],
         [ ("not_", RightAssoc),
-          ("always_", RightAssoc),
+          ("always__", RightAssoc),
           ("nextT_", RightAssoc),
           ("nextF_", RightAssoc),
           ("next_", RightAssoc),

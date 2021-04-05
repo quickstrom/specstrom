@@ -70,7 +70,7 @@ builtInTypes =
       ("nextF_", val2),
       ("nextT_", val2),
       ("next_", val2),
-      ("always_", val2),
+      ("always__", val3),
       ("not_", val2),
       ("map", hof),
       ("foldl", hof2),

@@ -1,9 +1,11 @@
 syntax _??_ 3 right;
 let _??_(x,y) = if x == null {y} else {x};
+
 syntax _|_ -2 right;
 let (f | g)(x) = f(x) ?? g(x);
 syntax match_{ |_} -3 right;
 syntax match_{|_} -3 right;
 let match x { | f } = f(x);
+
 syntax if_{_} 0;
 let if x { e } = if x { e } else { null };
