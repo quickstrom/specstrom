@@ -43,8 +43,9 @@ checkAllStdio ts = do
     Async.withAsync (writeStdoutFrom interpreterRecv) $ \_outputDone -> do
       Async.withAsync (checkAll executorRecv interpreterSend ts) $ \checkerDone -> do
         Async.wait checkerDone
-          `catch` \BlockedIndefinitelyOnSTM {} -> fail "Checker failed due to premature end of input."
-          `catch` \(Evaluator.Error msg) -> fail msg
+          `catch` \BlockedIndefinitelyOnSTM {} ->
+            fail "Checker failed due to premature end of input."
+              `catch` \(Evaluator.Error msg) -> fail msg
 
 checkAll :: Receive ExecutorMessage -> Send InterpreterMessage -> [TopLevel] -> IO ()
 checkAll input output ts = do
