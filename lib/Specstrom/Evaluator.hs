@@ -11,9 +11,9 @@ import Data.Foldable (foldlM, foldrM)
 import qualified Data.HashMap.Strict as M
 import Data.IORef
 import qualified Data.Text as Text
+import qualified Debug.Trace as Debug
 import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax
-import qualified Debug.Trace as Debug
 
 type Env = M.HashMap Name Value
 
@@ -447,8 +447,8 @@ negateResidual (Next st (T g e v)) = do
   Next st' <$> newThunk g (App (Var dummyPosition "not_") e)
 
 binaryOp :: PrimOp -> State -> Value -> Value -> Eval Value
-binaryOp Always s v1 v2 = 
-  case v2 of 
+binaryOp Always s v1 v2 =
+  case v2 of
     Thunk (T g e _) -> do
       v1' <- force s v1
       v2' <- force s v2
