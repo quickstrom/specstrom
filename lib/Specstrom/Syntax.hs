@@ -32,7 +32,7 @@ data Expr p
   | Index (Expr p) (Expr p)
   | Literal Position Lit
   | Freeze Position p (Expr p) (Expr p)
-  | Lam Position p (Expr p) 
+  | Lam Position p (Expr p)
   | ListLiteral Position [Expr p]
   | ObjectLiteral Position [(Name, Expr p)]
   deriving (Eq, Show, Functor, Foldable, Traversable)
@@ -158,7 +158,7 @@ data TopLevel
 class MapPosition a where
   mapPosition :: (Position -> Position) -> a -> a
 
-instance MapPosition TempExpr where 
+instance MapPosition TempExpr where
   mapPosition f (E e) = E (mapPosition f e)
 
 instance MapPosition p => MapPosition (Expr p) where

@@ -131,8 +131,10 @@ lexer p t
     Just (';', cs) -> ((p, Semi) :) <$> lexer (nextCol p) cs
     Just (',', cs) -> ((p, Comma) :) <$> lexer (nextCol p) cs
     Just (':', cs) -> ((p, Colon) :) <$> lexer (nextCol p) cs
-    Just ('.', cs) | (candidate, rest) <- Text.break (not . isAlphaIdentChar) cs
-                   , not (Text.null candidate) -> ((p, ProjectionTok candidate) :) <$> lexer (advance candidate p) rest
+    Just ('.', cs)
+      | (candidate, rest) <- Text.break (not . isAlphaIdentChar) cs,
+        not (Text.null candidate) ->
+        ((p, ProjectionTok candidate) :) <$> lexer (advance candidate p) rest
     Just (c, cs)
       | isAlpha c ->
         let (candidate, rest) = Text.break (not . isAlphaIdentChar) t

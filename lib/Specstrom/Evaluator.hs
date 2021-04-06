@@ -160,8 +160,8 @@ evaluateBind :: State -> Env -> Bind -> Eval Env
 evaluateBind s g b = evaluateBind' s g g b
 
 evaluateActionBind :: Env -> Bind -> Eval Env
-evaluateActionBind g (Bind (Direct (MatchP (MacroExpansionP pat _))) bod) = evaluateActionBind g (Bind (Direct (MatchP pat)) bod) 
-evaluateActionBind g (Bind (Direct (MatchP (MacroExpansionP pat _))) bod) = evaluateActionBind g (Bind (Direct (MatchP pat)) bod) 
+evaluateActionBind g (Bind (Direct (MatchP (MacroExpansionP pat _))) bod) = evaluateActionBind g (Bind (Direct (MatchP pat)) bod)
+evaluateActionBind g (Bind (Direct (MatchP (MacroExpansionP pat _))) bod) = evaluateActionBind g (Bind (Direct (MatchP pat)) bod)
 evaluateActionBind g (Bind (Direct (MatchP (VarP n _))) _) = pure (M.insert n (Action n [] Nothing) g)
 evaluateActionBind g (Bind (Direct (LazyP n _)) _) = pure (M.insert n (Action n [] Nothing) g)
 evaluateActionBind g (Bind (FunP n _ _) _) = pure (M.insert n (Action n [] Nothing) g)
@@ -332,7 +332,7 @@ evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l (snd (
   Just ls -> pure ls
 evaluate s g (Literal p l) = pure (LitVal l)
 evaluate s g (MacroExpansion e _) = evaluate s g e
-evaluate s g (Lam p pat e) = pure (Closure ("fun", p, 0) g [pat]  e)
+evaluate s g (Lam p pat e) = pure (Closure ("fun", p, 0) g [pat] e)
 evaluate s g (ListLiteral p ls) = do
   vs <- mapM (force s <=< evaluate s g) ls
   pure (List vs)

@@ -198,8 +198,8 @@ inferActionFun g (pat : rest) bod = do
 
 inferFun :: Context -> [TopPattern] -> Expr TopPattern -> TC (Type, Subst)
 inferFun g [] bod = inferExp g bod
-inferFun g (MacroExpansionTP pat _ : rest) bod = inferFun g (pat:rest) bod
-inferFun g (MatchP (MacroExpansionP p _):rest) bod = inferFun g (MatchP p:rest) bod
+inferFun g (MacroExpansionTP pat _ : rest) bod = inferFun g (pat : rest) bod
+inferFun g (MatchP (MacroExpansionP p _) : rest) bod = inferFun g (MatchP p : rest) bod
 inferFun g (MatchP (IgnoreP _) : rest) bod = do
   alpha <- fresh
   (t, s) <- inferFun g rest bod

@@ -208,7 +208,7 @@ prettyExpr trm = renderTerm True trm
         ObjectLiteral _ ls -> "{" <> hsep (punctuate comma $ map (\(i, e) -> pretty i <> ":" <+> renderTerm True e) ls) <> "}"
         Lam _ n e ->
           (if outer then id else parens) $
-             "fun" <+> prettyPattern n <> "." <+> prettyExpr e
+            "fun" <+> prettyPattern n <> "." <+> prettyExpr e
         Freeze _ n e b ->
           (if outer then id else parens) $
             "freeze" <+> prettyPattern n <+> "=" <+> prettyExpr e <> "." <+> prettyExpr b

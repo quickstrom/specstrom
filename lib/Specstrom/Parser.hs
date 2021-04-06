@@ -7,11 +7,11 @@ module Specstrom.Parser where
 import Control.Applicative
 import Control.Monad.Except
 import Data.Bifunctor (first, second)
+import qualified Data.HashMap.Strict as M
 import Data.List (intersperse, nub, (\\))
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe
 import Data.Text (Text, splitOn)
-import qualified Data.HashMap.Strict as M
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Specstrom.Lexer
@@ -49,11 +49,12 @@ data ParseError
   | ModuleNotFound Position Text
   deriving (Show)
 
-data Table = Table { positiveHoles :: [[(Holey Text, Associativity)]]
-                   , negativeHoles :: [[(Holey Text, Associativity)]]
-                   , actionNames :: [Name]
-                   , macros :: M.HashMap Name ([Name],Expr TempExpr)
-                   }
+data Table = Table
+  { positiveHoles :: [[(Holey Text, Associativity)]],
+    negativeHoles :: [[(Holey Text, Associativity)]],
+    actionNames :: [Name],
+    macros :: M.HashMap Name ([Name], Expr TempExpr)
+  }
 
 builtIns :: Table
 builtIns =
@@ -137,17 +138,18 @@ parseTopLevel search t ((p, Reserved Import) : ts) = case ts of
 parseTopLevel search t ((p, Ident "macro") : ts) = do
   (ts', mac) <- wrap (parseExpressionTo' (Reserved Define) t ts)
   let fromVar x = case x of Var _ n -> Just n; _ -> Nothing
-  case peelAps mac [] of 
-    (Var _ macroName, args) | Just args' <- mapM fromVar args, args' == nub args' -> 
+  case peelAps mac [] of
+    (Var _ macroName, args) | Just args' <- mapM fromVar args,
+                              args' == nub args' ->
       case ts' of
-       ((_, Reserved Define) : ts'') -> do
-         (rest, body) <- wrap (parseExpressionTo' Semi t ts'')
-         case rest of
-           ((_, Semi) : rest') -> let t' = t { macros = M.insert macroName (args', body) (macros t) } in parseTopLevel search t' rest'
-           ((p', _) : _) -> throwError $ ExpectedSemicolon p'
-           [] -> error "impossible?"
-       ((p', _) : _) -> throwError $ ExpectedEquals p'
-       [] -> error "impossible?"
+        ((_, Reserved Define) : ts'') -> do
+          (rest, body) <- wrap (parseExpressionTo' Semi t ts'')
+          case rest of
+            ((_, Semi) : rest') -> let t' = t {macros = M.insert macroName (args', body) (macros t)} in parseTopLevel search t' rest'
+            ((p', _) : _) -> throwError $ ExpectedSemicolon p'
+            [] -> error "impossible?"
+        ((p', _) : _) -> throwError $ ExpectedEquals p'
+        [] -> error "impossible?"
     _ -> throwError $ InvalidMacroLHS p
 parseTopLevel search t ((p, Reserved Syntax) : ts) = do
   (ts', t') <- wrap (parseSyntax t p ts)
@@ -157,7 +159,7 @@ parseTopLevel search t ((p, Reserved Let) : ts) = do
   fmap (Binding b :) <$> parseTopLevel search t rest
 parseTopLevel search t ((p, Reserved Action) : ts) = do
   (rest, b@(Bind pat _)) <- wrap (parseBind t p ts)
-  let t' = t { actionNames = bindPatternBoundVars pat ++ actionNames t }
+  let t' = t {actionNames = bindPatternBoundVars pat ++ actionNames t}
   fmap (ActionDecl b :) <$> parseTopLevel search t' rest
 parseTopLevel search t ((p, Reserved Check) : ts) = do
   (rest, g1) <- wrap (parseGlob ts)
@@ -203,8 +205,8 @@ parseSyntax t p ts = do
     (ids@(_ : _), (_, IntLitTok i) : (_, Ident "right") : (_, Semi) : ts') -> pure (map (fromIdent . snd) ids, RightAssoc, i, ts')
     _ -> Left $ MalformedSyntaxDeclaration p
   if i < 0
-    then insertSyntax p n (- i) assoc (reverse $ negativeHoles t) >>= \t' -> Right (ts', t { negativeHoles = reverse t'})
-    else insertSyntax p n i assoc (positiveHoles t) >>= \t' -> Right (ts', t { positiveHoles = t'})
+    then insertSyntax p n (- i) assoc (reverse $ negativeHoles t) >>= \t' -> Right (ts', t {negativeHoles = reverse t'})
+    else insertSyntax p n i assoc (positiveHoles t) >>= \t' -> Right (ts', t {positiveHoles = t'})
 
 insertSyntax :: Position -> [Name] -> Int -> Associativity -> [[(Holey Text, Associativity)]] -> Either ParseError [[(Holey Text, Associativity)]]
 insertSyntax p n i a t
@@ -266,27 +268,29 @@ patFromExpr' t e = case patFromAnyExpr t e of
   Nothing -> Left $ ExpectedPattern' e
 
 macroExpand' :: M.HashMap Name (Expr TempExpr) -> M.HashMap Name ([Name], Expr TempExpr) -> TempExpr -> Either ParseError TempExpr
-macroExpand'  locs env (E t) = E <$> macroExpand locs env t 
-
+macroExpand' locs env (E t) = E <$> macroExpand locs env t
 
 macroExpand :: M.HashMap Name (Expr TempExpr) -> M.HashMap Name ([Name], Expr TempExpr) -> Expr TempExpr -> Either ParseError (Expr TempExpr)
-macroExpand locs env expr = case expr of 
-    Projection e name -> Projection <$> macroExpand locs env e <*> pure name
-    MacroExpansion e1 e2 -> MacroExpansion <$> macroExpand locs env e1 <*> pure e2
-    Index e1 e2 -> Index <$> macroExpand locs env e1 <*> macroExpand locs env e2
-    Freeze pos p e1 e2 -> Freeze pos <$> macroExpand' locs env p <*> macroExpand locs env e1 <*> macroExpand locs env e2
-    Lam pos p body -> Lam pos <$> macroExpand' locs env p <*> macroExpand locs env body
-    ListLiteral p r -> ListLiteral p <$> mapM (macroExpand locs env) r
-    ObjectLiteral p r -> ObjectLiteral p <$> mapM (traverse (macroExpand locs env)) r
-    Literal p lit -> pure $ Literal p lit
-    Symbol pos name -> pure $ Symbol pos name
-    e | (Var _ name,args) <- peelAps e [], Just (argsN, term) <- M.lookup name env, length args == length argsN 
-                        -> do args' <- traverse (macroExpand locs env) args
-                              flip MacroExpansion expr <$> macroExpand (M.fromList (zip argsN args')) env term 
-      | (Var p name,[]) <- peelAps e [], Just term <- M.lookup name locs -> pure term
-    (Var p name) -> pure $ Var p name
-    App e1 e2 -> App <$> macroExpand locs env e1 <*> macroExpand locs env e2
-    
+macroExpand locs env expr = case expr of
+  Projection e name -> Projection <$> macroExpand locs env e <*> pure name
+  MacroExpansion e1 e2 -> MacroExpansion <$> macroExpand locs env e1 <*> pure e2
+  Index e1 e2 -> Index <$> macroExpand locs env e1 <*> macroExpand locs env e2
+  Freeze pos p e1 e2 -> Freeze pos <$> macroExpand' locs env p <*> macroExpand locs env e1 <*> macroExpand locs env e2
+  Lam pos p body -> Lam pos <$> macroExpand' locs env p <*> macroExpand locs env body
+  ListLiteral p r -> ListLiteral p <$> mapM (macroExpand locs env) r
+  ObjectLiteral p r -> ObjectLiteral p <$> mapM (traverse (macroExpand locs env)) r
+  Literal p lit -> pure $ Literal p lit
+  Symbol pos name -> pure $ Symbol pos name
+  e
+    | (Var _ name, args) <- peelAps e [],
+      Just (argsN, term) <- M.lookup name env,
+      length args == length argsN ->
+      do
+        args' <- traverse (macroExpand locs env) args
+        flip MacroExpansion expr <$> macroExpand (M.fromList (zip argsN args')) env term
+    | (Var p name, []) <- peelAps e [], Just term <- M.lookup name locs -> pure term
+  (Var p name) -> pure $ Var p name
+  App e1 e2 -> App <$> macroExpand locs env e1 <*> macroExpand locs env e2
 
 parseExpressionTo' :: Token -> Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Expr TempExpr)
 parseExpressionTo' terminator t ts =
@@ -297,11 +301,12 @@ parseExpressionTo' terminator t ts =
           ((p, t') : _) -> Left (ExpectedGot p (expected r) t')
           [] -> Left (ExpectedGot dummyPosition (expected r) EOF) -- not sure how this happens
         (e : es, _r) -> Left (ExpressionAmbiguous (e :| es))
+
 parseExpressionTo :: Token -> Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Expr TopPattern)
-parseExpressionTo terminator t ts = do 
-          (ts', one) <- parseExpressionTo' terminator t ts
-          one' <- macroExpand mempty (macros t) one
-          (ts',) <$> traverse (\(E e) -> patFromExpr' (actionNames t) e) one'
+parseExpressionTo terminator t ts = do
+  (ts', one) <- parseExpressionTo' terminator t ts
+  one' <- macroExpand mempty (macros t) one
+  (ts',) <$> traverse (\(E e) -> patFromExpr' (actionNames t) e) one'
 
 grammar :: Table -> Grammar r (Prod r Text (Position, Token) (Expr TempExpr))
 grammar table = mdo
