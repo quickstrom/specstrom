@@ -22,7 +22,7 @@ repl searchPaths' fp = do
   (tls, tbl, g) <- load' searchPaths' False fp
   (e, e', ae) <- liftIO $ checkTopLevels Evaluator.basicEnv mempty Analysis.builtIns tls
   let opts = foldl' addSearchPath defaultOpts searchPaths'
-  runInputT defaultSettings (loop opts tbl g e e' mempty ae)
+  runInputT defaultSettings (loop opts tbl g e e' Evaluator.dummyState ae)
 
 defaultOpts :: Options
 defaultOpts = Opts False False []
@@ -93,11 +93,11 @@ checkTopLevel ::
   IO (Evaluator.Env, Evaluator.Env, Analysis.AnalysisEnv)
 checkTopLevel evalEnv actionEnv analysisEnv tl = case tl of
   Binding b@(Syntax.Bind pat _) -> do
-    evalEnv' <- Evaluator.evaluateBind mempty evalEnv b
+    evalEnv' <- Evaluator.evaluateBind Evaluator.dummyState evalEnv b
     let analysisEnv' = Analysis.analyseBind analysisEnv b
     pure (evalEnv', actionEnv, analysisEnv')
   ActionDecl b@(Syntax.Bind pat _) -> do
-    actionEnv' <- Evaluator.evaluateBind' mempty actionEnv evalEnv b
+    actionEnv' <- Evaluator.evaluateBind' Evaluator.dummyState actionEnv evalEnv b
     evalEnv' <- Evaluator.evaluateActionBind evalEnv b
     let analysisEnv' = Analysis.analyseBind analysisEnv b
     pure (evalEnv', actionEnv', analysisEnv')

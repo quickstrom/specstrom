@@ -4,7 +4,7 @@
 
 module Specstrom.Evaluator where
 
-import Control.Exception (Exception, throwIO)
+import Control.Exception (Exception, throwIO, throw)
 import Control.Monad (MonadPlus (mzero), filterM, zipWithM, (<=<))
 import Data.Fixed (mod')
 import Data.Foldable (foldlM, foldrM)
@@ -17,25 +17,18 @@ import Specstrom.Syntax
 
 type Env = M.HashMap Name Value
 
-type State = (Maybe [Value], M.HashMap Selector Value)
+type State = (Int, (Maybe [Value], M.HashMap Selector Value))
 
-data Thunk = T Env (Expr TopPattern) (IORef (Maybe Value))
+dummyState :: State
+dummyState = (-32767, throw . Error $ "Cannot access state in top-level binding")
+
+data Thunk = T Env (Expr TopPattern) (IORef (Maybe (Int, Value)))
 
 instance Show Thunk where
   show _ = "<thunk>"
 
 data Strength = AssumeTrue | AssumeFalse | Demand deriving (Show)
 
--- data BaseAction = Click Name | Noop | Loaded | Changed Name
---   deriving (Show, Eq, Generic, JSON.FromJSON, JSON.ToJSON)
---
--- isEvent :: BaseAction -> Bool
--- isEvent Loaded = True
--- isEvent (Changed n) = True
--- isEvent _ = False
-
---data Action = A BaseAction (Maybe Int)
---  deriving (Show, Eq, Generic, JSON.FromJSON, JSON.ToJSON)
 
 data PrimOp
   = -- unary
@@ -330,7 +323,7 @@ evaluate s g (Projection e t) = do
     Object m | Just v <- M.lookup t m -> pure v
     _ -> evalError "Cannot take projection of a non-object (or list of objects)"
 evaluate s g (Symbol _ t) = pure $ Constructor t []
-evaluate s g (Var p "happened") = case fst s of
+evaluate s g (Var p "happened") = case fst (snd s) of
   Just v -> pure (List v)
   Nothing -> evalError "Set 'happened' of actions is not available when computing actions"
 evaluate s g (Var p t) = case M.lookup t g of
@@ -340,7 +333,7 @@ evaluate s g (App e1 e2) = do
   v <- force s =<< evaluate s g e1
   v2 <- (if isLazy v then delayedEvaluate s g else force s <=< evaluate s g) e2 -- TODO avoid thunking everything when safe
   app s v v2
-evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l (snd s) of
+evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l (snd (snd s)) of
   Nothing -> evalError ("Can't find '" <> Text.unpack sel <> "' in the state (analysis failed?)")
   Just ls -> pure ls
 evaluate s g (Literal p l) = pure (LitVal l)
@@ -368,11 +361,12 @@ forceThunk :: Thunk -> State -> Eval Value
 forceThunk (T g e r) s = do
   x <- readIORef r
   case x of
-    Nothing -> do
+    Just (version,v) | version == fst s -> pure v
+    _ -> do
       v <- force s =<< evaluate s g e
-      writeIORef r (Just v)
+      writeIORef r (Just (fst s, v))
       pure v
-    Just v -> pure v
+    
 
 deepForce :: State -> Value -> Eval Value
 deepForce s v = do
@@ -576,22 +570,11 @@ binaryNumOp s v1' v2' op = do
     numOp Subtraction = (-)
     numOp Multiplication = (*)
 
-resetThunk :: Thunk -> Eval Thunk
-resetThunk (T e expr ior) = do
-  writeIORef ior Nothing
-  (\e' -> T e' expr ior) <$> traverse resetThunks e
-
-resetThunks :: Value -> Eval Value
-resetThunks (Closure a e b c) = (\e' -> Closure a e' b c) <$> traverse resetThunks e
-resetThunks (Op o vs) = Op o <$> traverse resetThunks vs
-resetThunks (Thunk t) = Thunk <$> resetThunk t
-resetThunks e = pure e -- nothing else can contain a thunk
-
 -- The output value will be Trivial if the formula is now true, Absurd if false,
 -- Or another Residual if still requiring more states.
 -- Any other value is presumably a type error.
 step :: Residual -> State -> Eval Value
-step (Next _ t) s = resetThunk t >>= \t' -> forceThunk t' s
+step (Next _ t) s = forceThunk t s
 step (Implication r1 r2) s = do
   r1' <- step r1 s
   r2' <- step r2 s
