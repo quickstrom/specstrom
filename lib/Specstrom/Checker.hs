@@ -96,7 +96,7 @@ checkTopLevel input output currentModule evalEnv actionEnv analysisEnv results =
     pure (currentModule, evalEnv, actionEnv, analysisEnv, results <> rs)
 
 data InterpreterState
-  = AwaitingInitialEvent { stateVersion :: Natural }
+  = AwaitingInitialEvent {stateVersion :: Natural}
   | ReadingQueue {formula :: Evaluator.Residual, stateVersion :: Natural, lastState :: State, sentAction :: SentAction}
 
 type Interpret m a = (MonadIO m, MonadCatch m, MonadThrow m) => WriterT Trace m a
@@ -167,21 +167,21 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
   pure (Result valid trace)
   where
     run :: MonadFail m => InterpreterState -> Interpret m Validity
-    run s@AwaitingInitialEvent{stateVersion = version} = do
+    run s@AwaitingInitialEvent {stateVersion = version} = do
       logInfo "Awaiting initial event"
       msg <- receive input
       case msg of
         Performed _state -> error "Was not expecting an action to be performed. Trace must begin with an initial event."
         Event event firstState -> do
           expectedPrims <-
-            let f = extractActions Nothing actionEnv (toEvaluatorState (-(fromIntegral (succ version))) Nothing firstState)
+            let f = extractActions Nothing actionEnv (toEvaluatorState (- (fromIntegral (succ version))) Nothing firstState)
              in case expectedEvent of
                   Just ev -> liftIO $ f ev
                   Nothing -> liftIO $ concat <$> mapM f actions
           case filter (actionMatches event . fst) expectedPrims of
             [] -> do
               logErr (show event <> " does not match any of the expected primitive events: " <> show expectedPrims)
-              run (AwaitingInitialEvent { stateVersion = succ version})
+              run (AwaitingInitialEvent {stateVersion = succ version})
             as -> do
               logInfo ("Got initial event: " <> show event)
               -- the `happened` variable should be map snd as a list of action values..
@@ -224,7 +224,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
               let timeout = maximumTimeout (map fst as)
               -- the `happened` variable should be map snd as a list of action values..
               nextFormula <- liftIO (Evaluator.step r (toEvaluatorState (fromIntegral (succ stateVersion)) (Just (map snd as)) nextState))
-              ifResidual (fromIntegral (succ stateVersion))  (map snd as) nextState nextFormula $ \r' ->
+              ifResidual (fromIntegral (succ stateVersion)) (map snd as) nextState nextFormula $ \r' ->
                 run
                   ReadingQueue
                     { formula = r',

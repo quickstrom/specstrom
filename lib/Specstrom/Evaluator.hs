@@ -4,7 +4,7 @@
 
 module Specstrom.Evaluator where
 
-import Control.Exception (Exception, throwIO, throw)
+import Control.Exception (Exception, throw, throwIO)
 import Control.Monad (MonadPlus (mzero), filterM, zipWithM, (<=<))
 import Data.Fixed (mod')
 import Data.Foldable (foldlM, foldrM)
@@ -28,7 +28,6 @@ instance Show Thunk where
   show _ = "<thunk>"
 
 data Strength = AssumeTrue | AssumeFalse | Demand deriving (Show)
-
 
 data PrimOp
   = -- unary
@@ -361,12 +360,11 @@ forceThunk :: Thunk -> State -> Eval Value
 forceThunk (T g e r) s = do
   x <- readIORef r
   case x of
-    Just (version,v) | version == fst s -> pure v
+    Just (version, v) | version == fst s -> pure v
     _ -> do
       v <- force s =<< evaluate s g e
       writeIORef r (Just (fst s, v))
       pure v
-    
 
 deepForce :: State -> Value -> Eval Value
 deepForce s v = do
