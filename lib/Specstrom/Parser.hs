@@ -164,7 +164,7 @@ parseBind t p ts = do
   (ts', pat) <- parseBindPattern t ts
   case ts' of
     ((_, Reserved Define) : ts'') -> do
-      (rest, body) <- parseBindingBody t ts''
+      (rest, body) <- parseExpressionTo Semi t ts''
       case rest of
         ((_, Semi) : rest') -> Right (rest', Bind pat body)
         ((p', _) : _) -> Left $ ExpectedSemicolon p'
@@ -184,15 +184,6 @@ parseSyntax t p ts = do
   if i < 0
     then insertSyntax p n (- i) assoc (reverse $ fst (snd t)) >>= \t' -> Right (ts', second (first (const $ reverse t')) t)
     else insertSyntax p n i assoc (fst t) >>= \t' -> Right (ts', first (const t') t)
-
-parseBindingBody :: Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Body)
-parseBindingBody t ((p, Reserved Syntax) : ts) = do
-  (ts', t') <- parseSyntax t p ts
-  parseBindingBody t' ts'
-parseBindingBody t ((p, Reserved Let) : ts) = do
-  (rest, b) <- parseBind t p ts
-  fmap (Local b) <$> parseBindingBody t rest
-parseBindingBody t ts = fmap Done <$> parseExpressionTo Semi t ts
 
 insertSyntax :: Position -> [Name] -> Int -> Associativity -> [[(Holey Text, Associativity)]] -> Either ParseError [[(Holey Text, Associativity)]]
 insertSyntax p n i a t

@@ -20,7 +20,7 @@ import Specstrom.Syntax
 prop_prettyprint_parse_roundtrip :: Property
 prop_prettyprint_parse_roundtrip = property $ do
   e <- forAll Gen.expr
-  let t = [Binding (Bind (Direct (MatchP (VarP "test" dummyPosition))) (Done e))]
+  let t = [Binding (Bind (Direct (MatchP (VarP "test" dummyPosition))) e)]
       pp = ppTopLevel t
       clearPos = map (mapPosition (const dummyPosition))
   annotate (Text.unpack pp)

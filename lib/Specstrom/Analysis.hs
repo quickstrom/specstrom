@@ -72,18 +72,14 @@ depOf (FromSelector sel proj) = go (dep sel) proj
     go d (Field f : ps) = go (project f d) ps
     go d (_ : ps) = go d ps -- for now we only support fields.
 
-analyseBody :: AnalysisEnv -> Body -> Annotation
-analyseBody g (Done e) = analyseExpr g e
-analyseBody g (Local b r) = analyseBody (analyseBind g b) r
-
-analyseBodyWithParams :: AnalysisEnv -> [TopPattern] -> Body -> Annotation
-analyseBodyWithParams g [] b = analyseBody g b
+analyseBodyWithParams :: AnalysisEnv -> [TopPattern] -> Expr TopPattern -> Annotation
+analyseBodyWithParams g [] b = analyseExpr g b
 analyseBodyWithParams g (p : ps) b = Function f
   where
     f a = withAnalysePatternLocal a p g $ \g' -> analyseBodyWithParams g' ps b
 
 analyseBind :: AnalysisEnv -> Bind -> AnalysisEnv
-analyseBind g (Bind (Direct pat) body) = analysePatternLet (analyseBody g body) pat g
+analyseBind g (Bind (Direct pat) body) = analysePatternLet (analyseExpr g body) pat g
 analyseBind g (Bind (FunP n _ pats) body) =
   let a = analyseBodyWithParams g pats body
    in M.insert n a g

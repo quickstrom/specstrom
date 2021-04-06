@@ -129,7 +129,7 @@ prettyBind' (Bind bp bs) =
     <+> nest
       3
       ( keyword "=" <> softline
-          <> (prettyBody bs <> keyword ";")
+          <> (prettyExpr bs <> keyword ";")
       )
 
 prettyAll :: [TopLevel] -> Doc AnsiStyle
@@ -148,13 +148,6 @@ prettyToplevel (Properties _p g1 g2 g3) =
 prettyToplevel (Binding b) = prettyBind b
 prettyToplevel (ActionDecl b) = keyword "action" <+> prettyBind' b
 prettyToplevel (Imported i bs) = keyword "import" <+> literal (pretty i) <> keyword ";" <> line <> indent 2 (prettyAll bs)
-
-prettyBody :: Body -> Doc AnsiStyle
-prettyBody (Local b e) =
-  prettyBind b
-    <> line
-    <> prettyBody e
-prettyBody (Done e) = prettyExpr e
 
 prettyLit :: Lit -> Doc AnsiStyle
 prettyLit (CharLit s) = literal (pretty (show s))

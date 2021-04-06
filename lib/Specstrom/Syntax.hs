@@ -136,15 +136,8 @@ patternVars (BoolP p _) = []
 patternVars (IgnoreP p) = []
 patternVars (NullP p) = []
 
-data Bind = Bind BindPattern Body
+data Bind = Bind BindPattern (Expr TopPattern)
   deriving (Eq, Show)
-
-data Body = Local Bind Body | Done (Expr TopPattern)
-  deriving (Eq, Show)
-
-bodyPosition :: Body -> Position
-bodyPosition (Local b bod) = bodyPosition bod
-bodyPosition (Done e) = exprPos e
 
 data TopLevel
   = Binding Bind
@@ -183,10 +176,6 @@ instance MapPosition Pattern where
   mapPosition f (ObjectP p ps) = ObjectP (f p) (map (second (mapPosition f)) ps)
   mapPosition f (ActionP n p ps) = ActionP n (f p) (map (mapPosition f) ps)
   mapPosition f (SymbolP n p ps) = SymbolP n (f p) (map (mapPosition f) ps)
-
-instance MapPosition Body where
-  mapPosition f (Local bind body) = Local (mapPosition f bind) (mapPosition f body)
-  mapPosition f (Done expr) = Done (mapPosition f expr)
 
 instance MapPosition BindPattern where
   mapPosition f (Direct pat) = Direct (mapPosition f pat)

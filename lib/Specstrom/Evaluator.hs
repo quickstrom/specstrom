@@ -123,7 +123,7 @@ data Residual
 
 data Value
   = -- function values
-    Closure (Name, Position, Int) Env [TopPattern] Body
+    Closure (Name, Position, Int) Env [TopPattern] (Expr TopPattern)
   | Op PrimOp [Value]
   | -- thunks (not returned by force)
     Thunk Thunk
@@ -153,14 +153,6 @@ type Eval = IO
 evalError :: String -> Eval a
 evalError = throwIO . Error
 
-delayedEvaluateBody :: State -> Env -> Body -> Eval Value
-delayedEvaluateBody s g (Local b r) = evaluateBind s g b >>= \g' -> evaluateBody s g' r
-delayedEvaluateBody s g (Done e) = delayedEvaluate s g e
-
-evaluateBody :: State -> Env -> Body -> Eval Value
-evaluateBody s g (Local b r) = evaluateBind s g b >>= \g' -> evaluateBody s g' r
-evaluateBody s g (Done e) = evaluate s g e
-
 newThunk :: Env -> Expr TopPattern -> Eval Thunk
 newThunk g e = T g e <$> newIORef Nothing
 
@@ -174,10 +166,10 @@ evaluateActionBind g (Bind (FunP n _ _) _) = pure (M.insert n (Action n [] Nothi
 evaluateActionBind g (Bind _ _) = evalError "impossible"
 
 evaluateBind' :: State -> Env -> Env -> Bind -> Eval Env
-evaluateBind' s g g' (Bind (Direct (LazyP n _)) e) = M.insert n <$> delayedEvaluateBody s g' e <*> pure g
-evaluateBind' s g g' (Bind (Direct (MatchP (VarP n _))) e) = M.insert n <$> evaluateBody s g' e <*> pure g
+evaluateBind' s g g' (Bind (Direct (LazyP n _)) e) = M.insert n <$> delayedEvaluate s g' e <*> pure g
+evaluateBind' s g g' (Bind (Direct (MatchP (VarP n _))) e) = M.insert n <$> evaluate s g' e <*> pure g
 evaluateBind' s g g' (Bind (Direct (MatchP pat)) e) = do
-  t <- evaluateBody s g' e
+  t <- evaluate s g' e
   Just g'' <- withPatterns s pat t g
   pure g''
 evaluateBind' s g g' (Bind (FunP n p pats) e) = pure (M.insert n (Closure (n, p, 0) g' pats e) g)
@@ -276,12 +268,12 @@ app s v v2 =
       mg'' <- withPatterns s pat v2 g'
       case mg'' of
         Nothing -> pure Null
-        Just g'' -> evaluateBody s g'' body
+        Just g'' -> evaluate s g'' body
     Closure (n, p, ai) g' [LazyP nam pos] body -> do
       mg'' <- withPatterns s (VarP nam pos) v2 g'
       case mg'' of
         Nothing -> pure Null
-        Just g'' -> evaluateBody s g'' body
+        Just g'' -> evaluate s g'' body
     Closure (n, p, ai) g' (MatchP pat : pats) body -> do
       mg'' <- withPatterns s pat v2 g'
       case mg'' of
@@ -336,7 +328,7 @@ evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l (snd (
   Nothing -> evalError ("Can't find '" <> Text.unpack sel <> "' in the state (analysis failed?)")
   Just ls -> pure ls
 evaluate s g (Literal p l) = pure (LitVal l)
-evaluate s g (Lam p b pat e) = pure (Closure (if b then "case" else "fun", p, 0) g [pat] (Done e))
+evaluate s g (Lam p b pat e) = pure (Closure (if b then "case" else "fun", p, 0) g [pat]  e)
 evaluate s g (ListLiteral p ls) = do
   vs <- mapM (force s <=< evaluate s g) ls
   pure (List vs)

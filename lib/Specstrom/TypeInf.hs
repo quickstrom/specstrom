@@ -144,20 +144,13 @@ tvQ (Forall n t) = filter (/= n) (tvQ t)
 tvGamma :: Context -> [Name]
 tvGamma = foldMap tvQ
 
-inferBody :: Context -> Body -> TC (Type, Subst)
-inferBody g (Done e) = inferExp g e
-inferBody g (Local b rest) = do
-  (g', s) <- inferBind g b
-  (t, s') <- inferBody g' rest
-  pure (t, s <> s')
-
 inferActionBind :: Context -> Bind -> TC (Context, Subst)
 inferActionBind g (Bind (Direct (LazyP n p)) bod) = do
-  (t, s) <- inferBody g bod
+  (t, s) <- inferExp g bod
   ss <- unify p t Value
   pure (M.insert n (Ty Value) (substGamma (s <> ss) g), s <> ss)
 inferActionBind g (Bind (Direct (MatchP (VarP n p))) bod) = do
-  (t, s) <- inferBody g bod
+  (t, s) <- inferExp g bod
   ss <- unify p t Value
   pure (M.insert n (Ty Value) (substGamma (s <> ss) g), s <> ss)
 inferActionBind g (Bind (FunP n _ lams) bod) = do
@@ -167,40 +160,40 @@ inferActionBind g (Bind (Direct (MatchP p)) bod) = typeError (patternPos p) [Str
 
 inferBind :: Context -> Bind -> TC (Context, Subst)
 inferBind g (Bind (Direct (LazyP n _)) bod) = do
-  (t, s) <- inferBody g bod
+  (t, s) <- inferExp g bod
   let qt = generalise g t
   pure (M.insert n qt (substGamma s g), s)
 inferBind g (Bind (Direct (MatchP (VarP n _))) bod) = do
-  (t, s) <- inferBody g bod
+  (t, s) <- inferExp g bod
   let qt = generalise g t
   pure (M.insert n qt (substGamma s g), s)
 inferBind g (Bind (Direct (MatchP (IgnoreP _))) bod) = do
-  (t, s) <- inferBody g bod
+  (t, s) <- inferExp g bod
   pure (substGamma s g, s)
 inferBind g (Bind (Direct (MatchP (NullP _))) bod) = do
-  (t, s) <- inferBody g bod
+  (t, s) <- inferExp g bod
   pure (substGamma s g, s)
 inferBind g (Bind (Direct (MatchP pat)) bod) = do
-  (t, s) <- inferBody g bod
-  ss <- unify (bodyPosition bod) t Value
+  (t, s) <- inferExp g bod
+  ss <- unify (exprPos bod) t Value
   pure (M.union (M.fromList (zip (patternVars pat) (repeat (Ty Value)))) (substGamma (s <> ss) g), s <> ss)
 inferBind g (Bind (FunP n _ lams) bod) = do
   (t, s) <- inferFun g lams bod
   let qt = generalise g t
   pure (M.insert n qt (substGamma s g), s)
 
-inferActionFun :: Context -> [TopPattern] -> Body -> TC (Type, Subst)
+inferActionFun :: Context -> [TopPattern] -> Expr TopPattern -> TC (Type, Subst)
 inferActionFun g [] bod = do
-  (t, s) <- inferBody g bod
-  ss <- unify (bodyPosition bod) t Value
+  (t, s) <- inferExp g bod
+  ss <- unify (exprPos bod) t Value
   pure (Value, s <> ss)
 inferActionFun g (pat : rest) bod = do
   let g' = M.union (M.fromList (zip (topPatternVars pat) (repeat (Ty Value)))) g
   (t, s) <- inferActionFun g' rest bod
   pure (Arrow Value t, s)
 
-inferFun :: Context -> [TopPattern] -> Body -> TC (Type, Subst)
-inferFun g [] bod = inferBody g bod
+inferFun :: Context -> [TopPattern] -> Expr TopPattern -> TC (Type, Subst)
+inferFun g [] bod = inferExp g bod
 inferFun g (MatchP (IgnoreP _) : rest) bod = do
   alpha <- fresh
   (t, s) <- inferFun g rest bod
