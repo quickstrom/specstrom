@@ -28,13 +28,16 @@ data Expr p
   | Var Position Text
   | Symbol Position Text
   | App (Expr p) (Expr p)
+  | MacroExpansion (Expr p) (Expr TempExpr)
   | Index (Expr p) (Expr p)
   | Literal Position Lit
   | Freeze Position p (Expr p) (Expr p)
-  | Lam Position Bool p (Expr p) -- Bool is if it is declared with "case" or not.
+  | Lam Position p (Expr p) 
   | ListLiteral Position [Expr p]
   | ObjectLiteral Position [(Name, Expr p)]
   deriving (Eq, Show, Functor, Foldable, Traversable)
+
+newtype TempExpr = E (Expr TempExpr) deriving (Eq, Show)
 
 peelAps :: Expr p -> [Expr p] -> (Expr p, [Expr p])
 peelAps (App x y) acc = peelAps x (y : acc)
@@ -49,9 +52,10 @@ exprPos (Symbol p _) = p
 exprPos (App e1 _e2) = exprPos e1
 exprPos (Index e1 _e2) = exprPos e1
 exprPos (Literal p _) = p
+exprPos (MacroExpansion _ e) = exprPos e
 exprPos (Projection e _) = exprPos e
 exprPos (Freeze p _ _ _) = p
-exprPos (Lam p _ _ _) = p
+exprPos (Lam p _ _) = p
 exprPos (ListLiteral p _) = p
 exprPos (ObjectLiteral p _) = p
 
@@ -88,11 +92,13 @@ data BindPattern
 data TopPattern
   = LazyP Name Position
   | MatchP Pattern
+  | MacroExpansionTP TopPattern (Expr TempExpr)
   deriving (Eq, Show)
 
 data Pattern
   = VarP Name Position
   | ListP Position [Pattern]
+  | MacroExpansionP Pattern (Expr TempExpr)
   | ObjectP Position [(Name, Pattern)]
   | ActionP Name Position [Pattern]
   | SymbolP Name Position [Pattern]
@@ -109,6 +115,7 @@ bindPatternVars (Direct p) = topPatternVars p
 topPatternVars :: TopPattern -> [Name]
 topPatternVars (LazyP n p) = [n]
 topPatternVars (MatchP p) = patternVars p
+topPatternVars (MacroExpansionTP p _) = topPatternVars p
 
 bindPatternBoundVars :: BindPattern -> [Name]
 bindPatternBoundVars (Direct p) = topPatternVars p
@@ -119,6 +126,7 @@ patternPos (VarP _ p) = p
 patternPos (ListP p _) = p
 patternPos (ObjectP p _) = p
 patternPos (SymbolP _ p _) = p
+patternPos (MacroExpansionP _ e) = exprPos e
 patternPos (ActionP _ p _) = p
 patternPos (LitP p _) = p
 patternPos (BoolP p _) = p
@@ -128,6 +136,7 @@ patternPos (NullP p) = p
 patternVars :: Pattern -> [Name]
 patternVars (VarP n p) = [n]
 patternVars (ListP p ps) = concatMap patternVars ps
+patternVars (MacroExpansionP p _) = patternVars p
 patternVars (ObjectP p ps) = concatMap patternVars (map snd ps)
 patternVars (ActionP n p ps) = concatMap patternVars ps
 patternVars (SymbolP n p ps) = concatMap patternVars ps
@@ -149,26 +158,32 @@ data TopLevel
 class MapPosition a where
   mapPosition :: (Position -> Position) -> a -> a
 
+instance MapPosition TempExpr where 
+  mapPosition f (E e) = E (mapPosition f e)
+
 instance MapPosition p => MapPosition (Expr p) where
   mapPosition f expr = case expr of
     Projection e name -> Projection (mapPosition f e) name
     Var pos name -> Var (f pos) name
     Symbol pos name -> Symbol (f pos) name
     App e1 e2 -> App (mapPosition f e1) (mapPosition f e2)
+    MacroExpansion e1 e2 -> MacroExpansion (mapPosition f e1) (mapPosition f e2)
     Index e1 e2 -> Index (mapPosition f e1) (mapPosition f e2)
     Literal p lit -> Literal (f p) lit
     Freeze pos p e1 e2 -> Freeze pos (mapPosition f p) (mapPosition f e1) (mapPosition f e2)
-    Lam pos b p body -> Lam (f pos) b (mapPosition f p) (mapPosition f body)
+    Lam pos p body -> Lam (f pos) (mapPosition f p) (mapPosition f body)
     ListLiteral p r -> ListLiteral (f p) (map (mapPosition f) r)
     ObjectLiteral p r -> ObjectLiteral (f p) (map (second (mapPosition f)) r)
 
 instance MapPosition TopPattern where
   mapPosition f (LazyP n p) = LazyP n (f p)
+  mapPosition f (MacroExpansionTP n p) = MacroExpansionTP (mapPosition f n) (mapPosition f p)
   mapPosition f (MatchP p) = MatchP (mapPosition f p)
 
 instance MapPosition Pattern where
   mapPosition f (VarP name pos) = VarP name (f pos)
   mapPosition f (IgnoreP pos) = IgnoreP (f pos)
+  mapPosition f (MacroExpansionP t p) = MacroExpansionP (mapPosition f t) (mapPosition f p)
   mapPosition f (NullP pos) = NullP (f pos)
   mapPosition f (BoolP pos b) = BoolP (f pos) b
   mapPosition f (LitP pos l) = LitP (f pos) l

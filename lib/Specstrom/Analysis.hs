@@ -87,6 +87,7 @@ analyseBind g (Bind (FunP n _ pats) body) =
 analyseTopPattern :: Annotation -> TopPattern -> [(Maybe Name, Annotation)]
 analyseTopPattern ann (LazyP n _) = [(Just n, ann)]
 analyseTopPattern ann (MatchP p) = analysePattern ann p
+analyseTopPattern ann (MacroExpansionTP t _) = analyseTopPattern ann t
 
 analysePattern :: Annotation -> Pattern -> [(Maybe Name, Annotation)]
 analysePattern ann (VarP n _) = [(Just n, ann)]
@@ -94,6 +95,7 @@ analysePattern ann (IgnoreP _) = [(Nothing, ann)]
 analysePattern ann (LitP _ _) = [(Nothing, ann)]
 analysePattern ann (BoolP _ _) = [(Nothing, ann)]
 analysePattern ann (NullP _) = [(Nothing, ann)]
+analysePattern ann (MacroExpansionP t _) = analysePattern ann t
 analysePattern ann (ListP _ ps) = concatMap (analysePattern (projectAnnotation ListElement ann)) ps
 analysePattern ann (ObjectP _ ps) = concatMap (\(n, p) -> analysePattern (projectAnnotation (Field n) ann) p) ps
 analysePattern ann (ActionP n _ ps) = concatMap (\(i, p) -> analysePattern (projectAnnotation (ActionElement n i) ann) p) (zip [0 ..] ps)
@@ -141,6 +143,7 @@ applyAnnotation a b = case a of
 
 analyseExpr :: AnalysisEnv -> Expr TopPattern -> Annotation
 analyseExpr g (Projection e t) = projectAnnotation (Field t) (analyseExpr g e)
+analyseExpr g (MacroExpansion a b) = analyseExpr g a
 analyseExpr g (Index a b) = Indirect (projectAnnotation ListElement (analyseExpr g a)) (analyseExpr g b)
 analyseExpr g (Symbol _ t) = Constructor t []
 analyseExpr g (App a b) = applyAnnotation (analyseExpr g a) (analyseExpr g b)
@@ -150,7 +153,7 @@ analyseExpr _ (Literal _ (SelectorLit l)) = FromSelector l []
 analyseExpr _ (Literal _ _) = Constant
 analyseExpr g (Var _ t) | Just d <- M.lookup t g = d
 analyseExpr g (Freeze _ pat e2 e3) = withAnalysePatternLocal (analyseExpr g e2) pat g $ \g' -> analyseExpr g' e3
-analyseExpr g (Lam _ _ pat e) = Function f
+analyseExpr g (Lam _ pat e) = Function f
   where
     f a = withAnalysePatternLocal a pat g $ \g' -> analyseExpr g' e
 analyseExpr _ expr = error ("Impossible, can't analyse: " <> show expr)

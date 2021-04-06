@@ -72,6 +72,7 @@ prettyParseError (LexerFailure e) = prettyLexerError e
 prettyParseError (ModuleNotFound p n) = errorMessage p "module not found" [ident n]
 prettyParseError (MalformedSyntaxDeclaration p) = errorMessage p "malformed syntax declaration" []
 prettyParseError (SyntaxAlreadyDeclared n p) = errorMessage p "syntax already declared:" [ident n]
+prettyParseError (InvalidMacroLHS p) = errorMessage p "Invalid macro definition" []
 prettyParseError (ExpectedPattern e) = errorMessage (exprPos e) "expected pattern, got:" [prettyExpr e]
 prettyParseError (ExpectedPattern' e) = errorMessage (exprPos e) "expected pattern, got:" [prettyExpr e]
 prettyParseError (ExpectedSemicolon p) = errorMessage p "expected semicolon." []
@@ -100,7 +101,6 @@ prettyToken (Reserved Fun) = keyword "fun"
 prettyToken (Reserved When) = keyword "when"
 prettyToken (Reserved Check) = keyword "check"
 prettyToken (Reserved With) = keyword "with"
-prettyToken (Reserved Case) = keyword "case"
 prettyToken (Reserved Import) = keyword "import"
 prettyToken (Reserved Action) = keyword "action"
 prettyToken (ProjectionTok t) = projection ("." <> t)
@@ -117,7 +117,6 @@ prettyToken LBrack = "["
 prettyToken RBrack = "]"
 prettyToken Semi = ";"
 prettyToken Comma = ","
-prettyToken Dot = "."
 prettyToken EOF = "EOF"
 
 prettyBind :: Bind -> Doc AnsiStyle
@@ -159,9 +158,11 @@ prettyLit (FloatLit s) = literal (pretty (show s))
 topPatternToExpr :: TopPattern -> Expr TempExpr
 topPatternToExpr (LazyP p n) = App (Var n "~_") (Var n p)
 topPatternToExpr (MatchP p) = patternToExpr p
+topPatternToExpr (MacroExpansionTP p e) = MacroExpansion (topPatternToExpr p) e
 
 patternToExpr :: Pattern -> Expr TempExpr
 patternToExpr (VarP p n) = Var n p
+patternToExpr (MacroExpansionP p e) = MacroExpansion (patternToExpr p) e
 patternToExpr (IgnoreP p) = Var p "_"
 patternToExpr (LitP p l) = Literal p l
 patternToExpr (BoolP p l) = if l then Var p "true" else Var p "false"
@@ -193,26 +194,24 @@ prettyBindPattern p = prettyExpr (bindPatternToExpr p)
 prettyExpr :: (PrettyPattern p) => Expr p -> Doc AnsiStyle
 prettyExpr trm = renderTerm True trm
   where
+    renderTerm :: (PrettyPattern q) => Bool -> Expr q -> Doc AnsiStyle
     renderTerm outer t
       | (x, []) <- peelAps t [] = case x of
         Var _ s -> ident s
         Symbol _ s -> symbol (":" <> pretty s)
         Literal _p l -> prettyLit l
+        MacroExpansion _ e -> renderTerm outer e
         Projection e pr -> renderTerm False e <> projection ("." <> pr)
         Index e e' -> renderTerm False e <> "[" <> renderTerm True e <> "]"
         App {} -> mempty -- Handled by peelAps
         ListLiteral _ ls -> "[" <> hsep (punctuate comma $ map (renderTerm True) ls) <> "]"
         ObjectLiteral _ ls -> "{" <> hsep (punctuate comma $ map (\(i, e) -> pretty i <> ":" <+> renderTerm True e) ls) <> "}"
-        Lam _ b n e ->
+        Lam _ n e ->
           (if outer then id else parens) $
-            if b then "case" else "fun" <+> prettyPattern n <> "." <+> prettyExpr e
+             "fun" <+> prettyPattern n <> "." <+> prettyExpr e
         Freeze _ n e b ->
           (if outer then id else parens) $
             "freeze" <+> prettyPattern n <+> "=" <+> prettyExpr e <> "." <+> prettyExpr b
-      | (Var _ name, [Lam _ _ pat e2, e3]) <- peelAps t [],
-        name `elem` ["map", "any", "all"] =
-        (if outer then id else parens) $
-          (case name of "map" -> "for"; "any" -> "exists"; "all" -> "forall"; _ -> "") <+> prettyPattern pat <+> "in" <+> prettyExpr e3 <> "." <+> prettyExpr e2
       | (Var _ n, args) <- peelAps t [],
         Text.length (Text.filter (== '_') n) == length args =
         (if outer then id else parens) $ hsep $ infixTerms n args

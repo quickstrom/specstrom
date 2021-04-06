@@ -2,3 +2,17 @@ let conjunction = foldr(_&&_,true);
 let disjunction = foldr(_||_,false);
 let all(f,ls) = conjunction(map(f,ls));
 let any(f,ls) = disjunction(map(f,ls));
+syntax for_in_{_} 0;
+macro for X in Y { E } = map(fun X. E, Y);
+syntax for_in_._ -1 right;
+macro for X in Y. E = map(fun X. E, Y);
+syntax forall_in_{_} 0;
+macro forall X in Y { E } = all(fun X. E, Y);
+syntax forall_in_._ -1 right;
+macro forall X in Y. E = all(fun X. E, Y);
+syntax exists_in_{_} 0;
+macro exists X in Y { E } = any(fun X. E, Y);
+syntax exists_in_._ -1 right;
+macro exists X in Y. E  = any(fun X. E, Y);
+
+

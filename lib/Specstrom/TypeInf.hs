@@ -145,6 +145,8 @@ tvGamma :: Context -> [Name]
 tvGamma = foldMap tvQ
 
 inferActionBind :: Context -> Bind -> TC (Context, Subst)
+inferActionBind g (Bind (Direct (MacroExpansionTP p _)) bod) = inferActionBind g (Bind (Direct p) bod)
+inferActionBind g (Bind (Direct (MatchP (MacroExpansionP p _))) bod) = inferActionBind g (Bind (Direct (MatchP p)) bod)
 inferActionBind g (Bind (Direct (LazyP n p)) bod) = do
   (t, s) <- inferExp g bod
   ss <- unify p t Value
@@ -159,10 +161,12 @@ inferActionBind g (Bind (FunP n _ lams) bod) = do
 inferActionBind g (Bind (Direct (MatchP p)) bod) = typeError (patternPos p) [StrE "Action binding cannot use a pattern of the form", PtnE p]
 
 inferBind :: Context -> Bind -> TC (Context, Subst)
+inferBind g (Bind (Direct (MacroExpansionTP p _)) bod) = inferBind g (Bind (Direct p) bod)
 inferBind g (Bind (Direct (LazyP n _)) bod) = do
   (t, s) <- inferExp g bod
   let qt = generalise g t
   pure (M.insert n qt (substGamma s g), s)
+inferBind g (Bind (Direct (MatchP (MacroExpansionP p _))) bod) = inferBind g (Bind (Direct (MatchP p)) bod)
 inferBind g (Bind (Direct (MatchP (VarP n _))) bod) = do
   (t, s) <- inferExp g bod
   let qt = generalise g t
@@ -194,6 +198,8 @@ inferActionFun g (pat : rest) bod = do
 
 inferFun :: Context -> [TopPattern] -> Expr TopPattern -> TC (Type, Subst)
 inferFun g [] bod = inferExp g bod
+inferFun g (MacroExpansionTP pat _ : rest) bod = inferFun g (pat:rest) bod
+inferFun g (MatchP (MacroExpansionP p _):rest) bod = inferFun g (MatchP p:rest) bod
 inferFun g (MatchP (IgnoreP _) : rest) bod = do
   alpha <- fresh
   (t, s) <- inferFun g rest bod
@@ -216,6 +222,7 @@ inferFun g (MatchP pat : rest) bod = do
   pure (Arrow Value t, s)
 
 inferExp :: Context -> Expr TopPattern -> TC (Type, Subst)
+inferExp g (MacroExpansion e _) = inferExp g e
 inferExp g (Projection e _) = do
   (t, s) <- inferExp g e
   s' <- unify (exprPos e) t Value
@@ -235,22 +242,7 @@ inferExp g (App e1 e2) = do
   alpha <- fresh
   s3 <- unify (exprPos e1) (subst s2 t1) (Arrow t2 alpha)
   pure (subst s3 alpha, s1 <> s2 <> s3)
-inferExp g (Lam p _ (MatchP (VarP n _)) e) = do
-  alpha <- fresh
-  (t, s) <- inferExp (M.insert n (Ty alpha) g) e
-  pure (Arrow (subst s alpha) t, s)
-inferExp g (Lam p _ (LazyP n _) e) = do
-  alpha <- fresh
-  (t, s) <- inferExp (M.insert n (Ty alpha) g) e
-  pure (Arrow (subst s alpha) t, s)
-inferExp g (Lam p _ (MatchP (IgnoreP _)) e) = do
-  alpha <- fresh
-  (t, s) <- inferExp g e
-  pure (Arrow (subst s alpha) t, s)
-inferExp g (Lam p _ pat e) = do
-  let g' = M.union (M.fromList (zip (topPatternVars pat) (repeat (Ty Value)))) g
-  (t, s) <- inferExp g' e
-  pure (Arrow Value t, s)
+inferExp g (Lam p pat e) = inferFun g [pat] e
 inferExp g (Literal {}) = pure (Value, mempty)
 inferExp g (ListLiteral _ es) = do
   ss <- inferExpsValue g es

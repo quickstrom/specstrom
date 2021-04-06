@@ -9,34 +9,34 @@ import quickstrom;
 
 let unchanged(x) = freeze a = x. next (x == a); 
 
-let buttonText = `.play-pause`.textContent;
-let timeDisplayText = `.time-display`.textContent;
-let display = `.time-display`.css.display;
+let ~buttonText = `.play-pause`.textContent;
+let ~timeDisplayText = `.time-display`.textContent;
+let ~display = `.time-display`.css.display;
 
-let playing = 
-   let pauseString = "pause";  // just demonstrating local bindings
+let pauseString = "pause";  // just demonstrating local bindings
+let ~playing = 
    buttonText == pauseString && display == "block";  // No more maybe, we just have null for that
 
-let paused = 
-   syntax _isPlay 7; //Also demonstrating local syntax
-   let x isPlay = x == "play";
+syntax _isPlay 7; //Also demonstrating local syntax
+let x isPlay = x == "play";
+let ~paused = 
    buttonText isPlay;
 
 // bindings can take arguments.
 let transition(a, b) = a && next b;
 let [a,b] = [3,4];
 
-action myAction! = click!(`#hello`);
+action ~myAction! = click!(`#hello`);
 
-let testVal = (if `x`.foo then `y`.bar else `z`.baz).fuzz;
+let ~testVal = (if `x`.foo { `y`.bar } else { `z`.baz }).fuzz;
 
-let play = paused ~> playing && unchanged(timeDisplayText);
+let ~play = paused ~> playing && unchanged(timeDisplayText);
 
-let pause = playing ~> paused && unchanged(timeDisplayText);
+let ~pause = playing ~> paused && unchanged(timeDisplayText);
 
-let tick = playing ~> playing && not unchanged(timeDisplayText);
+let ~tick = playing ~> playing && not unchanged(timeDisplayText);
 
-let prop = testVal && paused && always (play || pause || tick); // always always == always, I am just demonstrating the prefix syntax.
+let ~prop = testVal && paused && always (play || pause || tick); // always always == always, I am just demonstrating the prefix syntax.
 
 
 

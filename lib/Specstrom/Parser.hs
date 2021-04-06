@@ -11,6 +11,7 @@ import Data.List (intersperse, nub, (\\))
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe
 import Data.Text (Text, splitOn)
+import qualified Data.HashMap.Strict as M
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Specstrom.Lexer
@@ -36,6 +37,7 @@ data ParseError
   | ExpectedPattern' (Expr TempExpr)
   | ExpectedSemicolon Position
   | ExpectedSemicolonOrWhen Position
+  | InvalidMacroLHS Position
   | ExpectedEquals Position
   | ExpectedWith Position
   | ExpectedModuleName Position
@@ -47,11 +49,15 @@ data ParseError
   | ModuleNotFound Position Text
   deriving (Show)
 
-type Table = ([[(Holey Text, Associativity)]], ([[(Holey Text, Associativity)]], [Name]))
+data Table = Table { positiveHoles :: [[(Holey Text, Associativity)]]
+                   , negativeHoles :: [[(Holey Text, Associativity)]]
+                   , actionNames :: [Name]
+                   , macros :: M.HashMap Name ([Name],Expr TempExpr)
+                   }
 
-builtIns :: ([[(Holey Text, Associativity)]], ([[(Holey Text, Associativity)]], [Name]))
+builtIns :: Table
 builtIns =
-  (\x -> (x, ([], []))) $
+  (\x -> Table x [] [] mempty) $
     (map . map)
       (first (concatMap holey . Text.words))
       [ [ ("if_{_} else {_}", RightAssoc),
@@ -128,6 +134,21 @@ parseTopLevel search t ((p, Reserved Import) : ts) = case ts of
     [] -> error "impossible?"
   ((p', _) : _) -> throwError $ ExpectedModuleName p'
   [] -> error "impossible?"
+parseTopLevel search t ((p, Ident "macro") : ts) = do
+  (ts', mac) <- wrap (parseExpressionTo' (Reserved Define) t ts)
+  let fromVar x = case x of Var _ n -> Just n; _ -> Nothing
+  case peelAps mac [] of 
+    (Var _ macroName, args) | Just args' <- mapM fromVar args, args' == nub args' -> 
+      case ts' of
+       ((_, Reserved Define) : ts'') -> do
+         (rest, body) <- wrap (parseExpressionTo' Semi t ts'')
+         case rest of
+           ((_, Semi) : rest') -> let t' = t { macros = M.insert macroName (args', body) (macros t) } in parseTopLevel search t' rest'
+           ((p', _) : _) -> throwError $ ExpectedSemicolon p'
+           [] -> error "impossible?"
+       ((p', _) : _) -> throwError $ ExpectedEquals p'
+       [] -> error "impossible?"
+    _ -> throwError $ InvalidMacroLHS p
 parseTopLevel search t ((p, Reserved Syntax) : ts) = do
   (ts', t') <- wrap (parseSyntax t p ts)
   parseTopLevel search t' ts'
@@ -136,7 +157,7 @@ parseTopLevel search t ((p, Reserved Let) : ts) = do
   fmap (Binding b :) <$> parseTopLevel search t rest
 parseTopLevel search t ((p, Reserved Action) : ts) = do
   (rest, b@(Bind pat _)) <- wrap (parseBind t p ts)
-  let t' = second (second (bindPatternBoundVars pat ++)) t
+  let t' = t { actionNames = bindPatternBoundVars pat ++ actionNames t }
   fmap (ActionDecl b :) <$> parseTopLevel search t' rest
 parseTopLevel search t ((p, Reserved Check) : ts) = do
   (rest, g1) <- wrap (parseGlob ts)
@@ -182,8 +203,8 @@ parseSyntax t p ts = do
     (ids@(_ : _), (_, IntLitTok i) : (_, Ident "right") : (_, Semi) : ts') -> pure (map (fromIdent . snd) ids, RightAssoc, i, ts')
     _ -> Left $ MalformedSyntaxDeclaration p
   if i < 0
-    then insertSyntax p n (- i) assoc (reverse $ fst (snd t)) >>= \t' -> Right (ts', second (first (const $ reverse t')) t)
-    else insertSyntax p n i assoc (fst t) >>= \t' -> Right (ts', first (const t') t)
+    then insertSyntax p n (- i) assoc (reverse $ negativeHoles t) >>= \t' -> Right (ts', t { negativeHoles = reverse t'})
+    else insertSyntax p n i assoc (positiveHoles t) >>= \t' -> Right (ts', t { positiveHoles = t'})
 
 insertSyntax :: Position -> [Name] -> Int -> Associativity -> [[(Holey Text, Associativity)]] -> Either ParseError [[(Holey Text, Associativity)]]
 insertSyntax p n i a t
@@ -200,8 +221,8 @@ parseBindPattern t ts = do
   case peelAps e [] of
     (Var p n, es) | not (null es),
                     n /= "~_",
-                    n `notElem` (snd $ snd t) -> do
-      es' <- mapM (patFromExpr (snd $ snd t)) es
+                    n `notElem` (actionNames t) -> do
+      es' <- mapM (patFromExpr (actionNames t)) es
       let ns = concatMap topPatternVars es'
           uniques = nub ns
           dupes = ns \\ uniques
@@ -209,10 +230,11 @@ parseBindPattern t ts = do
         then Left (DuplicatePatternBinding p dupes)
         else pure (ts', FunP n p es')
     _ -> do
-      p <- patFromExpr (snd $ snd t) e
+      p <- patFromExpr (actionNames t) e
       pure (ts', Direct p)
 
 patFromAnyExpr :: [Name] -> Expr e -> Maybe TopPattern
+patFromAnyExpr ns (MacroExpansion p e) = MacroExpansionTP <$> patFromAnyExpr ns p <*> pure e
 patFromAnyExpr ns (App (Var p "~_") (Var _ n)) | n `notElem` ns = Just $ LazyP n p
 patFromAnyExpr ns e = MatchP <$> helper ns e
   where
@@ -223,6 +245,7 @@ patFromAnyExpr ns e = MatchP <$> helper ns e
       | n == "false" = pure (BoolP p False)
       | n `elem` t = pure (ActionP n p [])
       | otherwise = pure (VarP n p)
+    helper t (MacroExpansion p e') = MacroExpansionP <$> helper t p <*> pure e'
     helper t (ObjectLiteral p es) = ObjectP p <$> mapM (traverse (helper t)) es
     helper t (Literal p l) = pure $ LitP p l
     helper t (ListLiteral p es) = ListP p <$> mapM (helper t) es
@@ -242,17 +265,43 @@ patFromExpr' t e = case patFromAnyExpr t e of
   Just e' -> pure e'
   Nothing -> Left $ ExpectedPattern' e
 
-newtype TempExpr = E (Expr TempExpr) deriving (Show)
+macroExpand' :: M.HashMap Name (Expr TempExpr) -> M.HashMap Name ([Name], Expr TempExpr) -> TempExpr -> Either ParseError TempExpr
+macroExpand'  locs env (E t) = E <$> macroExpand locs env t 
 
-parseExpressionTo :: Token -> Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Expr TopPattern)
-parseExpressionTo terminator t ts =
+
+macroExpand :: M.HashMap Name (Expr TempExpr) -> M.HashMap Name ([Name], Expr TempExpr) -> Expr TempExpr -> Either ParseError (Expr TempExpr)
+macroExpand locs env expr = case expr of 
+    Projection e name -> Projection <$> macroExpand locs env e <*> pure name
+    MacroExpansion e1 e2 -> MacroExpansion <$> macroExpand locs env e1 <*> pure e2
+    Index e1 e2 -> Index <$> macroExpand locs env e1 <*> macroExpand locs env e2
+    Freeze pos p e1 e2 -> Freeze pos <$> macroExpand' locs env p <*> macroExpand locs env e1 <*> macroExpand locs env e2
+    Lam pos p body -> Lam pos <$> macroExpand' locs env p <*> macroExpand locs env body
+    ListLiteral p r -> ListLiteral p <$> mapM (macroExpand locs env) r
+    ObjectLiteral p r -> ObjectLiteral p <$> mapM (traverse (macroExpand locs env)) r
+    Literal p lit -> pure $ Literal p lit
+    Symbol pos name -> pure $ Symbol pos name
+    e | (Var _ name,args) <- peelAps e [], Just (argsN, term) <- M.lookup name env, length args == length argsN 
+                        -> do args' <- traverse (macroExpand locs env) args
+                              flip MacroExpansion expr <$> macroExpand (M.fromList (zip argsN args')) env term 
+      | (Var p name,[]) <- peelAps e [], Just term <- M.lookup name locs -> pure term
+    (Var p name) -> pure $ Var p name
+    App e1 e2 -> App <$> macroExpand locs env e1 <*> macroExpand locs env e2
+    
+
+parseExpressionTo' :: Token -> Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Expr TempExpr)
+parseExpressionTo' terminator t ts =
   let (candidate, ts') = break ((\x -> x == terminator || x == EOF) . snd) ts
    in case fullParses (parser $ grammar t) candidate of
-        ([one], _) -> (ts',) <$> traverse (\(E e) -> patFromExpr' (snd $ snd t) e) one
+        ([one], _) -> pure (ts', one)
         ([], r) -> case unconsumed r of
           ((p, t') : _) -> Left (ExpectedGot p (expected r) t')
           [] -> Left (ExpectedGot dummyPosition (expected r) EOF) -- not sure how this happens
         (e : es, _r) -> Left (ExpressionAmbiguous (e :| es))
+parseExpressionTo :: Token -> Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Expr TopPattern)
+parseExpressionTo terminator t ts = do 
+          (ts', one) <- parseExpressionTo' terminator t ts
+          one' <- macroExpand mempty (macros t) one
+          (ts',) <$> traverse (\(E e) -> patFromExpr' (actionNames t) e) one'
 
 grammar :: Table -> Grammar r (Prod r Text (Position, Token) (Expr TempExpr))
 grammar table = mdo
@@ -295,29 +344,21 @@ grammar table = mdo
     app x [] = x
     app f (x : xs) = app (App f x) xs
     tbl =
-      map (map $ first $ map $ fmap identToken) (fst (snd table))
-        ++ [ [ ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
-               ([Just (isToken (Reserved Fun) "fun"), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc),
-               ([Just (isToken (Reserved Case) "case"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
-               ([Just (isToken (Reserved Case) "case"), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc),
-               ([Just (identToken "for"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
-               ([Just (identToken "for"), Nothing, Just (identToken "in"), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc),
-               ([Just (identToken "forall"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
-               ([Just (identToken "forall"), Nothing, Just (identToken "in"), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc),
-               ([Just (identToken "exists"), Nothing, Just (identToken "in"), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
-               ([Just (identToken "exists"), Nothing, Just (identToken "in"), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc)
+      map (map $ first $ map $ fmap identToken) (negativeHoles table)
+        ++ [ [ ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (identToken "."), Nothing], RightAssoc),
+               ([Just (isToken (Reserved Fun) "fun"), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc)
              ],
              [ ([Nothing, Just (isToken (Reserved When) "when"), Nothing], LeftAssoc),
                ([Nothing, Just (identToken "timeout"), Nothing], LeftAssoc)
              ],
-             [ ([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (isToken Dot "."), Nothing], RightAssoc),
+             [ ([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (identToken "."), Nothing], RightAssoc),
                ([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc)
              ]
            ]
-        ++ map (map $ first $ map $ fmap identToken) (fst table)
+        ++ map (map $ first $ map $ fmap identToken) (positiveHoles table)
 
     mixfixParts =
-      [ s | xs <- fst table, (ys, _) <- xs, Just s <- ys
+      [ s | xs <- positiveHoles table ++ negativeHoles table, (ys, _) <- xs, Just s <- ys
       ]
     lbrack = satisfy ((== LBrack) . snd) <?> "left bracket"
     rbrack = satisfy ((== RBrack) . snd) <?> "right bracket"
@@ -343,24 +384,14 @@ grammar table = mdo
         _ -> Nothing
     makeAp hol as = case (unholey hol, as) of
       (Var p "freeze_=_._", [a1, a2, a3]) -> Freeze p (E a1) a2 a3
-      (Var p "for_in_._", [a1, a2, a3]) -> App (App (Var p "map") (Lam p False (E a1) a3)) a2
-      (Var p "forall_in_._", [a1, a2, a3]) -> App (App (Var p "all") (Lam p False (E a1) a3)) a2
-      (Var p "exists_in_._", [a1, a2, a3]) -> App (App (Var p "any") (Lam p False (E a1) a3)) a2
-      (Var p "fun_._", [a1, a2]) -> Lam p False (E a1) a2
-      (Var p "case_._", [a1, a2]) -> Lam p True (E a1) a2
+      (Var p "fun_._", [a1, a2]) -> Lam p (E a1) a2
       (Var p "freeze_=_{_}", [a1, a2, a3]) -> Freeze p (E a1) a2 a3
-      (Var p "for_in_{_}", [a1, a2, a3]) -> App (App (Var p "map") (Lam p False (E a1) a3)) a2
-      (Var p "forall_in_{_}", [a1, a2, a3]) -> App (App (Var p "all") (Lam p False (E a1) a3)) a2
-      (Var p "exists_in_{_}", [a1, a2, a3]) -> App (App (Var p "any") (Lam p False (E a1) a3)) a2
-      (Var p "fun_{_}", [a1, a2]) -> Lam p False (E a1) a2
-      (Var p "case_{_}", [a1, a2]) -> Lam p True (E a1) a2
+      (Var p "fun_{_}", [a1, a2]) -> Lam p (E a1) a2
       _ -> unpeelAps (unholey hol) as
     unholey ls = Var (getPosition ls) (foldMap (fromMaybe "_") (map (fmap (unident . snd)) ls))
       where
         unident (Ident s) = s
         unident (Reserved Fun) = "fun"
-        unident (Reserved Case) = "case"
-        unident Dot = "."
         unident (Reserved When) = "when"
         unident _ = "="
     getPosition ls = case filter isJust ls of
