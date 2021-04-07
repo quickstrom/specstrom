@@ -10,11 +10,9 @@ import qualified Data.Text as Text
 import qualified Data.Text.Read as Text
 import Text.Read (readMaybe)
 
-data Kwd = Syntax | Let | Import | Check | With | Action deriving (Show, Eq)
 
 data Token
   = Ident Text
-  | Reserved Kwd
   | ProjectionTok Text
   | StringLitTok Text
   | CharLitTok Char
@@ -147,10 +145,4 @@ lexer p t
     _ -> error "Impossible"
 
 fromCandidate :: Text -> Token
-fromCandidate "syntax" = Reserved Syntax
-fromCandidate "let" = Reserved Let
-fromCandidate "import" = Reserved Import
-fromCandidate "check" = Reserved Check
-fromCandidate "with" = Reserved With
-fromCandidate "action" = Reserved Action
 fromCandidate s = Ident s

@@ -95,13 +95,7 @@ prettyParseError (TrailingGarbage p t) = errorMessage p "trailing tokens in file
 
 prettyToken :: Token -> Doc AnsiStyle
 prettyToken (Ident s) = ident s
-prettyToken (Reserved Let) = keyword "let"
-prettyToken (Reserved Check) = keyword "check"
-prettyToken (Reserved With) = keyword "with"
-prettyToken (Reserved Import) = keyword "import"
-prettyToken (Reserved Action) = keyword "action"
 prettyToken (ProjectionTok t) = projection ("." <> t)
-prettyToken (Reserved Syntax) = keyword "syntax"
 prettyToken (StringLitTok str) = literal (pretty (show str))
 prettyToken (CharLitTok str) = literal (pretty (show str))
 prettyToken (IntLitTok str) = literal (pretty (show str))

@@ -126,7 +126,7 @@ immediateExpr tbl txt = case lexer ("<immediate>", 1, 1) txt of
   Right toks -> snd <$> parseExpressionTo EOF tbl toks
 
 parseTopLevel :: [FilePath] -> Table -> [(Position, Token)] -> ExceptT ParseError IO (Table, [TopLevel])
-parseTopLevel search t ((p, Reserved Import) : ts) = case ts of
+parseTopLevel search t ((p, Ident "import") : ts) = case ts of
   ((_, Ident n) : ts') -> case ts' of
     ((_, Semi) : ts'') -> do
       (t', inc) <- loadModule search p n t
@@ -151,20 +151,20 @@ parseTopLevel search t ((p, Ident "macro") : ts) = do
         ((p', _) : _) -> throwError $ ExpectedEquals p'
         [] -> error "impossible?"
     _ -> throwError $ InvalidMacroLHS p
-parseTopLevel search t ((p, Reserved Syntax) : ts) = do
+parseTopLevel search t ((p, Ident "syntax") : ts) = do
   (ts', t') <- wrap (parseSyntax t p ts)
   parseTopLevel search t' ts'
-parseTopLevel search t ((p, Reserved Let) : ts) = do
+parseTopLevel search t ((p, Ident "let") : ts) = do
   (rest, b) <- wrap (parseBind t p ts)
   fmap (Binding b :) <$> parseTopLevel search t rest
-parseTopLevel search t ((p, Reserved Action) : ts) = do
+parseTopLevel search t ((p, Ident "action") : ts) = do
   (rest, b@(Bind pat _)) <- wrap (parseBind t p ts)
   let t' = t {actionNames = bindPatternBoundVars pat ++ actionNames t}
   fmap (ActionDecl b :) <$> parseTopLevel search t' rest
-parseTopLevel search t ((p, Reserved Check) : ts) = do
+parseTopLevel search t ((p, Ident "check") : ts) = do
   (rest, g1) <- wrap (parseGlob ts)
   case rest of
-    ((_, Reserved With) : ts') -> do
+    ((_, Ident "with") : ts') -> do
       (rest', g2) <- wrap (parseGlob ts')
       case rest' of
         ((_, Ident "when") : ts'') -> do
