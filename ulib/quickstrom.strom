@@ -1,5 +1,5 @@
 import control;
-import logic;
+import list;
 import ltl;
 
 action click!(x) = for element in x. { id: "click", event: false, args: [element.ref] } when element.enabled;
