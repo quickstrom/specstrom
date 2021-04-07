@@ -29,7 +29,7 @@ prettyValue (Evaluator.Constructor n vs) = symbol (":" <> pretty n) <> "(" <> se
 prettyValue (Evaluator.Null) = "null"
 prettyValue (Evaluator.List vs) = "[" <> sep (punctuate comma (map prettyValue vs)) <> "]"
 prettyValue (Evaluator.LitVal l) = prettyLit l
-prettyValue (Evaluator.Object o) = "{" <> sep (punctuate comma (map (\(k, v) -> pretty k <> ":" <+> prettyValue v) (M.toList o))) <> "}"
+prettyValue (Evaluator.Object b o) = "{" <> sep (punctuate comma (map (\(k, v) -> pretty k <> ":" <+> prettyValue v) (M.toList o))) <> (if b then "}" else " ... }")
 prettyValue v = pretty (show v) -- for now
 
 prettyPos :: Position -> Doc AnsiStyle

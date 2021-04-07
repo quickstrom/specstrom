@@ -127,9 +127,6 @@ data Value
   | -- thunks (not returned by force)
     Thunk Thunk
   | -- Residual formulae
-
-    -- | Frozen State Thunk
-    -- | Matched Thunk Bool TopPattern Name -- bool determines if null is returned or crash
     Residual Residual
   | -- Actions
     Action Name [Value] (Maybe Int)
@@ -138,7 +135,7 @@ data Value
     Trivial
   | Absurd
   | Null
-  | Object (M.HashMap Name Value)
+  | Object Bool (M.HashMap Name Value)
   | List [Value]
   | LitVal Lit
   deriving (Show)
@@ -200,7 +197,7 @@ withPatterns s (VarP n p) v g = pure (Just $ M.insert n v g)
 withPatterns s (ObjectP p ps) v g = do
   v' <- force s v
   case v' of
-    Object fs | all (`elem` M.keys fs) (map fst ps) -> withPatternses s (map snd ps) (map ((\(Just x) -> x) . (fs M.!?) . fst) ps) g
+    Object _ fs | all (`elem` M.keys fs) (map fst ps) -> withPatternses s (map snd ps) (map ((\(Just x) -> x) . (fs M.!?) . fst) ps) g
     _ -> pure Nothing
 withPatterns s (ListP p ps) v g = do
   v' <- force s v
@@ -294,8 +291,8 @@ evaluate :: State -> Env -> Expr TopPattern -> Eval Value
 evaluate s g (Projection e t) = do
   v' <- force s =<< evaluate s g e
   case v' of
-    List (Object m : _) | Just v <- M.lookup t m -> pure v
-    Object m | Just v <- M.lookup t m -> pure v
+    List (Object _ m : _) | Just v <- M.lookup t m -> pure v
+    Object _ m | Just v <- M.lookup t m -> pure v
     _ -> evalError "Cannot take projection of a non-object (or list of objects)"
 evaluate s g (Symbol _ t) = pure $ Constructor t []
 evaluate s g (Var p "happened") = case fst (snd s) of
@@ -319,7 +316,7 @@ evaluate s g (ListLiteral p ls) = do
   pure (List vs)
 evaluate s g (ObjectLiteral p ls) = do
   vs <- mapM (traverse (force s <=< evaluate s g)) ls
-  pure (Object $ M.fromList vs)
+  pure (Object True $ M.fromList vs)
 
 forceThunk :: Thunk -> State -> Eval Value
 forceThunk (T g e r) s = do
@@ -338,21 +335,13 @@ deepForce s v = do
     List ls -> List <$> mapM (deepForce s) ls
     Action n ls t -> Action n <$> mapM (deepForce s) ls <*> pure t
     Constructor n ls -> Constructor n <$> mapM (deepForce s) ls
-    Object m -> Object <$> traverse (deepForce s) m
+    Object b m -> Object b <$> traverse (deepForce s) m
     _ -> pure v'
 
 force :: State -> Value -> Eval Value
 force s (Thunk t) = forceThunk t s
 force s v = pure v
 
-makePrimAction :: State -> Value -> Value -> Value -> Value -> Eval Value
-makePrimAction s v1 v2 v3 v4 = do
-  v1' <- force s v1
-  v2' <- force s v2
-  v3' <- force s v3
-  v4' <- force s v4
-  -- no typechecking..
-  pure (Object (M.fromList [("id", v1'), ("event", v2'), ("args", v3'), ("timeout", v4')]))
 
 ternaryOp :: PrimOp -> State -> Value -> Value -> Value -> Eval Value
 ternaryOp IfThenElse s v1' v2 v3 = do
@@ -386,7 +375,8 @@ areEqual s v1' v2' = do
     areEqual' (List as) (List bs) | length as == length bs = and <$> zipWithM (areEqual s) as bs
     areEqual' (Action n as x) (Action m bs y) | n == m && length as == length bs && x == y = and <$> zipWithM (areEqual s) as bs
     areEqual' (Constructor n as) (Constructor m bs) | n == m && length as == length bs = and <$> zipWithM (areEqual s) as bs
-    areEqual' (Object as) (Object bs) = undefined -- for now
+    areEqual' (Object b as) (Object b' bs) | b == b' && b, M.keys as == M.keys bs = all snd . M.toList <$> M.traverseWithKey (\k a -> let Just c = M.lookup k bs in areEqual s a c) as
+                                           | not b || not b' = evalError "Cannot compare partial objects for equality"
     areEqual' (LitVal l) (LitVal l') = pure $ l == l'
     areEqual' _ _ = pure False
 
@@ -508,12 +498,15 @@ binaryOp Index s e1 e2 = do
                 then pure (ls !! i')
                 else pure Null
         _ -> evalError ("Lists are only indexable by integers")
-    Object m -> do
+    Object _ m -> do
       case i' of
         LitVal (StringLit s) -> case M.lookup s m of
           Just v -> pure v
           Nothing -> pure Null
-        _ -> evalError ("Objects are only indexable by strings")
+        Constructor s [] -> case M.lookup s m of
+          Just v -> pure v
+          Nothing -> pure Null  
+        _ -> evalError ("Objects are only indexable by strings or raw constructors")
     _ -> evalError ("Indexing doesn't work on non-list/object values")
 
 binaryCmpOp :: State -> Value -> Value -> PrimOp -> IO Value

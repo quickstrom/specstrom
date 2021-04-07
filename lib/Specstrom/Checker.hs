@@ -144,7 +144,7 @@ extractActions act actionEnv s v = do
           r <- Evaluator.appAll s v1 args
           map (first (applyTimeout t) . second (const $ (n, args))) <$> extractActions (Just (n, args)) actionEnv s r
         Nothing -> error $ "action not found"
-    Evaluator.Object mp -> case act of
+    Evaluator.Object _ mp -> case act of
       Just (n, args) ->
         case (M.lookup "id" mp, M.lookup "event" mp, M.lookup "args" mp, M.lookup "timeout" mp) of
           (Just (Evaluator.LitVal (Syntax.StringLit aId)), Just aEvent, Just (Evaluator.List ls), t) | Just b <- asBoolean aEvent -> do
@@ -258,7 +258,7 @@ toJSONValue st v = do
     Evaluator.LitVal (Syntax.StringLit s) -> pure $ JSON.String s
     Evaluator.LitVal (Syntax.IntLit i) -> pure $ JSON.Number (fromIntegral i)
     Evaluator.LitVal (Syntax.FloatLit i) -> pure $ JSON.Number (Scientific.fromFloatDigits i)
-    Evaluator.Object o -> JSON.Object <$> traverse (toJSONValue st) o
+    Evaluator.Object _ o -> JSON.Object <$> traverse (toJSONValue st) o
     Evaluator.List o -> JSON.Array . Vector.fromList <$> traverse (toJSONValue st) o
     Evaluator.Trivial -> pure $ JSON.Bool True
     Evaluator.Absurd -> pure $ JSON.Bool False
@@ -268,7 +268,7 @@ toJSONValue st v = do
 toEvaluatorValue :: JSON.Value -> Evaluator.Value
 toEvaluatorValue = \case
   JSON.String s -> Evaluator.LitVal (Syntax.StringLit s)
-  JSON.Object o -> Evaluator.Object (fmap toEvaluatorValue o)
+  JSON.Object o -> Evaluator.Object False (fmap toEvaluatorValue o)
   JSON.Array a -> Evaluator.List (Vector.toList (fmap toEvaluatorValue a))
   JSON.Number n -> case Scientific.floatingOrInteger n of
     Left n' -> Evaluator.LitVal (Syntax.FloatLit n')
