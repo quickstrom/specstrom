@@ -333,11 +333,11 @@ grammar table = mdo
         <|> ((Lam . fst <$> identToken "fun" <* lparen <*> (map E <$> argList) <* rparen <* lbrace <*> expr <* rbrace) <?> "anonymous function")
   fieldList <-
     rule $
-      (:) <$> ((,) <$> rawName <* identToken ":" <*> expr) <*> (isToken Comma "," *> fieldList <|> pure [])
+      (:) <$> ((,) <$> rawName <* identToken ":" <*> expr) <*> (identToken "," *> fieldList <|> pure [])
         <|> pure []
   argList <-
     rule $
-      (:) <$> expr <*> (isToken Comma "," *> argList <|> pure [])
+      (:) <$> expr <*> (identToken "," *> argList <|> pure [])
         <|> pure []
   normalApp <-
     rule $

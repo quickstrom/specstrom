@@ -103,7 +103,6 @@ prettyToken (FloatLitTok str) = literal (pretty (show str))
 prettyToken (SelectorLitTok str) = literal ("`" <> pretty str <> "`")
 prettyToken LParen = "("
 prettyToken RParen = ")"
-prettyToken Comma = ","
 prettyToken EOF = "EOF"
 
 prettyBind :: Bind -> Doc AnsiStyle

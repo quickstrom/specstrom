@@ -20,7 +20,6 @@ data Token
   | SelectorLitTok Text
   | LParen
   | RParen
-  | Comma
   | EOF
   deriving (Show, Eq)
 
@@ -122,7 +121,6 @@ lexer p t
       Just (lit, rest) -> ((p, SelectorLitTok (Text.drop 1 (Text.take (Text.length lit - 1) lit))) :) <$> lexer (advance lit p) rest
     Just ('(', cs) -> ((p, LParen) :) <$> lexer (nextCol p) cs
     Just (')', cs) -> ((p, RParen) :) <$> lexer (nextCol p) cs
-    Just (',', cs) -> ((p, Comma) :) <$> lexer (nextCol p) cs
     Just ('.', cs)
       | (candidate, rest) <- Text.break (not . isAlphaNum) cs,
         not (Text.null candidate) ->
