@@ -43,6 +43,7 @@ builtIns =
       ++ zip binOps (repeat $ toAnnotation (\a b -> Indirect (Indirect Constant a) b))
       ++ zip unOps (repeat $ toAnnotation (Indirect Constant))
       ++ [ ("if_{_}else{_}", toAnnotation (\a t e -> Indirect (Branch t e) a)),
+           ("nth", toAnnotation (\a b -> Indirect (projectAnnotation ListElement a) b)),
            ("_when_", toAnnotation Indirect)
          ]
       ++ zip hofs (repeat $ hofAnn)
@@ -144,7 +145,6 @@ applyAnnotation a b = case a of
 analyseExpr :: AnalysisEnv -> Expr TopPattern -> Annotation
 analyseExpr g (Projection e t) = projectAnnotation (Field t) (analyseExpr g e)
 analyseExpr g (MacroExpansion a b) = analyseExpr g a
-analyseExpr g (Index a b) = Indirect (projectAnnotation ListElement (analyseExpr g a)) (analyseExpr g b)
 analyseExpr g (Symbol _ t) = Constructor t []
 analyseExpr g (App a b) = applyAnnotation (analyseExpr g a) (analyseExpr g b)
 analyseExpr g (ListLiteral _ ls) = List (foldr branch Constant (map (analyseExpr g) ls))

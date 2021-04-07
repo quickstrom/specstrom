@@ -29,7 +29,6 @@ data Expr p
   | Symbol Position Text
   | App (Expr p) (Expr p)
   | MacroExpansion (Expr p) (Expr TempExpr)
-  | Index (Expr p) (Expr p)
   | Literal Position Lit
   | Freeze Position p (Expr p) (Expr p)
   | Lam Position p (Expr p)
@@ -50,7 +49,6 @@ exprPos :: Expr p -> Position
 exprPos (Var p _) = p
 exprPos (Symbol p _) = p
 exprPos (App e1 _e2) = exprPos e1
-exprPos (Index e1 _e2) = exprPos e1
 exprPos (Literal p _) = p
 exprPos (MacroExpansion _ e) = exprPos e
 exprPos (Projection e _) = exprPos e
@@ -168,7 +166,6 @@ instance MapPosition p => MapPosition (Expr p) where
     Symbol pos name -> Symbol (f pos) name
     App e1 e2 -> App (mapPosition f e1) (mapPosition f e2)
     MacroExpansion e1 e2 -> MacroExpansion (mapPosition f e1) (mapPosition f e2)
-    Index e1 e2 -> Index (mapPosition f e1) (mapPosition f e2)
     Literal p lit -> Literal (f p) lit
     Freeze pos p e1 e2 -> Freeze pos (mapPosition f p) (mapPosition f e1) (mapPosition f e2)
     Lam pos p body -> Lam (f pos) (mapPosition f p) (mapPosition f body)

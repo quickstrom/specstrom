@@ -3,7 +3,6 @@ let _??_(x,~y) = if x == null {y} else {x};
 
 syntax _|_ -2 right;
 let (f | g)(x) = f(x) ?? g(x);
-syntax match_{ |_} -3 right;
 syntax match_{|_} -3 right;
 let match x { | f } = f(x);
 

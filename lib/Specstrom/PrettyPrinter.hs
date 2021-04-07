@@ -113,8 +113,6 @@ prettyToken (SelectorLitTok str) = literal ("`" <> pretty str <> "`")
 prettyToken Colon = ":"
 prettyToken LParen = "("
 prettyToken RParen = ")"
-prettyToken LBrack = "["
-prettyToken RBrack = "]"
 prettyToken Semi = ";"
 prettyToken Comma = ","
 prettyToken EOF = "EOF"
@@ -202,7 +200,6 @@ prettyExpr trm = renderTerm True trm
         Literal _p l -> prettyLit l
         MacroExpansion _ e -> renderTerm outer e
         Projection e pr -> renderTerm False e <> projection ("." <> pr)
-        Index e e' -> renderTerm False e <> "[" <> renderTerm True e <> "]"
         App {} -> mempty -- Handled by peelAps
         ListLiteral _ ls -> "[" <> hsep (punctuate comma $ map (renderTerm True) ls) <> "]"
         ObjectLiteral _ ls -> "{" <> hsep (punctuate comma $ map (\(i, e) -> pretty i <> ":" <+> renderTerm True e) ls) <> "}"

@@ -53,14 +53,13 @@ data PrimOp
   | Greater
   | NotEquals
   | Equals
+  | Index
   | -- HOFs (binary)
     Map
   | -- ternary
     IfThenElse
   | Foldr
   | Foldl
-  | -- quad
-    MkPrimAction
   deriving (Show, Eq, Ord, Enum, Bounded)
 
 primOpVar :: PrimOp -> Name
@@ -87,7 +86,7 @@ primOpVar op = case op of
   Multiplication -> "_*_"
   Division -> "_/_"
   IfThenElse -> "if_{_}else{_}"
-  MkPrimAction -> "#act"
+  Index -> "nth"
   Map -> "map"
   Foldr -> "foldr"
   Foldl -> "foldl"
@@ -260,9 +259,7 @@ app s v v2 =
       if isBinary o
         then binaryOp o s v1 v2
         else pure (Op o [v1, v2])
-    Op o [v1, v1']
-      | o /= MkPrimAction -> ternaryOp o s v1 v1' v2
-      | otherwise -> pure (Op o [v1, v1', v2])
+    Op o [v1, v1']  -> ternaryOp o s v1 v1' v2
     Action a args t -> do
       pure (Action a (args ++ [v2]) t)
     Constructor a args -> do
@@ -291,25 +288,6 @@ app s v v2 =
     Thunk (T _ e _) -> evalError $ (show e)
 
 evaluate :: State -> Env -> Expr TopPattern -> Eval Value
-evaluate s g (Index e1 e2) = do
-  v' <- force s =<< evaluate s g e1
-  i' <- force s =<< evaluate s g e2
-  case v' of
-    List ls -> do
-      case i' of
-        LitVal (IntLit i) ->
-          let l = length ls; i' = if i < 0 then l + i else i
-           in if i' < l && i' >= 0
-                then pure (ls !! i')
-                else pure Null
-        _ -> evalError ("Lists are only indexable by integers")
-    Object m -> do
-      case i' of
-        LitVal (StringLit s) -> case M.lookup s m of
-          Just v -> pure v
-          Nothing -> pure Null
-        _ -> evalError ("Objects are only indexable by strings")
-    _ -> evalError ("Indexing doesn't work on non-list/object values")
 evaluate s g (Projection e t) = do
   v' <- force s =<< evaluate s g e
   case v' of
@@ -527,6 +505,25 @@ binaryOp Map s v1' v2' = do
   case v2' of
     List ls -> List <$> (filterM notNull =<< mapM (app s v1') ls)
     r -> app s v1' v2'
+binaryOp Index s e1 e2 = do
+  v' <- force s e1
+  i' <- force s e2
+  case v' of
+    List ls -> do
+      case i' of
+        LitVal (IntLit i) ->
+          let l = length ls; i' = if i < 0 then l + i else i
+           in if i' < l && i' >= 0
+                then pure (ls !! i')
+                else pure Null
+        _ -> evalError ("Lists are only indexable by integers")
+    Object m -> do
+      case i' of
+        LitVal (StringLit s) -> case M.lookup s m of
+          Just v -> pure v
+          Nothing -> pure Null
+        _ -> evalError ("Objects are only indexable by strings")
+    _ -> evalError ("Indexing doesn't work on non-list/object values")
 
 binaryCmpOp :: State -> Value -> Value -> PrimOp -> IO Value
 binaryCmpOp s v1' v2' op = do

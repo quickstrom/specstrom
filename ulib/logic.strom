@@ -3,6 +3,8 @@ let disjunction = foldr(_||_,false);
 let all(f,ls) = conjunction(map(f,ls));
 let any(f,ls) = disjunction(map(f,ls));
 syntax for_in_{_} 0;
+syntax _[_] 10 left;
+let l[x] = nth(l,x);
 macro for X in Y { E } = map(fun X. E, Y);
 syntax for_in_._ -1 right;
 macro for X in Y. E = map(fun X. E, Y);

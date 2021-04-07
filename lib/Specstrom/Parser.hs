@@ -274,7 +274,6 @@ macroExpand :: M.HashMap Name (Expr TempExpr) -> M.HashMap Name ([Name], Expr Te
 macroExpand locs env expr = case expr of
   Projection e name -> Projection <$> macroExpand locs env e <*> pure name
   MacroExpansion e1 e2 -> MacroExpansion <$> macroExpand locs env e1 <*> pure e2
-  Index e1 e2 -> Index <$> macroExpand locs env e1 <*> macroExpand locs env e2
   Freeze pos p e1 e2 -> Freeze pos <$> macroExpand' locs env p <*> macroExpand locs env e1 <*> macroExpand locs env e2
   Lam pos p body -> Lam pos <$> macroExpand' locs env p <*> macroExpand locs env body
   ListLiteral p r -> ListLiteral p <$> mapM (macroExpand locs env) r
@@ -341,7 +340,6 @@ grammar table = mdo
       atom
         <|> ((Projection <$> normalApp <*> projection) <?> "field projection")
         <|> ((app <$> normalApp <* lparen <*> argList <* rparen) <?> "function application")
-        <|> ((Index <$> normalApp <* lbrack <*> expr <* rbrack) <?> "array indexing")
   expr' <- mixfixExpression tbl normalApp makeAp
   expr <- rule $ expr' <?> "expression"
   return expr
@@ -365,10 +363,10 @@ grammar table = mdo
     mixfixParts =
       [ s | xs <- positiveHoles table ++ negativeHoles table, (ys, _) <- xs, Just s <- ys
       ]
-    lbrack = satisfy ((== LBrack) . snd) <?> "left bracket"
-    rbrack = satisfy ((== RBrack) . snd) <?> "right bracket"
     lbrace = identToken "{"
     rbrace = identToken "}"
+    lbrack = identToken "["
+    rbrack = identToken "]"
     lparen = satisfy ((== LParen) . snd) <?> "left parenthesis"
     rparen = satisfy ((== RParen) . snd) <?> "right parenthesis"
     colon = satisfy ((== Colon) . snd) <?> "colon"
