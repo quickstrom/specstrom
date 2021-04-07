@@ -79,8 +79,9 @@ isSymbolIdentChar c = not (isSpace c || isAlphaNum c || c `elem` ("(),[]{};\"" :
 
 lexer :: Position -> Text -> Either LexerError [(Position, Token)]
 lexer p t
-  | Text.take 3 t == "///" = let (content,rest) = Text.break (== '\n') (Text.drop 3 t)
-                              in ((p,DocTok content):)  <$> lexer (nextRow p) (Text.drop 1 rest)
+  | Text.take 3 t == "///" =
+    let (content, rest) = Text.break (== '\n') (Text.drop 3 t)
+     in ((p, DocTok content) :) <$> lexer (nextRow p) (Text.drop 1 rest)
   | Text.take 2 t == "//" =
     lexer (nextRow p) (Text.drop 1 (Text.dropWhile (/= '\n') (Text.drop 2 t)))
   | otherwise = case Text.uncons t of

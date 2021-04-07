@@ -8,10 +8,10 @@ import qualified Data.Aeson as JSON
 import Data.Bifunctor (second)
 import Data.Hashable (Hashable)
 import Data.Text (Text)
-import Text.Earley.Mixfix(Associativity)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Specstrom.Lexer (Position)
+import Text.Earley.Mixfix (Associativity)
 
 newtype Selector = Selector Text
   deriving (Show, Eq, Ord, Generic, Hashable, JSON.FromJSON, JSON.ToJSON, JSON.FromJSONKey, JSON.ToJSONKey)

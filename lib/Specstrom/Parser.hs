@@ -127,15 +127,14 @@ immediateExpr line tbl txt = case lexer ("<immediate>", line, 1) txt of
   Right toks -> snd <$> parseExpressionTo EOF tbl toks
 
 parseTopLevel :: [FilePath] -> Table -> [(Position, Token)] -> ExceptT ParseError IO (Table, [TopLevel])
-parseTopLevel search t ((p, DocTok doc):ts) = do 
-  (t', tls) <- parseTopLevel search t ts 
+parseTopLevel search t ((p, DocTok doc) : ts) = do
+  (t', tls) <- parseTopLevel search t ts
   pure $ case tls of
-   (DocBlock ds:rest) -> (t', DocBlock (doc:ds):rest)
-   (MacroDecl ds mac args bod:rest) -> (t', MacroDecl (doc:ds) mac args bod:rest)
-   (SyntaxDecl ds a b c:rest) -> (t', SyntaxDecl (doc:ds) a b c : rest)
-   (Binding ds b:rest) -> (t', Binding (doc:ds) b:rest)
-   _ -> (t', DocBlock [doc]:tls)
-
+    (DocBlock ds : rest) -> (t', DocBlock (doc : ds) : rest)
+    (MacroDecl ds mac args bod : rest) -> (t', MacroDecl (doc : ds) mac args bod : rest)
+    (SyntaxDecl ds a b c : rest) -> (t', SyntaxDecl (doc : ds) a b c : rest)
+    (Binding ds b : rest) -> (t', Binding (doc : ds) b : rest)
+    _ -> (t', DocBlock [doc] : tls)
 parseTopLevel search t ((p, Ident "import") : ts) = case ts of
   ((_, Ident n) : ts') -> case ts' of
     ((_, Ident ";") : ts'') -> do
@@ -155,15 +154,16 @@ parseTopLevel search t ((p, Ident "macro") : ts) = do
         ((_, Ident "=") : ts'') -> do
           (rest, body) <- wrap (parseExpressionTo' (Ident ";") t ts'')
           case rest of
-            ((_, Ident ";") : rest') -> let t' = t {macros = M.insert macroName (args', body) (macros t)} 
-                                      in fmap (MacroDecl [] mac args' body :) <$> parseTopLevel search t' rest'
+            ((_, Ident ";") : rest') ->
+              let t' = t {macros = M.insert macroName (args', body) (macros t)}
+               in fmap (MacroDecl [] mac args' body :) <$> parseTopLevel search t' rest'
             ((p', _) : _) -> throwError $ ExpectedSemicolon p'
             [] -> error "impossible?"
         ((p', _) : _) -> throwError $ ExpectedEquals p'
         [] -> error "impossible?"
     _ -> throwError $ InvalidMacroLHS p
 parseTopLevel search t ((p, Ident "syntax") : ts) = do
-  (d,(ts', t')) <- wrap (parseSyntax t p ts)
+  (d, (ts', t')) <- wrap (parseSyntax t p ts)
   fmap (d :) <$> parseTopLevel search t' ts'
 parseTopLevel search t ((p, Ident "let") : ts) = do
   (rest, b) <- wrap (parseBind t p ts)
@@ -184,7 +184,7 @@ parseTopLevel search t ((p, Ident "check") : ts) = do
             ((_, Ident ";") : rest''') -> fmap (Properties p g1 g2 (Just g3) :) <$> parseTopLevel search t rest'''
             ((p', _) : _) -> throwError $ ExpectedSemicolon p
             [] -> error "impossible?"
-        ((_, Ident ";") : rest'') -> fmap (Properties p g1 g2 Nothing :) <$> parseTopLevel search t rest'' 
+        ((_, Ident ";") : rest'') -> fmap (Properties p g1 g2 Nothing :) <$> parseTopLevel search t rest''
         ((p', _) : _) -> throwError $ ExpectedSemicolonOrWhen p'
         [] -> error "impossible?"
     ((p', _) : _) -> throwError $ ExpectedWith p'
@@ -216,8 +216,8 @@ parseSyntax t p ts = do
     (ids@(_ : _), (_, IntLitTok i) : (_, Ident "right") : (_, Ident ";") : ts') -> pure (map (fromIdent . snd) ids, RightAssoc, i, ts')
     _ -> Left $ MalformedSyntaxDeclaration p
   if i < 0
-    then (SyntaxDecl [] n i assoc ,) <$> (insertSyntax p n (- i) assoc (reverse $ negativeHoles t) >>= \t' -> Right (ts', t {negativeHoles = reverse t'}))
-    else (SyntaxDecl [] n i assoc ,) <$> (insertSyntax p n i assoc (positiveHoles t) >>= \t' -> Right (ts', t {positiveHoles = t'}))
+    then (SyntaxDecl [] n i assoc,) <$> (insertSyntax p n (- i) assoc (reverse $ negativeHoles t) >>= \t' -> Right (ts', t {negativeHoles = reverse t'}))
+    else (SyntaxDecl [] n i assoc,) <$> (insertSyntax p n i assoc (positiveHoles t) >>= \t' -> Right (ts', t {positiveHoles = t'}))
 
 insertSyntax :: Position -> [Name] -> Int -> Associativity -> [[(Holey Text, Associativity)]] -> Either ParseError [[(Holey Text, Associativity)]]
 insertSyntax p n i a t
