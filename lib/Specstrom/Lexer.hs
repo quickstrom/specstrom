@@ -135,7 +135,7 @@ lexer p t
         not (Text.null candidate) ->
         ((p, ProjectionTok candidate) :) <$> lexer (advance candidate p) rest
     Just (c, cs)
-      | isBracketIdentChar c -> ((p, fromCandidate (Text.take 1 t)) :) <$> lexer (nextCol p) cs 
+      | isBracketIdentChar c -> ((p, fromCandidate (Text.take 1 t)) :) <$> lexer (nextCol p) cs
     Just (c, cs)
       | isAlpha c ->
         let (candidate, rest) = Text.break (not . isAlphaIdentChar) t

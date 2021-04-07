@@ -259,7 +259,7 @@ app s v v2 =
       if isBinary o
         then binaryOp o s v1 v2
         else pure (Op o [v1, v2])
-    Op o [v1, v1']  -> ternaryOp o s v1 v1' v2
+    Op o [v1, v1'] -> ternaryOp o s v1 v1' v2
     Action a args t -> do
       pure (Action a (args ++ [v2]) t)
     Constructor a args -> do
