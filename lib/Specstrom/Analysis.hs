@@ -160,7 +160,10 @@ analyseTopLevels = foldl' toAnalysisEnv builtIns
   where
     toAnalysisEnv :: AnalysisEnv -> TopLevel -> AnalysisEnv
     toAnalysisEnv env = \case
-      Binding b -> analyseBind env b
-      ActionDecl b -> analyseBind env b
+      Binding _ b -> analyseBind env b
+      ActionDecl _ b -> analyseBind env b
       Imported _ ts' -> foldl' toAnalysisEnv env ts'
       Properties {} -> env
+      DocBlock {} -> env
+      SyntaxDecl {} -> env
+      MacroDecl {} -> env

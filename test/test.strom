@@ -1,3 +1,5 @@
+/// Raw documentation block
+
 import quickstrom;
 
 // Proposed syntax for Quickstrom specs.
@@ -6,7 +8,8 @@ import quickstrom;
 // All other syntax is user-definable using syntax-keywords using mix-fix operators.
 // Note that this means spaces between symbols and words is important. a&&b is not a && b!
 
-
+/// Documentation on `foo`
+let foo = :bar(1,2,3);
 let unchanged(x) = freeze a = x. next (x == a); 
 
 let ~buttonText = `.play-pause`.textContent;
@@ -17,7 +20,9 @@ let ~playing =
    let pauseString = "pause";  // just demonstrating local bindings
    (buttonText == pauseString && display == "block");  // No more maybe, we just have null for that
 
-syntax _isPlay 7; //Also demonstrating local syntax
+/// Documentation on syntax decls
+syntax _isPlay 7; 
+
 let x isPlay = x == "play";
 let ~paused = 
    buttonText isPlay;
@@ -26,6 +31,11 @@ let ~paused =
 let transition(a, b) = a && next b;
 let [a,b] = [3,4];
 
+
+/// Documentation on macro
+macro foo(a,b,c) = fun(a,b) { c };
+
+/// Documentation on action block
 action ~myAction! = click!(`#hello`);
 
 let ~testVal = (if `x`.foo { `y`.bar } else { `z`.baz }).fuzz;
@@ -39,7 +49,7 @@ let ~tick = playing ~> playing && not unchanged(timeDisplayText);
 let ~prop = testVal && paused && always (play || pause || tick); // always always == always, I am just demonstrating the prefix syntax.
 
 
-
+/// Raw documentation block
 check prop* with *;
 
 //TODO:

@@ -11,6 +11,7 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
+import Text.Earley.Mixfix(Associativity(..))
 import Prettyprinter.Render.Terminal
 import qualified Specstrom.Evaluator as Evaluator
 import Specstrom.Lexer
@@ -106,6 +107,7 @@ prettyToken (IntLitTok str) = literal (pretty (show str))
 prettyToken (FloatLitTok str) = literal (pretty (show str))
 prettyToken (SelectorLitTok str) = literal ("`" <> pretty str <> "`")
 prettyToken LParen = "("
+prettyToken (DocTok str) = docStyle $ "///" <> pretty str
 prettyToken RParen = ")"
 prettyToken EOF = "EOF"
 
@@ -129,14 +131,25 @@ prettyGlob = hsep . map prettyGlobTerm
   where
     prettyGlobTerm = hcat . map (maybe "*" ident)
 
+prettyDocs :: Text -> Doc AnsiStyle
+prettyDocs t = docStyle $ "///" <> pretty t
 prettyToplevel :: TopLevel -> Doc AnsiStyle
 prettyToplevel (Properties _p g1 g2 g3) =
   keyword "check" <+> prettyGlob g1 <+> keyword "with" <+> prettyGlob g2
     <> maybe mempty ((space <>) . (keyword "when" <+>) . prettyExpr) g3
     <> keyword ";"
-prettyToplevel (Binding b) = prettyBind b
-prettyToplevel (ActionDecl b) = keyword "action" <+> prettyBind' b
-prettyToplevel (Imported i bs) = keyword "import" <+> literal (pretty i) <> keyword ";" <> line <> indent 2 (prettyAll bs)
+prettyToplevel (Binding docs b) = vcat $ map prettyDocs docs ++ [prettyBind b]
+prettyToplevel (DocBlock docs) = vcat $ map prettyDocs docs
+prettyToplevel (ActionDecl docs b) = vcat $ map prettyDocs docs ++ [keyword "action" <+> prettyBind' b]
+prettyToplevel (MacroDecl docs lhs _vars rhs) = vcat $ map prettyDocs docs 
+  ++ [keyword "macro" <+> prettyExpr lhs <+> keyword "=" <+> prettyExpr rhs <> keyword ";"]
+prettyToplevel (SyntaxDecl docs tokens lv assoc) = vcat $ map prettyDocs docs 
+  ++ [keyword "syntax" <+> hsep (map pretty tokens) <+> prettyLit (IntLit lv) <+> prettyAssoc assoc <> keyword ";"]
+  where prettyAssoc :: Associativity -> Doc AnsiStyle
+        prettyAssoc LeftAssoc =  "left"
+        prettyAssoc RightAssoc = "right"
+        prettyAssoc _ = ""
+prettyToplevel (Imported  i bs) = keyword "import" <+> literal (pretty i) <> keyword ";" <> line <> indent 2 (prettyAll bs)
 
 prettyLit :: Lit -> Doc AnsiStyle
 prettyLit (CharLit s) = literal (pretty (show s))
@@ -228,3 +241,6 @@ ident = annotate (color Black) . pretty
 
 projection :: Pretty p => p -> Doc AnsiStyle
 projection = annotate (color Green) . pretty
+
+docStyle :: Doc AnsiStyle -> Doc AnsiStyle
+docStyle = annotate (colorDull Yellow)

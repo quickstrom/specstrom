@@ -270,10 +270,13 @@ inferExpImmediate g e = runTC (fst <$> inferExp g e)
 
 inferTopLevels :: Context -> [TopLevel] -> Either (Position, [TypeErrorBit]) Context
 inferTopLevels g [] = pure g
-inferTopLevels g (Binding b : rest) = do
+inferTopLevels g (MacroDecl {} : rest) = inferTopLevels g rest
+inferTopLevels g (DocBlock {} : rest) = inferTopLevels g rest
+inferTopLevels g (SyntaxDecl {} : rest) = inferTopLevels g rest
+inferTopLevels g (Binding _ b : rest) = do
   g' <- runTC (fst <$> inferBind g b)
   inferTopLevels g' rest
-inferTopLevels g (ActionDecl b : rest) = do
+inferTopLevels g (ActionDecl _ b : rest) = do
   g' <- runTC (fst <$> inferActionBind g b)
   inferTopLevels g' rest
 inferTopLevels g (Imported t ts : rest) = do

@@ -69,11 +69,14 @@ checkTopLevel ::
   TopLevel ->
   IO (([Syntax.Name], [Syntax.Name]), Evaluator.Env, Evaluator.Env, Analysis.AnalysisEnv, [Result])
 checkTopLevel input output currentModule evalEnv actionEnv analysisEnv results = \case
-  Binding b@(Syntax.Bind pat _) -> do
+  DocBlock {} -> pure (currentModule, evalEnv, actionEnv, analysisEnv, results)
+  SyntaxDecl {} ->  pure (currentModule, evalEnv, actionEnv, analysisEnv, results)
+  MacroDecl {} ->  pure (currentModule, evalEnv, actionEnv, analysisEnv, results)
+  Binding _ b@(Syntax.Bind pat _) -> do
     evalEnv' <- Evaluator.evaluateBind Evaluator.dummyState evalEnv b
     let analysisEnv' = Analysis.analyseBind analysisEnv b
     pure (first (Syntax.bindPatternBoundVars pat ++) currentModule, evalEnv', actionEnv, analysisEnv', results)
-  ActionDecl b@(Syntax.Bind pat _) -> do
+  ActionDecl _ b@(Syntax.Bind pat _) -> do
     actionEnv' <- Evaluator.evaluateBind' Evaluator.dummyState actionEnv evalEnv b
     evalEnv' <- Evaluator.evaluateActionBind evalEnv b
     let analysisEnv' = Analysis.analyseBind analysisEnv b

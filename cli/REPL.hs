@@ -4,7 +4,7 @@ import Control.Monad.Except
 import qualified Data.Aeson as JSON
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Foldable (foldl')
-import Data.Text (Text, pack, unpack)
+import Data.Text (Text, pack)
 import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty, line)
 import Prettyprinter.Render.Terminal (renderIO)
 import qualified Specstrom.Analysis as Analysis
@@ -93,11 +93,11 @@ checkTopLevel ::
   TopLevel ->
   IO (Evaluator.Env, Evaluator.Env, Analysis.AnalysisEnv)
 checkTopLevel evalEnv actionEnv analysisEnv tl = case tl of
-  Binding b@(Syntax.Bind pat _) -> do
+  Binding _ b@(Syntax.Bind pat _) -> do
     evalEnv' <- Evaluator.evaluateBind Evaluator.dummyState evalEnv b
     let analysisEnv' = Analysis.analyseBind analysisEnv b
     pure (evalEnv', actionEnv, analysisEnv')
-  ActionDecl b@(Syntax.Bind pat _) -> do
+  ActionDecl _ b@(Syntax.Bind pat _) -> do
     actionEnv' <- Evaluator.evaluateBind' Evaluator.dummyState actionEnv evalEnv b
     evalEnv' <- Evaluator.evaluateActionBind evalEnv b
     let analysisEnv' = Analysis.analyseBind analysisEnv b
@@ -106,6 +106,9 @@ checkTopLevel evalEnv actionEnv analysisEnv tl = case tl of
     (e', acte', ae') <- checkTopLevels evalEnv actionEnv analysisEnv ts'
     pure (e', acte', ae')
   Properties {} -> pure (evalEnv, actionEnv, analysisEnv)
+  DocBlock {} -> pure (evalEnv, actionEnv, analysisEnv)
+  SyntaxDecl {} -> pure (evalEnv, actionEnv, analysisEnv)
+  MacroDecl {} -> pure (evalEnv, actionEnv, analysisEnv)
 
 checkTopLevels ::
   Evaluator.Env ->

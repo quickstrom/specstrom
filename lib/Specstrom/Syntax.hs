@@ -8,6 +8,7 @@ import qualified Data.Aeson as JSON
 import Data.Bifunctor (second)
 import Data.Hashable (Hashable)
 import Data.Text (Text)
+import Text.Earley.Mixfix(Associativity)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Specstrom.Lexer (Position)
@@ -144,9 +145,14 @@ patternVars (NullP p) = []
 data Bind = Bind BindPattern (Expr TopPattern)
   deriving (Eq, Show)
 
+type Documentation = [Text]
+
 data TopLevel
-  = Binding Bind
-  | ActionDecl Bind
+  = Binding Documentation Bind
+  | ActionDecl Documentation Bind
+  | SyntaxDecl Documentation [Text] Int Associativity
+  | MacroDecl Documentation (Expr TempExpr) [Name] (Expr TempExpr)
+  | DocBlock Documentation
   | Properties Position Glob Glob (Maybe (Expr TopPattern))
   | Imported Text [TopLevel]
   deriving (Eq, Show)
@@ -195,7 +201,10 @@ instance MapPosition Bind where
 
 instance MapPosition TopLevel where
   mapPosition f expr = case expr of
-    Binding bind -> Binding (mapPosition f bind)
-    ActionDecl bind -> ActionDecl (mapPosition f bind)
+    Binding docs bind -> Binding docs (mapPosition f bind)
+    ActionDecl docs bind -> ActionDecl docs (mapPosition f bind)
+    DocBlock docs -> DocBlock docs
+    SyntaxDecl docs tokens l assoc -> SyntaxDecl docs tokens l assoc
+    MacroDecl docs e1 names e2 -> MacroDecl docs (mapPosition f e1) names (mapPosition f e2)
     Properties pos g1 g2 expr' -> Properties (f pos) g1 g2 (fmap (mapPosition f) expr')
     Imported name ts -> Imported name (map (mapPosition f) ts)
