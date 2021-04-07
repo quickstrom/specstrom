@@ -10,7 +10,6 @@ import qualified Data.Text as Text
 import qualified Data.Text.Read as Text
 import Text.Read (readMaybe)
 
-
 data Token
   = Ident Text
   | ProjectionTok Text
