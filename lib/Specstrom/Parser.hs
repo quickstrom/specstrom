@@ -167,7 +167,7 @@ parseTopLevel search t ((p, Reserved Check) : ts) = do
     ((_, Reserved With) : ts') -> do
       (rest', g2) <- wrap (parseGlob ts')
       case rest' of
-        ((_, Reserved When) : ts'') -> do
+        ((_, Ident "when") : ts'') -> do
           (rest'', g3) <- wrap (parseExpressionTo Semi t ts'')
           case rest'' of
             ((_, Semi) : rest''') -> fmap (Properties p g1 g2 (Just g3) :) <$> parseTopLevel search t rest'''
@@ -351,8 +351,7 @@ grammar table = mdo
         ++ [ [ ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (identToken "."), Nothing], RightAssoc),
                ([Just (isToken (Reserved Fun) "fun"), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc)
              ],
-             [ ([Nothing, Just (isToken (Reserved When) "when"), Nothing], LeftAssoc),
-               ([Nothing, Just (identToken "timeout"), Nothing], LeftAssoc)
+             [ ([Nothing, Just (identToken "timeout"), Nothing], LeftAssoc)
              ],
              [ ([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (identToken "."), Nothing], RightAssoc),
                ([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc)
@@ -395,7 +394,6 @@ grammar table = mdo
       where
         unident (Ident s) = s
         unident (Reserved Fun) = "fun"
-        unident (Reserved When) = "when"
         unident _ = "="
     getPosition ls = case filter isJust ls of
       [] -> error "No concrete token: the impossible happened"

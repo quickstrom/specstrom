@@ -9,6 +9,9 @@ let match x { | f } = f(x);
 syntax if_{_} 0;
 let if x { ~e } = if x { e } else { null };
 
+syntax _when_ 0;
+let ~x when y = if y { x };
+
 syntax case_._ -1 right;
 syntax case_{_} 0;
 macro case P. X = fun P. X;

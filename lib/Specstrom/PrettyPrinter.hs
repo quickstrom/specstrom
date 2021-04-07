@@ -98,7 +98,6 @@ prettyToken (Ident s) = ident s
 prettyToken (Reserved Define) = keyword "="
 prettyToken (Reserved Let) = keyword "let"
 prettyToken (Reserved Fun) = keyword "fun"
-prettyToken (Reserved When) = keyword "when"
 prettyToken (Reserved Check) = keyword "check"
 prettyToken (Reserved With) = keyword "with"
 prettyToken (Reserved Import) = keyword "import"
