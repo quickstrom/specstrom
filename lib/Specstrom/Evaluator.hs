@@ -266,7 +266,7 @@ app s v v2 =
       pure (Action a (args ++ [v2]) t)
     Constructor a args -> do
       pure (Constructor a (args ++ [v2]))
-    Closure (n, p, ai) g' (MacroExpansionTP pat _ : rest) body -> app s (Closure (n,p,ai) g' (pat:rest) body) v2
+    Closure (n, p, ai) g' (MacroExpansionTP pat _ : rest) body -> app s (Closure (n, p, ai) g' (pat : rest) body) v2
     Closure (n, p, ai) g' [MatchP pat] body -> do
       mg'' <- withPatterns s pat v2 g'
       case mg'' of

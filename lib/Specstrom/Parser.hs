@@ -6,7 +6,7 @@ module Specstrom.Parser where
 
 import Control.Applicative
 import Control.Monad.Except
-import Data.Bifunctor(first)
+import Data.Bifunctor (first)
 import qualified Data.HashMap.Strict as M
 import Data.List (intersperse, nub, (\\))
 import Data.List.NonEmpty (NonEmpty ((:|)))
