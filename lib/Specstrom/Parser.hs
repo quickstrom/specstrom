@@ -6,7 +6,7 @@ module Specstrom.Parser where
 
 import Control.Applicative
 import Control.Monad.Except
-import Data.Bifunctor (first, second)
+import Data.Bifunctor(first)
 import qualified Data.HashMap.Strict as M
 import Data.List (intersperse, nub, (\\))
 import Data.List.NonEmpty (NonEmpty ((:|)))
@@ -136,13 +136,13 @@ parseTopLevel search t ((p, Reserved Import) : ts) = case ts of
   ((p', _) : _) -> throwError $ ExpectedModuleName p'
   [] -> error "impossible?"
 parseTopLevel search t ((p, Ident "macro") : ts) = do
-  (ts', mac) <- wrap (parseExpressionTo' (Reserved Define) t ts)
+  (ts', mac) <- wrap (parseExpressionTo' (Ident "=") t ts)
   let fromVar x = case x of Var _ n -> Just n; _ -> Nothing
   case peelAps mac [] of
     (Var _ macroName, args) | Just args' <- mapM fromVar args,
                               args' == nub args' ->
       case ts' of
-        ((_, Reserved Define) : ts'') -> do
+        ((_, Ident "=") : ts'') -> do
           (rest, body) <- wrap (parseExpressionTo' Semi t ts'')
           case rest of
             ((_, Semi) : rest') -> let t' = t {macros = M.insert macroName (args', body) (macros t)} in parseTopLevel search t' rest'
@@ -186,7 +186,7 @@ parseBind :: Table -> Position -> [(Position, Token)] -> Either ParseError ([(Po
 parseBind t p ts = do
   (ts', pat) <- parseBindPattern t ts
   case ts' of
-    ((_, Reserved Define) : ts'') -> do
+    ((_, Ident "=") : ts'') -> do
       (rest, body) <- parseExpressionTo Semi t ts''
       case rest of
         ((_, Semi) : rest') -> Right (rest', Bind pat body)
@@ -219,7 +219,7 @@ insertSyntax p n i a t
 
 parseBindPattern :: Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], BindPattern)
 parseBindPattern t ts = do
-  (ts', e) <- parseExpressionTo (Reserved Define) t ts
+  (ts', e) <- parseExpressionTo (Ident "=") t ts
   case peelAps e [] of
     (Var p n, es) | not (null es),
                     n /= "~_",
@@ -274,8 +274,7 @@ macroExpand :: M.HashMap Name (Expr TempExpr) -> M.HashMap Name ([Name], Expr Te
 macroExpand locs env expr = case expr of
   Projection e name -> Projection <$> macroExpand locs env e <*> pure name
   MacroExpansion e1 e2 -> MacroExpansion <$> macroExpand locs env e1 <*> pure e2
-  Freeze pos p e1 e2 -> Freeze pos <$> macroExpand' locs env p <*> macroExpand locs env e1 <*> macroExpand locs env e2
-  Lam pos p body -> Lam pos <$> macroExpand' locs env p <*> macroExpand locs env body
+  Lam pos p body -> Lam pos <$> traverse (macroExpand' locs env) p <*> macroExpand locs env body
   ListLiteral p r -> ListLiteral p <$> mapM (macroExpand locs env) r
   ObjectLiteral p r -> ObjectLiteral p <$> mapM (traverse (macroExpand locs env)) r
   Literal p lit -> pure $ Literal p lit
@@ -327,6 +326,7 @@ grammar table = mdo
         <|> ((lparen *> expr <* rparen) <?> "parenthesised expression")
         <|> ((ListLiteral . fst <$> lbrack <*> argList <* rbrack) <?> "list literal")
         <|> ((ObjectLiteral . fst <$> lbrace <*> fieldList <* rbrace) <?> "object literal")
+        <|> ((Lam . fst <$> identToken "fun" <* lparen <*> (map E <$> argList) <* rparen <* lbrace <*> expr <* rbrace) <?> "anonymous function")
   fieldList <-
     rule $
       (:) <$> ((,) <$> rawName <* isToken Colon ":" <*> expr) <*> (isToken Comma "," *> fieldList <|> pure [])
@@ -348,13 +348,7 @@ grammar table = mdo
     app f (x : xs) = app (App f x) xs
     tbl =
       map (map $ first $ map $ fmap identToken) (negativeHoles table)
-        ++ [ [ ([Just (isToken (Reserved Fun) "fun"), Nothing, Just (identToken "."), Nothing], RightAssoc),
-               ([Just (isToken (Reserved Fun) "fun"), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc)
-             ],
-             [ ([Nothing, Just (identToken "timeout"), Nothing], LeftAssoc)
-             ],
-             [ ([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just (identToken "."), Nothing], RightAssoc),
-               ([Just (identToken "freeze"), Nothing, Just (isToken (Reserved Define) "="), Nothing, Just lbrace, Nothing, Just rbrace], RightAssoc)
+        ++ [ [ ([Nothing, Just (identToken "timeout"), Nothing], LeftAssoc)
              ]
            ]
         ++ map (map $ first $ map $ fmap identToken) (positiveHoles table)
@@ -385,16 +379,11 @@ grammar table = mdo
         Ident s -> guard (s `notElem` mixfixParts) >> pure (Var p s)
         _ -> Nothing
     makeAp hol as = case (unholey hol, as) of
-      (Var p "freeze_=_._", [a1, a2, a3]) -> Freeze p (E a1) a2 a3
-      (Var p "fun_._", [a1, a2]) -> Lam p (E a1) a2
-      (Var p "freeze_=_{_}", [a1, a2, a3]) -> Freeze p (E a1) a2 a3
-      (Var p "fun_{_}", [a1, a2]) -> Lam p (E a1) a2
       _ -> unpeelAps (unholey hol) as
     unholey ls = Var (getPosition ls) (foldMap (fromMaybe "_") (map (fmap (unident . snd)) ls))
       where
         unident (Ident s) = s
-        unident (Reserved Fun) = "fun"
-        unident _ = "="
+        unident _ = "???"
     getPosition ls = case filter isJust ls of
       [] -> error "No concrete token: the impossible happened"
       (Just (p, _) : _xs) -> p

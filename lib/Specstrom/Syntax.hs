@@ -24,16 +24,15 @@ data Lit
   deriving (Show, Eq)
 
 data Expr p
-  = Projection (Expr p) Text
-  | Var Position Text
-  | Symbol Position Text
-  | App (Expr p) (Expr p)
-  | MacroExpansion (Expr p) (Expr TempExpr)
+  = MacroExpansion (Expr p) (Expr TempExpr)
   | Literal Position Lit
-  | Freeze Position p (Expr p) (Expr p)
-  | Lam Position p (Expr p)
+  | Var Position Text
+  | App (Expr p) (Expr p)
+  | Lam Position [p] (Expr p)
+  | Symbol Position Text
   | ListLiteral Position [Expr p]
   | ObjectLiteral Position [(Name, Expr p)]
+  | Projection (Expr p) Text
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 newtype TempExpr = E (Expr TempExpr) deriving (Eq, Show)
@@ -52,7 +51,6 @@ exprPos (App e1 _e2) = exprPos e1
 exprPos (Literal p _) = p
 exprPos (MacroExpansion _ e) = exprPos e
 exprPos (Projection e _) = exprPos e
-exprPos (Freeze p _ _ _) = p
 exprPos (Lam p _ _) = p
 exprPos (ListLiteral p _) = p
 exprPos (ObjectLiteral p _) = p
@@ -167,8 +165,7 @@ instance MapPosition p => MapPosition (Expr p) where
     App e1 e2 -> App (mapPosition f e1) (mapPosition f e2)
     MacroExpansion e1 e2 -> MacroExpansion (mapPosition f e1) (mapPosition f e2)
     Literal p lit -> Literal (f p) lit
-    Freeze pos p e1 e2 -> Freeze pos (mapPosition f p) (mapPosition f e1) (mapPosition f e2)
-    Lam pos p body -> Lam (f pos) (mapPosition f p) (mapPosition f body)
+    Lam pos p body -> Lam (f pos) (map (mapPosition f) p) (mapPosition f body)
     ListLiteral p r -> ListLiteral (f p) (map (mapPosition f) r)
     ObjectLiteral p r -> ObjectLiteral (f p) (map (second (mapPosition f)) r)
 

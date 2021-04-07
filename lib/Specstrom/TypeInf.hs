@@ -243,7 +243,7 @@ inferExp g (App e1 e2) = do
   alpha <- fresh
   s3 <- unify (exprPos e1) (subst s2 t1) (Arrow t2 alpha)
   pure (subst s3 alpha, s1 <> s2 <> s3)
-inferExp g (Lam p pat e) = inferFun g [pat] e
+inferExp g (Lam p pat e) = inferFun g pat e
 inferExp g (Literal {}) = pure (Value, mempty)
 inferExp g (ListLiteral _ es) = do
   ss <- inferExpsValue g es
@@ -255,24 +255,6 @@ inferExp g (ObjectLiteral p es) =
         else do
           ss <- inferExpsValue g (map snd es)
           pure (Value, ss)
-inferExp g (Freeze _ (LazyP n _) e1 e2) = do
-  (t1, s1) <- inferExp g e1
-  (t2, s2) <- inferExp (M.insert n (Ty t1) (substGamma s1 g)) e2
-  pure (t2, s1 <> s2)
-inferExp g (Freeze _ (MatchP (VarP n _)) e1 e2) = do
-  (t1, s1) <- inferExp g e1
-  (t2, s2) <- inferExp (M.insert n (Ty t1) (substGamma s1 g)) e2
-  pure (t2, s1 <> s2)
-inferExp g (Freeze _ (MatchP (IgnoreP _)) e1 e2) = do
-  (t1, s1) <- inferExp g e1
-  (t2, s2) <- inferExp (substGamma s1 g) e2
-  pure (t2, s1 <> s2)
-inferExp g (Freeze p pat e1 e2) = do
-  (t1, s1) <- inferExp g e1
-  ss <- unify p t1 Value
-  let g' = M.union (M.fromList (zip (topPatternVars pat) (repeat (Ty Value)))) (substGamma (s1 <> ss) g)
-  (t2, s2) <- inferExp g' e2
-  pure (t2, s1 <> ss <> s2)
 
 inferExpsValue :: Context -> [Expr TopPattern] -> TC Subst
 inferExpsValue g [] = pure mempty

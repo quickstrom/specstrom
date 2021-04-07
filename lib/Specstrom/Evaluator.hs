@@ -159,7 +159,7 @@ evaluateBind :: State -> Env -> Bind -> Eval Env
 evaluateBind s g b = evaluateBind' s g g b
 
 evaluateActionBind :: Env -> Bind -> Eval Env
-evaluateActionBind g (Bind (Direct (MatchP (MacroExpansionP pat _))) bod) = evaluateActionBind g (Bind (Direct (MatchP pat)) bod)
+evaluateActionBind g (Bind (Direct (MacroExpansionTP pat _)) bod) = evaluateActionBind g (Bind (Direct pat) bod)
 evaluateActionBind g (Bind (Direct (MatchP (MacroExpansionP pat _))) bod) = evaluateActionBind g (Bind (Direct (MatchP pat)) bod)
 evaluateActionBind g (Bind (Direct (MatchP (VarP n _))) _) = pure (M.insert n (Action n [] Nothing) g)
 evaluateActionBind g (Bind (Direct (LazyP n _)) _) = pure (M.insert n (Action n [] Nothing) g)
@@ -167,6 +167,8 @@ evaluateActionBind g (Bind (FunP n _ _) _) = pure (M.insert n (Action n [] Nothi
 evaluateActionBind g (Bind _ _) = evalError "impossible"
 
 evaluateBind' :: State -> Env -> Env -> Bind -> Eval Env
+evaluateBind' s g g' (Bind (Direct (MacroExpansionTP pat _)) bod) = evaluateBind' s g g' (Bind (Direct pat) bod)
+evaluateBind' s g g' (Bind (Direct (MatchP (MacroExpansionP pat _))) bod) = evaluateBind' s g g' (Bind (Direct (MatchP pat)) bod)
 evaluateBind' s g g' (Bind (Direct (LazyP n _)) e) = M.insert n <$> delayedEvaluate s g' e <*> pure g
 evaluateBind' s g g' (Bind (Direct (MatchP (VarP n _))) e) = M.insert n <$> evaluate s g' e <*> pure g
 evaluateBind' s g g' (Bind (Direct (MatchP pat)) e) = do
@@ -264,6 +266,7 @@ app s v v2 =
       pure (Action a (args ++ [v2]) t)
     Constructor a args -> do
       pure (Constructor a (args ++ [v2]))
+    Closure (n, p, ai) g' (MacroExpansionTP pat _ : rest) body -> app s (Closure (n,p,ai) g' (pat:rest) body) v2
     Closure (n, p, ai) g' [MatchP pat] body -> do
       mg'' <- withPatterns s pat v2 g'
       case mg'' of
@@ -310,25 +313,13 @@ evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l (snd (
   Just ls -> pure ls
 evaluate s g (Literal p l) = pure (LitVal l)
 evaluate s g (MacroExpansion e _) = evaluate s g e
-evaluate s g (Lam p pat e) = pure (Closure ("fun", p, 0) g [pat] e)
+evaluate s g (Lam p pat e) = pure (Closure ("fun", p, 0) g pat e)
 evaluate s g (ListLiteral p ls) = do
   vs <- mapM (force s <=< evaluate s g) ls
   pure (List vs)
 evaluate s g (ObjectLiteral p ls) = do
   vs <- mapM (traverse (force s <=< evaluate s g)) ls
   pure (Object $ M.fromList vs)
-evaluate s g (Freeze p (LazyP n pos) e1 e2) = do
-  v1 <- delayedEvaluate s g e1
-  mg' <- withPatterns s (VarP n pos) v1 g
-  case mg' of
-    Just g' -> evaluate s g' e2
-    _ -> evalError "Pattern match failure in freeze"
-evaluate s g (Freeze p (MatchP pat) e1 e2) = do
-  v1 <- force s =<< evaluate s g e1
-  mg' <- withPatterns s pat v1 g
-  case mg' of
-    Just g' -> evaluate s g' e2
-    _ -> evalError "Pattern match failure in freeze"
 
 forceThunk :: Thunk -> State -> Eval Value
 forceThunk (T g e r) s = do

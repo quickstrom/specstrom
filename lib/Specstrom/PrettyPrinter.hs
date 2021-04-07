@@ -95,9 +95,7 @@ prettyParseError (TrailingGarbage p t) = errorMessage p "trailing tokens in file
 
 prettyToken :: Token -> Doc AnsiStyle
 prettyToken (Ident s) = ident s
-prettyToken (Reserved Define) = keyword "="
 prettyToken (Reserved Let) = keyword "let"
-prettyToken (Reserved Fun) = keyword "fun"
 prettyToken (Reserved Check) = keyword "check"
 prettyToken (Reserved With) = keyword "with"
 prettyToken (Reserved Import) = keyword "import"
@@ -204,10 +202,7 @@ prettyExpr trm = renderTerm True trm
         ObjectLiteral _ ls -> "{" <> hsep (punctuate comma $ map (\(i, e) -> pretty i <> ":" <+> renderTerm True e) ls) <> "}"
         Lam _ n e ->
           (if outer then id else parens) $
-            "fun" <+> prettyPattern n <> "." <+> prettyExpr e
-        Freeze _ n e b ->
-          (if outer then id else parens) $
-            "freeze" <+> prettyPattern n <+> "=" <+> prettyExpr e <> "." <+> prettyExpr b
+            "fun(" <> hsep (punctuate comma $ map prettyPattern n) <> ") {" <+> renderTerm True e <+> "}"
       | (Var _ n, args) <- peelAps t [],
         Text.length (Text.filter (== '_') n) == length args =
         (if outer then id else parens) $ hsep $ infixTerms n args

@@ -152,10 +152,7 @@ analyseExpr g (ObjectLiteral _ ls) = Object $ map (fmap (analyseExpr g)) ls
 analyseExpr _ (Literal _ (SelectorLit l)) = FromSelector l []
 analyseExpr _ (Literal _ _) = Constant
 analyseExpr g (Var _ t) | Just d <- M.lookup t g = d
-analyseExpr g (Freeze _ pat e2 e3) = withAnalysePatternLocal (analyseExpr g e2) pat g $ \g' -> analyseExpr g' e3
-analyseExpr g (Lam _ pat e) = Function f
-  where
-    f a = withAnalysePatternLocal a pat g $ \g' -> analyseExpr g' e
+analyseExpr g (Lam _ pats e) = analyseBodyWithParams g pats e
 analyseExpr _ expr = error ("Impossible, can't analyse: " <> show expr)
 
 analyseTopLevels :: [TopLevel] -> AnalysisEnv

@@ -14,5 +14,11 @@ let ~x when y = if y { x };
 
 syntax case_._ -1 right;
 syntax case_{_} 0;
+
+syntax fun_._ -1 right;
+macro fun P. X = fun(P) {X};
 macro case P. X = fun P. X;
 macro case P {X} = fun P. X;
+
+syntax freeze_as_._ -1 right;
+macro freeze P as Y. Z = ((fun (P) { Z })(Y));
