@@ -22,3 +22,6 @@ macro case P {X} = fun P. X;
 
 syntax freeze_=_._ -1 right;
 macro freeze P = Y. Z = fun (P) { Z }(Y);
+
+syntax let_=_;_ -1 right;
+macro let X = Y; Z = fun (X) { Z }(Y);
