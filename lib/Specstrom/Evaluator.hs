@@ -1,11 +1,11 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Specstrom.Evaluator where
 
-import Control.Exception (Exception, throw, throwIO, catch)
+import Control.Exception (Exception, catch, throw, throwIO)
 import Control.Monad (MonadPlus (mzero), filterM, zipWithM, (<=<))
 import Data.Fixed (mod')
 import Data.Foldable (foldlM, foldrM)
@@ -141,10 +141,10 @@ data Value
   | LitVal Lit
   deriving (Show)
 
-data EvalError = Error String 
-               | Backtrace Position Text.Text EvalError
-               deriving (Show)
-
+data EvalError
+  = Error String
+  | Backtrace Position Text.Text EvalError
+  deriving (Show)
 
 instance Exception EvalError
 
@@ -196,7 +196,7 @@ withPatterns s (LitP p l) v g = do
   case v' of
     LitVal l' | l == l' -> pure (Just g)
     _ -> pure Nothing
-withPatterns s (VarP n p) (Closure (_,_,_) g' pats e) g = pure (Just $ M.insert n (Closure (n,p,0) g' pats e) g)
+withPatterns s (VarP n p) (Closure (_, _, _) g' pats e) g = pure (Just $ M.insert n (Closure (n, p, 0) g' pats e) g)
 withPatterns s (VarP n p) v g = pure (Just $ M.insert n v g)
 withPatterns s (ObjectP p ps) v g = do
   v' <- force s v
@@ -347,7 +347,6 @@ force :: State -> Value -> Eval Value
 force s (Thunk t) = forceThunk t s
 force s v = pure v
 
-
 ternaryOp :: PrimOp -> State -> Value -> Value -> Value -> Eval Value
 ternaryOp IfThenElse s v1' v2 v3 = do
   case v1' of
@@ -382,8 +381,9 @@ areEqual s v1' v2' = areEqual' v1' v2'
     areEqual' (List as) (List bs) | length as == length bs = and <$> zipWithM (areEqual s) as bs
     areEqual' (Action n as x) (Action m bs y) | n == m && length as == length bs && x == y = and <$> zipWithM (areEqual s) as bs
     areEqual' (Constructor n as) (Constructor m bs) | n == m && length as == length bs = and <$> zipWithM (areEqual s) as bs
-    areEqual' (Object b as) (Object b' bs) | b == b' && b, M.keys as == M.keys bs = all snd . M.toList <$> M.traverseWithKey (\k a -> let Just c = M.lookup k bs in areEqual s a c) as
-                                           | not b || not b' = evalError "Cannot compare partial objects for equality"
+    areEqual' (Object b as) (Object b' bs)
+      | b == b' && b, M.keys as == M.keys bs = all snd . M.toList <$> M.traverseWithKey (\k a -> let Just c = M.lookup k bs in areEqual s a c) as
+      | not b || not b' = evalError "Cannot compare partial objects for equality"
     areEqual' (LitVal l) (LitVal l') = pure $ l == l'
     areEqual' _ _ = pure False
 
@@ -512,7 +512,7 @@ binaryOp Index s e1 e2 = do
           Nothing -> pure Null
         Constructor s [] -> case M.lookup s m of
           Just v -> pure v
-          Nothing -> pure Null  
+          Nothing -> pure Null
         _ -> evalError ("Objects are only indexable by strings or raw constructors")
     _ -> evalError ("Indexing doesn't work on non-list/object values")
 

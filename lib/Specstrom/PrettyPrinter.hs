@@ -18,9 +18,8 @@ import Specstrom.Parser
 import Specstrom.Syntax
 import Specstrom.TypeInf
 
-
 prettyEvalError :: [Doc AnsiStyle] -> Evaluator.EvalError -> Doc AnsiStyle
-prettyEvalError bts (Evaluator.Backtrace p n r) =  prettyEvalError ( (pretty n <+> "@" <+> prettyPos p):bts) r
+prettyEvalError bts (Evaluator.Backtrace p n r) = prettyEvalError ((pretty n <+> "@" <+> prettyPos p) : bts) r
 prettyEvalError bts (Evaluator.Error e) = annotate (bold <> color Red) (pretty e) <> line <> indent 2 (vcat bts)
 
 prettyValue :: Evaluator.Value -> Doc AnsiStyle
