@@ -64,7 +64,7 @@ builtIns =
       [ [ ("if_{_} else {_}", RightAssoc),
           ("always {_} _", NonAssoc)
         ],
-        [ ("_timeout_", NonAssoc)],
+        [("_timeout_", NonAssoc)],
         [ ("_==>_", RightAssoc)
         ],
         [("_||_", RightAssoc)],
@@ -350,8 +350,9 @@ grammar table = mdo
   where
     app x [] = x
     app f (x : xs) = app (App f x) xs
-    tbl = map (map $ first $ map $ fmap identToken) (negativeHoles table)
-       ++ map (map $ first $ map $ fmap identToken) (positiveHoles table)
+    tbl =
+      map (map $ first $ map $ fmap identToken) (negativeHoles table)
+        ++ map (map $ first $ map $ fmap identToken) (positiveHoles table)
 
     mixfixParts =
       [ s | xs <- positiveHoles table ++ negativeHoles table, (ys, _) <- xs, Just s <- ys
