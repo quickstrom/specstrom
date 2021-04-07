@@ -1,10 +1,11 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Specstrom.Evaluator where
 
-import Control.Exception (Exception, throw, throwIO)
+import Control.Exception (Exception, throw, throwIO, catch)
 import Control.Monad (MonadPlus (mzero), filterM, zipWithM, (<=<))
 import Data.Fixed (mod')
 import Data.Foldable (foldlM, foldrM)
@@ -104,7 +105,7 @@ basicEnv =
         ("null", Null)
       ]
     primOps =
-      [ (primOpVar op, Op op []) | op <- enumFromTo minBound maxBound
+      [ (primOpVar op, Op op dummyPosition []) | op <- enumFromTo minBound maxBound
       ]
 
 isUnary :: PrimOp -> Bool
@@ -123,7 +124,7 @@ data Residual
 data Value
   = -- function values
     Closure (Name, Position, Int) Env [TopPattern] (Expr TopPattern)
-  | Op PrimOp [Value]
+  | Op PrimOp Position [Value]
   | -- thunks (not returned by force)
     Thunk Thunk
   | -- Residual formulae
@@ -140,7 +141,10 @@ data Value
   | LitVal Lit
   deriving (Show)
 
-data EvalError = Error String deriving (Show)
+data EvalError = Error String 
+               | Backtrace Position Text.Text EvalError
+               deriving (Show)
+
 
 instance Exception EvalError
 
@@ -167,7 +171,6 @@ evaluateBind' :: State -> Env -> Env -> Bind -> Eval Env
 evaluateBind' s g g' (Bind (Direct (MacroExpansionTP pat _)) bod) = evaluateBind' s g g' (Bind (Direct pat) bod)
 evaluateBind' s g g' (Bind (Direct (MatchP (MacroExpansionP pat _))) bod) = evaluateBind' s g g' (Bind (Direct (MatchP pat)) bod)
 evaluateBind' s g g' (Bind (Direct (LazyP n _)) e) = M.insert n <$> delayedEvaluate s g' e <*> pure g
-evaluateBind' s g g' (Bind (Direct (MatchP (VarP n _))) e) = M.insert n <$> evaluate s g' e <*> pure g
 evaluateBind' s g g' (Bind (Direct (MatchP pat)) e) = do
   t <- evaluate s g' e
   Just g'' <- withPatterns s pat t g
@@ -193,6 +196,7 @@ withPatterns s (LitP p l) v g = do
   case v' of
     LitVal l' | l == l' -> pure (Just g)
     _ -> pure Nothing
+withPatterns s (VarP n p) (Closure (_,_,_) g' pats e) g = pure (Just $ M.insert n (Closure (n,p,0) g' pats e) g)
 withPatterns s (VarP n p) v g = pure (Just $ M.insert n v g)
 withPatterns s (ObjectP p ps) v g = do
   v' <- force s v
@@ -241,24 +245,24 @@ appAll s v (x : xs) = force s v >>= \v' -> app s v' x >>= \v' -> appAll s v' xs
 
 -- if the next argument to this thing should be delayed or not
 isLazy :: Value -> Bool
-isLazy (Op o []) | o `elem` [NextT, NextF, NextD, WhenAct] = True
-isLazy (Op o [_]) | o `elem` [And, Or, Implies, IfThenElse, WhenAct, Always] = True
-isLazy (Op IfThenElse [_, _]) = True
+isLazy (Op o _ []) | o `elem` [NextT, NextF, NextD, WhenAct] = True
+isLazy (Op o _ [_]) | o `elem` [And, Or, Implies, IfThenElse, WhenAct, Always] = True
+isLazy (Op IfThenElse _ [_, _]) = True
 isLazy (Closure _ _ (LazyP {} : pats) _) = True
 isLazy _ = False
 
 app :: State -> Value -> Value -> Eval Value
 app s v v2 =
   case v of
-    Op o [] ->
+    Op o pos [] ->
       if isUnary o
-        then unaryOp o s v2
-        else pure (Op o [v2])
-    Op o [v1] ->
+        then backtrace pos (Text.pack $ show o) $ unaryOp o s v2
+        else pure (Op o pos [v2])
+    Op o pos [v1] ->
       if isBinary o
-        then binaryOp o s v1 v2
-        else pure (Op o [v1, v2])
-    Op o [v1, v1'] -> ternaryOp o s v1 v1' v2
+        then backtrace pos (Text.pack $ show o) $ binaryOp o s v1 v2
+        else pure (Op o pos [v1, v2])
+    Op o pos [v1, v1'] -> backtrace pos (Text.pack $ show o) $ ternaryOp o s v1 v1' v2
     Action a args t -> do
       pure (Action a (args ++ [v2]) t)
     Constructor a args -> do
@@ -268,12 +272,12 @@ app s v v2 =
       mg'' <- withPatterns s pat v2 g'
       case mg'' of
         Nothing -> pure Null
-        Just g'' -> evaluate s g'' body
+        Just g'' -> backtrace p n $ evaluate s g'' body
     Closure (n, p, ai) g' [LazyP nam pos] body -> do
       mg'' <- withPatterns s (VarP nam pos) v2 g'
       case mg'' of
         Nothing -> pure Null
-        Just g'' -> evaluate s g'' body
+        Just g'' -> backtrace p n $ evaluate s g'' body
     Closure (n, p, ai) g' (MatchP pat : pats) body -> do
       mg'' <- withPatterns s pat v2 g'
       case mg'' of
@@ -299,6 +303,7 @@ evaluate s g (Var p "happened") = case fst (snd s) of
   Just v -> pure (List v)
   Nothing -> evalError "Set 'happened' of actions is not available when computing actions"
 evaluate s g (Var p t) = case M.lookup t g of
+  Just (Op o _ []) -> pure (Op o p [])
   Just v -> pure v
   Nothing -> evalError ("Impossible: variable '" <> Text.unpack t <> "' not found in environment (type checker found it though)")
 evaluate s g (App e1 e2) = do
@@ -358,9 +363,11 @@ ternaryOp Foldl s func zero list = do
     List ls -> foldlM (\a b -> appAll s func [a, b]) zero ls
     x -> appAll s func [zero, x]
 
+backtrace :: Position -> Text.Text -> Eval a -> Eval a
+backtrace pos text act = catch act (\(e :: EvalError) -> throwIO (Backtrace pos text e))
+
 areEqual :: State -> Value -> Value -> Eval Bool
-areEqual s v1' v2' = do
-  areEqual' v1' v2'
+areEqual s v1' v2' = areEqual' v1' v2'
   where
     areEqual' :: Value -> Value -> Eval Bool
     areEqual' (Closure {}) _ = evalError "Cannot compare functions for equality"

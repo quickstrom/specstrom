@@ -4,7 +4,7 @@ import Control.Monad.Except
 import qualified Data.Aeson as JSON
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Foldable (foldl')
-import Data.Text (Text, pack)
+import Data.Text (Text, pack,unpack)
 import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty, line)
 import Prettyprinter.Render.Terminal (renderIO)
 import qualified Specstrom.Analysis as Analysis
@@ -32,6 +32,7 @@ data Options = Opts {showTypes :: Bool, showAnalysis :: Bool, searchPaths :: [Fi
 addSearchPath :: Options -> FilePath -> Options
 addSearchPath opts path = opts {searchPaths = path : searchPaths opts}
 
+
 loop ::
   Options ->
   Parser.Table ->
@@ -41,7 +42,7 @@ loop ::
   Evaluator.State ->
   Analysis.AnalysisEnv ->
   InputT IO ()
-loop opts tbl g e e' s ae = flip catch (\(Evaluator.Error er) -> outputStrLn er >> loop opts tbl g e e' s ae) $ do
+loop opts tbl g e e' s ae = flip catch (\ err -> liftIO (renderIO stderr (layoutPretty defaultLayoutOptions (prettyEvalError [] err <> line))) >> loop opts tbl g e e' s ae) $ do
   str <- getInputLine "> "
   case str of
     Nothing -> pure ()
