@@ -20,8 +20,6 @@ data Token
   | SelectorLitTok Text
   | LParen
   | RParen
-  | Colon
-  | Semi
   | Comma
   | EOF
   deriving (Show, Eq)
@@ -71,13 +69,13 @@ readLiteral' delimiter rest =
         _ -> Nothing
 
 isAlphaIdentChar :: Char -> Bool
-isAlphaIdentChar c = isAlpha c || isDigit c || c `elem` ("'!?@#$" :: [Char])
+isAlphaIdentChar c = isAlpha c || isDigit c || c `elem` ("_'!?@#$" :: [Char])
 
 isBracketIdentChar :: Char -> Bool
-isBracketIdentChar c = c `elem` ("[]{}" :: [Char])
+isBracketIdentChar c = c `elem` ("[]{};," :: [Char])
 
 isSymbolIdentChar :: Char -> Bool
-isSymbolIdentChar c = not (isSpace c || isAlphaNum c || c `elem` ("();,:[]{}" :: [Char]))
+isSymbolIdentChar c = not (isSpace c || isAlphaNum c || c `elem` ("(),[]{};\"" :: [Char]))
 
 lexer :: Position -> Text -> Either LexerError [(Position, Token)]
 lexer p t
@@ -124,11 +122,9 @@ lexer p t
       Just (lit, rest) -> ((p, SelectorLitTok (Text.drop 1 (Text.take (Text.length lit - 1) lit))) :) <$> lexer (advance lit p) rest
     Just ('(', cs) -> ((p, LParen) :) <$> lexer (nextCol p) cs
     Just (')', cs) -> ((p, RParen) :) <$> lexer (nextCol p) cs
-    Just (';', cs) -> ((p, Semi) :) <$> lexer (nextCol p) cs
     Just (',', cs) -> ((p, Comma) :) <$> lexer (nextCol p) cs
-    Just (':', cs) -> ((p, Colon) :) <$> lexer (nextCol p) cs
     Just ('.', cs)
-      | (candidate, rest) <- Text.break (not . isAlphaIdentChar) cs,
+      | (candidate, rest) <- Text.break (not . isAlphaNum) cs,
         not (Text.null candidate) ->
         ((p, ProjectionTok candidate) :) <$> lexer (advance candidate p) rest
     Just (c, cs)

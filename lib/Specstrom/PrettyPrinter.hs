@@ -101,10 +101,8 @@ prettyToken (CharLitTok str) = literal (pretty (show str))
 prettyToken (IntLitTok str) = literal (pretty (show str))
 prettyToken (FloatLitTok str) = literal (pretty (show str))
 prettyToken (SelectorLitTok str) = literal ("`" <> pretty str <> "`")
-prettyToken Colon = ":"
 prettyToken LParen = "("
 prettyToken RParen = ")"
-prettyToken Semi = ";"
 prettyToken Comma = ","
 prettyToken EOF = "EOF"
 

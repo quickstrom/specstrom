@@ -64,6 +64,7 @@ builtIns =
       [ [ ("if_{_} else {_}", RightAssoc),
           ("always {_} _", NonAssoc)
         ],
+        [ ("_timeout_", NonAssoc)],
         [ ("_==>_", RightAssoc)
         ],
         [("_||_", RightAssoc)],
@@ -128,7 +129,7 @@ immediateExpr tbl txt = case lexer ("<immediate>", 1, 1) txt of
 parseTopLevel :: [FilePath] -> Table -> [(Position, Token)] -> ExceptT ParseError IO (Table, [TopLevel])
 parseTopLevel search t ((p, Ident "import") : ts) = case ts of
   ((_, Ident n) : ts') -> case ts' of
-    ((_, Semi) : ts'') -> do
+    ((_, Ident ";") : ts'') -> do
       (t', inc) <- loadModule search p n t
       fmap (Imported n inc :) <$> parseTopLevel search t' ts''
     ((p', _) : _) -> throwError $ ExpectedSemicolon p'
@@ -143,9 +144,9 @@ parseTopLevel search t ((p, Ident "macro") : ts) = do
                               args' == nub args' ->
       case ts' of
         ((_, Ident "=") : ts'') -> do
-          (rest, body) <- wrap (parseExpressionTo' Semi t ts'')
+          (rest, body) <- wrap (parseExpressionTo' (Ident ";") t ts'')
           case rest of
-            ((_, Semi) : rest') -> let t' = t {macros = M.insert macroName (args', body) (macros t)} in parseTopLevel search t' rest'
+            ((_, Ident ";") : rest') -> let t' = t {macros = M.insert macroName (args', body) (macros t)} in parseTopLevel search t' rest'
             ((p', _) : _) -> throwError $ ExpectedSemicolon p'
             [] -> error "impossible?"
         ((p', _) : _) -> throwError $ ExpectedEquals p'
@@ -168,12 +169,12 @@ parseTopLevel search t ((p, Ident "check") : ts) = do
       (rest', g2) <- wrap (parseGlob ts')
       case rest' of
         ((_, Ident "when") : ts'') -> do
-          (rest'', g3) <- wrap (parseExpressionTo Semi t ts'')
+          (rest'', g3) <- wrap (parseExpressionTo (Ident ";") t ts'')
           case rest'' of
-            ((_, Semi) : rest''') -> fmap (Properties p g1 g2 (Just g3) :) <$> parseTopLevel search t rest'''
+            ((_, Ident ";") : rest''') -> fmap (Properties p g1 g2 (Just g3) :) <$> parseTopLevel search t rest'''
             ((p', _) : _) -> throwError $ ExpectedSemicolon p
             [] -> error "impossible?"
-        ((_, Semi) : rest'') -> fmap (Properties p g1 g2 Nothing :) <$> parseTopLevel search t rest'' --TODO add default
+        ((_, Ident ";") : rest'') -> fmap (Properties p g1 g2 Nothing :) <$> parseTopLevel search t rest'' --TODO add default
         ((p', _) : _) -> throwError $ ExpectedSemicolonOrWhen p'
         [] -> error "impossible?"
     ((p', _) : _) -> throwError $ ExpectedWith p'
@@ -187,9 +188,9 @@ parseBind t p ts = do
   (ts', pat) <- parseBindPattern t ts
   case ts' of
     ((_, Ident "=") : ts'') -> do
-      (rest, body) <- parseExpressionTo Semi t ts''
+      (rest, body) <- parseExpressionTo (Ident ";") t ts''
       case rest of
-        ((_, Semi) : rest') -> Right (rest', Bind pat body)
+        ((_, Ident ";") : rest') -> Right (rest', Bind pat body)
         ((p', _) : _) -> Left $ ExpectedSemicolon p'
         [] -> error "impossible?"
     ((p', _) : _) -> Left $ ExpectedEquals p'
@@ -200,9 +201,9 @@ parseSyntax t p ts = do
   let isIdent x = case x of Ident {} -> True; _ -> False
       fromIdent x = case x of Ident i -> i; _ -> error "Impossible"
   (n, assoc, i, ts') <- case span (isIdent . snd) ts of
-    (ids@(_ : _), (_, IntLitTok i) : (_, Semi) : ts') -> pure (map (fromIdent . snd) ids, NonAssoc, i, ts')
-    (ids@(_ : _), (_, IntLitTok i) : (_, Ident "left") : (_, Semi) : ts') -> pure (map (fromIdent . snd) ids, LeftAssoc, i, ts')
-    (ids@(_ : _), (_, IntLitTok i) : (_, Ident "right") : (_, Semi) : ts') -> pure (map (fromIdent . snd) ids, RightAssoc, i, ts')
+    (ids@(_ : _), (_, IntLitTok i) : (_, Ident ";") : ts') -> pure (map (fromIdent . snd) ids, NonAssoc, i, ts')
+    (ids@(_ : _), (_, IntLitTok i) : (_, Ident "left") : (_, Ident ";") : ts') -> pure (map (fromIdent . snd) ids, LeftAssoc, i, ts')
+    (ids@(_ : _), (_, IntLitTok i) : (_, Ident "right") : (_, Ident ";") : ts') -> pure (map (fromIdent . snd) ids, RightAssoc, i, ts')
     _ -> Left $ MalformedSyntaxDeclaration p
   if i < 0
     then insertSyntax p n (- i) assoc (reverse $ negativeHoles t) >>= \t' -> Right (ts', t {negativeHoles = reverse t'})
@@ -332,7 +333,7 @@ grammar table = mdo
         <|> ((Lam . fst <$> identToken "fun" <* lparen <*> (map E <$> argList) <* rparen <* lbrace <*> expr <* rbrace) <?> "anonymous function")
   fieldList <-
     rule $
-      (:) <$> ((,) <$> rawName <* isToken Colon ":" <*> expr) <*> (isToken Comma "," *> fieldList <|> pure [])
+      (:) <$> ((,) <$> rawName <* identToken ":" <*> expr) <*> (isToken Comma "," *> fieldList <|> pure [])
         <|> pure []
   argList <-
     rule $
@@ -349,12 +350,8 @@ grammar table = mdo
   where
     app x [] = x
     app f (x : xs) = app (App f x) xs
-    tbl =
-      map (map $ first $ map $ fmap identToken) (negativeHoles table)
-        ++ [ [ ([Nothing, Just (identToken "timeout"), Nothing], LeftAssoc)
-             ]
-           ]
-        ++ map (map $ first $ map $ fmap identToken) (positiveHoles table)
+    tbl = map (map $ first $ map $ fmap identToken) (negativeHoles table)
+       ++ map (map $ first $ map $ fmap identToken) (positiveHoles table)
 
     mixfixParts =
       [ s | xs <- positiveHoles table ++ negativeHoles table, (ys, _) <- xs, Just s <- ys
@@ -365,7 +362,7 @@ grammar table = mdo
     rbrack = identToken "]"
     lparen = satisfy ((== LParen) . snd) <?> "left parenthesis"
     rparen = satisfy ((== RParen) . snd) <?> "right parenthesis"
-    colon = satisfy ((== Colon) . snd) <?> "colon"
+    colon = satisfy ((== Ident ":") . snd) <?> "colon"
     identToken s = isToken (Ident s) s
     isToken s t = satisfy ((== s) . snd) <?> t
     projection = terminal $ \(p, t) ->
@@ -381,13 +378,13 @@ grammar table = mdo
       case t of
         Ident s -> guard (s `notElem` mixfixParts) >> pure (Var p s)
         _ -> Nothing
-    makeAp hol as = case (unholey hol, as) of
-      _ -> unpeelAps (unholey hol) as
+    makeAp hol as = unpeelAps (unholey hol) as
     unholey ls = Var (getPosition ls) (foldMap (fromMaybe "_") (map (fmap (unident . snd)) ls))
     getPosition ls = case filter isJust ls of
       [] -> error "No concrete token: the impossible happened"
       (Just (p, _) : _xs) -> p
       (_ : xs) -> getPosition xs
 
+unident :: Token -> Text
 unident (Ident s) = s
 unident _ = "???"
