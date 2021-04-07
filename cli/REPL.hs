@@ -42,7 +42,7 @@ loop ::
   Evaluator.State ->
   Analysis.AnalysisEnv ->
   InputT IO ()
-loop  lno opts tbl g e e' s ae = flip catch (\ err -> liftIO (renderIO stderr (layoutPretty defaultLayoutOptions (prettyEvalError [] err <> line))) >> loop lno opts tbl g e e' s ae) $ do
+loop lno opts tbl g e e' s ae = flip catch (\err -> liftIO (renderIO stderr (layoutPretty defaultLayoutOptions (prettyEvalError [] err <> line))) >> loop lno opts tbl g e e' s ae) $ do
   str <- getInputLine "> "
   case str of
     Nothing -> pure ()
