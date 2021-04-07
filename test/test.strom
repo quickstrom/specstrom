@@ -7,7 +7,7 @@ import quickstrom;
 // Note that this means spaces between symbols and words is important. a&&b is not a && b!
 
 
-let unchanged(x) = freeze a as x. next (x == a); 
+let unchanged(x) = freeze a = x. next (x == a); 
 
 let ~buttonText = `.play-pause`.textContent;
 let ~timeDisplayText = `.time-display`.textContent;

@@ -292,13 +292,15 @@ macroExpand locs env expr = case expr of
 
 parseExpressionTo' :: Token -> Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Expr TempExpr)
 parseExpressionTo' terminator t ts =
-  let (candidate, ts') = break ((\x -> x == terminator || x == EOF) . snd) ts
-   in case fullParses (parser $ grammar t) candidate of
-        ([one], _) -> pure (ts', one)
+    case allParses (parser $ grammar t) ts of
         ([], r) -> case unconsumed r of
           ((p, t') : _) -> Left (ExpectedGot p (expected r) t')
           [] -> Left (ExpectedGot dummyPosition (expected r) EOF) -- not sure how this happens
-        (e : es, _r) -> Left (ExpressionAmbiguous (e :| es))
+        (ls, r) -> let i = maximum (map snd ls) 
+                    in case map fst (filter ((== i) . snd) ls) of 
+                         [] -> error "impossible"
+                         [one] -> let ts' = drop i ts in pure (ts', one)
+                         (e : es) -> Left (ExpressionAmbiguous (e :| es))
 
 parseExpressionTo :: Token -> Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Expr TopPattern)
 parseExpressionTo terminator t ts = do
@@ -381,10 +383,10 @@ grammar table = mdo
     makeAp hol as = case (unholey hol, as) of
       _ -> unpeelAps (unholey hol) as
     unholey ls = Var (getPosition ls) (foldMap (fromMaybe "_") (map (fmap (unident . snd)) ls))
-      where
-        unident (Ident s) = s
-        unident _ = "???"
     getPosition ls = case filter isJust ls of
       [] -> error "No concrete token: the impossible happened"
       (Just (p, _) : _xs) -> p
       (_ : xs) -> getPosition xs
+
+unident (Ident s) = s
+unident _ = "???"
