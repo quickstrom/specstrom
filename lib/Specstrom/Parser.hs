@@ -92,7 +92,7 @@ builtIns =
       ]
 
 parseGlob :: [(Position, Token)] -> Either ParseError ([(Position, Token)], Glob)
-parseGlob ((_p, Ident n) : rest) = do
+parseGlob ((_p, Ident n) : rest) | n `notElem` ["with", ";"]= do
   fmap (asGlobTerm n :) <$> parseGlob rest
   where
     asGlobTerm _n = filter (/= Just "") $ intersperse Nothing (map Just (splitOn "*" n))
