@@ -116,13 +116,13 @@ loadModule search p n t = do
           (t', inc) <- parseTopLevel search t toks
           pure (t', inc)
 
-loadImmediate :: [FilePath] -> Table -> Text -> ExceptT ParseError IO (Table, [TopLevel])
-loadImmediate search t txt = case lexer ("<immediate>", 1, 1) txt of
+loadImmediate :: Int -> [FilePath] -> Table -> Text -> ExceptT ParseError IO (Table, [TopLevel])
+loadImmediate lno search t txt = case lexer ("<immediate>", lno, 1) txt of
   Left e -> throwError $ LexerFailure e
   Right toks -> parseTopLevel search t toks
 
-immediateExpr :: Table -> Text -> Either ParseError (Expr TopPattern)
-immediateExpr tbl txt = case lexer ("<immediate>", 1, 1) txt of
+immediateExpr :: Int -> Table -> Text -> Either ParseError (Expr TopPattern)
+immediateExpr line tbl txt = case lexer ("<immediate>", line, 1) txt of
   Left e -> throwError $ LexerFailure e
   Right toks -> snd <$> parseExpressionTo EOF tbl toks
 

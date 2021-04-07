@@ -305,7 +305,7 @@ evaluate s g (Var p "happened") = case fst (snd s) of
 evaluate s g (Var p t) = case M.lookup t g of
   Just (Op o _ []) -> pure (Op o p [])
   Just v -> pure v
-  Nothing -> evalError ("Impossible: variable '" <> Text.unpack t <> "' not found in environment (type checker found it though)")
+  Nothing -> error ("Impossible: variable '" <> Text.unpack t <> "' not found in environment (type checker found it though)")
 evaluate s g (App e1 e2) = do
   v <- force s =<< evaluate s g e1
   v2 <- (if isLazy v then delayedEvaluate s g else force s <=< evaluate s g) e2 -- TODO avoid thunking everything when safe
@@ -315,7 +315,7 @@ evaluate s g (Literal p (SelectorLit l@(Selector sel))) = case M.lookup l (snd (
   Just ls -> pure ls
 evaluate s g (Literal p l) = pure (LitVal l)
 evaluate s g (MacroExpansion e _) = evaluate s g e
-evaluate s g (Lam p pat e) = pure (Closure ("fun", p, 0) g pat e)
+evaluate s g (Lam p pat e) = pure (Closure ("<fun>", p, 0) g pat e)
 evaluate s g (ListLiteral p ls) = do
   vs <- mapM (force s <=< evaluate s g) ls
   pure (List vs)

@@ -22,7 +22,7 @@ repl searchPaths' fp = do
   (tls, tbl, g) <- load' searchPaths' False fp
   (e, e', ae) <- liftIO $ checkTopLevels Evaluator.basicEnv mempty Analysis.builtIns tls
   let opts = foldl' addSearchPath defaultOpts searchPaths'
-  runInputT defaultSettings (loop opts tbl g e e' Evaluator.dummyState ae)
+  runInputT defaultSettings (loop 1 opts tbl g e e' Evaluator.dummyState ae)
 
 defaultOpts :: Options
 defaultOpts = Opts False False []
@@ -33,6 +33,7 @@ addSearchPath :: Options -> FilePath -> Options
 addSearchPath opts path = opts {searchPaths = path : searchPaths opts}
 
 loop ::
+  Int ->
   Options ->
   Parser.Table ->
   TypeInf.Context ->
@@ -41,31 +42,31 @@ loop ::
   Evaluator.State ->
   Analysis.AnalysisEnv ->
   InputT IO ()
-loop opts tbl g e e' s ae = flip catch (\err -> liftIO (renderIO stderr (layoutPretty defaultLayoutOptions (prettyEvalError [] err <> line))) >> loop opts tbl g e e' s ae) $ do
+loop  lno opts tbl g e e' s ae = flip catch (\ err -> liftIO (renderIO stderr (layoutPretty defaultLayoutOptions (prettyEvalError [] err <> line))) >> loop lno opts tbl g e e' s ae) $ do
   str <- getInputLine "> "
   case str of
     Nothing -> pure ()
     Just (':' : rest)
-      | rest == "set types" -> loop (opts {showTypes = True}) tbl g e e' s ae
-      | rest == "set analysis" -> loop (opts {showAnalysis = True}) tbl g e e' s ae
-      | rest == "unset analysis" -> loop (opts {showAnalysis = False}) tbl g e e' s ae
-      | rest == "unset types" -> loop (opts {showTypes = False}) tbl g e e' s ae
+      | rest == "set types" -> loop lno (opts {showTypes = True}) tbl g e e' s ae
+      | rest == "set analysis" -> loop lno (opts {showAnalysis = True}) tbl g e e' s ae
+      | rest == "unset analysis" -> loop lno (opts {showAnalysis = False}) tbl g e e' s ae
+      | rest == "unset types" -> loop lno (opts {showTypes = False}) tbl g e e' s ae
       | rest == "quit" -> pure ()
-      | rest == "debug" -> liftIO (print (e, e')) >> loop opts tbl g e e' s ae
+      | rest == "debug" -> liftIO (print (e, e')) >> loop lno opts tbl g e e' s ae
       | rest == "state" -> pure () -- for now
       | otherwise -> liftIO $ hPutStrLn stderr "Invalid meta-command"
     Just x -> do
-      r <- liftIO $ runExceptT (Parser.loadImmediate (searchPaths opts) tbl $ pack x)
+      r <- liftIO $ runExceptT (Parser.loadImmediate lno (searchPaths opts) tbl $ pack x)
       case r of
-        Left err' -> case Parser.immediateExpr tbl (pack x) of
+        Left err' -> case Parser.immediateExpr lno tbl (pack x) of
           Left err -> do
             liftIO $ renderIO stderr (layoutPretty defaultLayoutOptions (prettyParseError err <> line))
             liftIO $ renderIO stderr (layoutPretty defaultLayoutOptions (prettyParseError err' <> line))
-            loop opts tbl g e e' s ae
+            loop lno opts tbl g e e' s ae
           Right expr -> case TypeInf.inferExpImmediate g expr of
             Left err -> do
               liftIO $ renderIO stderr (layoutPretty defaultLayoutOptions (prettyTypeError err <> line))
-              loop opts tbl g e e' s ae
+              loop lno opts tbl g e e' s ae
             Right typ -> do
               if showTypes opts
                 then liftIO $ renderIO stdout (layoutPretty defaultLayoutOptions (prettyType typ <> line))
@@ -75,15 +76,15 @@ loop opts tbl g e e' s ae = flip catch (\err -> liftIO (renderIO stderr (layoutP
                 else return ()
               val <- liftIO $ (Evaluator.deepForce s =<< Evaluator.evaluate s e expr)
               liftIO $ renderIO stdout (layoutPretty defaultLayoutOptions (prettyValue val <> line))
-              loop opts tbl g e e' s ae
+              loop lno opts tbl g e e' s ae
         Right (tbl2, tls) -> do
           case TypeInf.inferTopLevels g tls of
             Left err -> do
               liftIO $ renderIO stderr (layoutPretty defaultLayoutOptions (prettyTypeError err <> line))
-              loop opts tbl g e e' s ae
+              loop lno opts tbl g e e' s ae
             Right g2 -> do
               (e2, e'2, ae2) <- liftIO $ checkTopLevels e e' ae tls
-              loop opts tbl2 g2 e2 e'2 s ae2
+              loop (succ lno) opts tbl2 g2 e2 e'2 s ae2
 
 checkTopLevel ::
   Evaluator.Env ->
