@@ -292,15 +292,16 @@ macroExpand locs env expr = case expr of
 
 parseExpressionTo' :: Token -> Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Expr TempExpr)
 parseExpressionTo' terminator t ts =
-    case allParses (parser $ grammar t) ts of
-        ([], r) -> case unconsumed r of
-          ((p, t') : _) -> Left (ExpectedGot p (expected r) t')
-          [] -> Left (ExpectedGot dummyPosition (expected r) EOF) -- not sure how this happens
-        (ls, r) -> let i = maximum (map snd ls) 
-                    in case map fst (filter ((== i) . snd) ls) of 
-                         [] -> error "impossible"
-                         [one] -> let ts' = drop i ts in pure (ts', one)
-                         (e : es) -> Left (ExpressionAmbiguous (e :| es))
+  case allParses (parser $ grammar t) ts of
+    ([], r) -> case unconsumed r of
+      ((p, t') : _) -> Left (ExpectedGot p (expected r) t')
+      [] -> Left (ExpectedGot dummyPosition (expected r) EOF) -- not sure how this happens
+    (ls, r) ->
+      let i = maximum (map snd ls)
+       in case map fst (filter ((== i) . snd) ls) of
+            [] -> error "impossible"
+            [one] -> let ts' = drop i ts in pure (ts', one)
+            (e : es) -> Left (ExpressionAmbiguous (e :| es))
 
 parseExpressionTo :: Token -> Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Expr TopPattern)
 parseExpressionTo terminator t ts = do
