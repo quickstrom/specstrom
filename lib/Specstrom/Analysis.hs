@@ -51,8 +51,8 @@ builtIns =
            ("foldr", toAnnotation (\f v x -> applyAnnotation (applyAnnotation f (projectAnnotation ListElement x)) v))
          ]
   where
-    binOps = ["_==_", "_&&_", "_||_", "_until_", "_!=_", "_==>_", "_+_", "_-_", "_/_", "_*_", "_%_", "_>_", "_<_", "_>=_", "_<=_"]
-    unOps = ["not_", "parseInt", "always{_}_", "next_", "nextT_", "nextF_"]
+    binOps = ["_==_", "_&&_", "_||_", "_until_", "_!=_", "_==>_", "_+_", "_-_", "_/_", "_*_", "_%_", "_>_", "_<_", "_>=_", "_<=_", "split"]
+    unOps = ["not_", "parseInt", "trim", "always{_}_", "next_", "nextT_", "nextF_"]
     values = ["true", "false", "null", "happened"]
     hofs = ["map", "unfoldr"]
     hofAnn = toAnnotation (\f v -> List (applyAnnotation f (projectAnnotation ListElement v)))

@@ -74,6 +74,8 @@ builtInTypes =
       ("nth", val3),
       ("not_", val2),
       ("parseInt", val2),
+      ("trim", val2),
+      ("split", val3),
       ("map", hof),
       ("unfoldr", hof),
       ("foldl", hof2),

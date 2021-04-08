@@ -39,6 +39,7 @@ data PrimOp
   | NextD
   | Not
   | ParseInt
+  | StringTrim
   | -- binary
     And
   | Or
@@ -58,6 +59,7 @@ data PrimOp
   | NotEquals
   | Equals
   | Index
+  | StringSplit
   | -- HOFs (binary)
     Map
   | Unfoldr
@@ -77,6 +79,7 @@ primOpVar op = case op of
   Always -> "always{_}_"
   Not -> "not_"
   ParseInt -> "parseInt"
+  StringTrim -> "trim"
   And -> "_&&_"
   Or -> "_||_"
   Implies -> "_==>_"
@@ -93,6 +96,7 @@ primOpVar op = case op of
   Division -> "_/_"
   IfThenElse -> "if_{_}else{_}"
   Index -> "nth"
+  StringSplit -> "split"
   Map -> "map"
   Unfoldr -> "unfoldr"
   Foldr -> "foldr"
@@ -115,7 +119,7 @@ basicEnv =
       ]
 
 isUnary :: PrimOp -> Bool
-isUnary = (<= ParseInt)
+isUnary = (<= StringTrim)
 
 isBinary :: PrimOp -> Bool
 isBinary x = not (isUnary x) && x <= Unfoldr
@@ -400,11 +404,11 @@ unaryOp Not s v' = do
     Trivial -> pure Absurd
     Residual f -> Residual <$> negateResidual f
     _ -> evalError ("Not expects boolean, got: " <> show v')
-unaryOp ParseInt s v' = do
-  case v' of
-    LitVal (StringLit s') | Right (v, _) <- Text.double s' -> pure (LitVal (FloatLit v))
-    LitVal (StringLit s') | Right (v, _) <- Text.decimal s' -> pure (LitVal (IntLit v))
-    _ -> evalError ("parseInt expects a string, got: " <> show v')
+unaryOp ParseInt s (LitVal (StringLit s'))
+  | Right (v, _) <- Text.double s' = pure (LitVal (FloatLit v))
+  | Right (v, _) <- Text.decimal s' = pure (LitVal (IntLit v))
+  | otherwise = evalError ("parseInt could not parse: " <> show s')
+unaryOp StringTrim _ (LitVal (StringLit s')) = pure (LitVal (StringLit (Text.strip s')))
 unaryOp NextF s (Thunk t) = pure (Residual (Next AssumeFalse t))
 unaryOp NextT s (Thunk t) = pure (Residual (Next AssumeTrue t))
 unaryOp NextD s (Thunk t) = pure (Residual (Next Demand t))
@@ -526,6 +530,13 @@ binaryOp Index s e1 e2 = do
           Nothing -> pure Null
         _ -> evalError ("Objects are only indexable by strings or raw constructors")
     _ -> evalError ("Indexing doesn't work on non-list/object values")
+binaryOp StringSplit s e1 e2 = do
+  needle' <- force s e1
+  haystack' <- force s e2
+  case (needle', haystack') of
+    (LitVal (StringLit needle''), LitVal (StringLit haystack'')) ->
+      pure (List (map (LitVal . StringLit) (Text.splitOn needle'' haystack'')))
+    _ -> evalError ("`split` expects two strings (needle and haystack)")
 binaryOp Unfoldr s func start = do
   vs <-
     unfoldrM

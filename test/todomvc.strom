@@ -1,4 +1,6 @@
-// Would be nice to limit the imports as in the comments:
+// Would be nice to limit the imports as in the comments below.
+// Also they're commented out until we have deduplication of
+// imported definitions.
 
 // import list; // (zip, mapNotNull, length, first, last);
 // import string; //  (trim, split, parseInt);
@@ -9,50 +11,50 @@ import quickstrom;
 //-------------------------------------------------
 
 syntax _>'_ 8;
-let x >' n = freeze x' = x. next (x' > n);
+let ~x >' n = freeze x' = x. next (x' > n);
 
 syntax _>='_ 8;
-let x >=' n = freeze x' = x. next (x' >= n);
+let ~x >=' n = freeze x' = x. next (x' >= n);
 
 syntax _<'_ 8;
-let x >' n = freeze x' = x. next (x' > n);
+let ~x <' n = freeze x' = x. next (x' > n);
 
 syntax _<='_ 8;
-let x >=' n = freeze x' = x. next (x' >= n);
+let ~x >=' n = freeze x' = x. next (x' >= n);
 
 syntax _+='_ 8;
-let x >' n = freeze x' = x. next (x' == x + n);
+let ~x +=' n = freeze x' = x. next (x' == x + n);
 
 syntax _-='_ 8;
-let x >' n = freeze x' = x. next (x' == x - n);
+let ~x -=' n = freeze x' = x. next (x' == x - n);
 
 //-------------------------------------------------
 // Actions
 //-------------------------------------------------
 
-let selectOtherFilter! = click!(`.todoapp .filters a:not(.selected)`)
+action ~selectOtherFilter! = click!(`.todoapp .filters a:not(.selected)`)
   // weighted 5.0
   ;
 
-let selectSameFilter! = click!(`.todoapp .filters a.selected`);
+action ~selectSameFilter! = click!(`.todoapp .filters a.selected`);
 
-let toggleAllTodos! = click!(`.todoapp label[for=toggle-all]`);
+action ~toggleAllTodos! = click!(`.todoapp label[for=toggle-all]`);
 
-let deleteTodo! = click!(`.todoapp .destroy`);
+action ~deleteTodo! = click!(`.todoapp .destroy`);
 
-let focusInput! = focus!(`.todoapp .new-todo`)
+action ~focusInput! = focus!(`.todoapp .new-todo`)
   // weighted 5.0
   ;
 
-let clickAnyLink! = click!(`a`)
+action ~clickAnyLink! = click!(`a`)
   // weighted 5.0
   ;
 
-let createTodo! = keyPress!(keys.return)
+action ~createTodo! = keyPress!(keys.return)
   // weighted 5.0
   ;
 
-let selectedFilter = `.todoapp .filters a.selected`.textContent;
+let ~selectedFilter = `.todoapp .filters a.selected`.textContent;
 
 let ~items =
   map
@@ -68,11 +70,11 @@ let ~checkboxes = `.todo-list li input[type=checkbox]`;
 
 let ~numUnchecked = length(filter(fun c. not c.checked, checkboxes));
 
-let numChecked = length(filter(fun c. c.checked, checkboxes));
+let ~numChecked = length(filter(fun c. c.checked, checkboxes));
 
-let pendingText = `.todoapp .new-todo`.value ?? "";
+let ~pendingText = `.todoapp .new-todo`.value ?? "";
 
-let numItemsLeft =
+let ~numItemsLeft =
     let strong = `.todoapp .todo-count strong`.textContent;
     if strong != null {
       parseInt(first(split(" ", trim(strong))))
@@ -94,7 +96,7 @@ let ~enterText =
       && unchanged(items)
       && unchanged(selectedFilter);
 
-let changeFilter =
+let ~changeFilter =
   // adding the first todo item switches to the All filter
   selectedFilter == null && next selectedFilter == "All"
   // going from "All" to some filter (including "All") cannot increase number of items
@@ -105,7 +107,7 @@ let changeFilter =
   || not unchanged(selectedFilter) && unchanged(pendingText)
   ;
 
-let addNew =
+let ~addNew =
   next pendingText == ""
     && not (next selectedFilter == null)
     && (match selectedFilter {
@@ -114,7 +116,7 @@ let addNew =
       | case "Completed". unchanged(items)
     });
 
-let checkOne =
+let ~checkOne =
   unchanged(pendingText)
     && unchanged(selectedFilter)
     && (selectedFilter != "Completed")
@@ -123,14 +125,14 @@ let checkOne =
       | case "Active". (numItems >' numItems) && (numItemsLeft >' numItemsLeft)
     });
 
-let uncheckOne =
+let ~uncheckOne =
   unchanged(pendingText)
     && unchanged(selectedFilter)
     && selectedFilter != "Active"
     && selectedFilter == "All" ==> unchanged(numItems) && numChecked >' numChecked
     && selectedFilter == "Completed" ==> numItems >' numItems && numItemsLeft <' numItemsLeft;
 
-let delete =
+let ~delete =
   unchanged(pendingText)
     && (selectedFilter != null)
     && (numItems == 1) ==>
@@ -149,7 +151,7 @@ let delete =
         )))
   ;
 
-let toggleAll =
+let ~toggleAll =
     unchanged(pendingText)
       && unchanged(selectedFilter)
       && selectedFilter != null
@@ -165,9 +167,9 @@ let toggleAll =
   ;
 
 
-let hasFilters = numItems == 0 || availableFilters == ["All", "Active", "Completed"];
+let ~hasFilters = numItems == 0 || availableFilters == ["All", "Active", "Completed"];
 
-let prop_safety =
+let ~prop_safety =
   initial
     && always
         ( enterText
@@ -180,6 +182,6 @@ let prop_safety =
         )
     && always hasFilters;
 
-let ready? = changed?(`.todoapp .new-todo`) when length(`.todoapp .new-todo`) == 1; // is the query result a list?
+let ~ready? = changed?(`.todoapp .new-todo`) when length(`.todoapp .new-todo`) == 1; // is the query result a list?
 
 check prop_* with * when ready?;
