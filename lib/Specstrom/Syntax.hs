@@ -6,7 +6,6 @@
 module Specstrom.Syntax where
 
 import qualified Data.Aeson as JSON
-import Data.Bifunctor (second)
 import Data.Hashable (Hashable)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -122,6 +121,7 @@ topPatternVars (MatchP p) = patternVars p
 topPatternVars (MacroExpansionTP p _) = topPatternVars p
 
 bindPatternBoundVars :: BindPattern -> [Name]
+bindPatternBoundVars (MacroExpansionBP p _) = bindPatternBoundVars p
 bindPatternBoundVars (Direct p) = topPatternVars p
 bindPatternBoundVars (FunP n p ps) = [n]
 
@@ -180,6 +180,7 @@ data TopLevel' e bp
 tlPos :: (bp -> Position) -> TopLevel' e bp -> Position
 tlPos f (Binding _ (Bind b _)) = f b
 tlPos f (ActionDecl _ (Bind b _)) = f b
+tlPos f (MacroDecl _ e _ _) = exprPos e
 tlPos f (SyntaxDecl _ p _ _ _) = p
 tlPos f (DocBlock _) = dummyPosition
 tlPos f (Properties p _ _ _) = p
