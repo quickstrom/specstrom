@@ -1,3 +1,5 @@
+import math;
+
 let conjunction = foldr(_&&_,true);
 let disjunction = foldr(_||_,false);
 let all(f,ls) = conjunction(map(f,ls));
@@ -17,4 +19,16 @@ macro exists X in Y { E } = any(fun X. E, Y);
 syntax exists_in_._ -1 right;
 macro exists X in Y. E  = any(fun X. E, Y);
 
+let length(xs) = foldl(fun acc. fun x. acc + 1, 0, xs);
 
+let first(xs) = if length(xs) > 0 { xs[0] };
+
+let last(xs) = let i = length(xs) - 1; if i >= 0 { xs[i] };
+
+let range(start, end) = unfoldr(fun n. if n <= end { [n, n + 1] }, start);
+
+let filter = map;
+
+let zip(xs, ys) =
+    let l = min(length(xs), length(ys));
+    forall i in range(0, l). [xs[i], ys[i]];

@@ -55,7 +55,7 @@ let createTodo! = keyPress!(keys.return)
 let selectedFilter = `.todoapp .filters a.selected`.textContent;
 
 let ~items =
-  mapNotNull
+  map
     // TODO: just a lambda syntax sketch
     (fun [li, label]. if li.css.display != "none" { label })
     (zip(`.todo-list li`, `.todo-list li label`));

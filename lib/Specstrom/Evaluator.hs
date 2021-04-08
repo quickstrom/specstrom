@@ -12,9 +12,11 @@ import Data.Foldable (foldlM, foldrM)
 import qualified Data.HashMap.Strict as M
 import Data.IORef
 import qualified Data.Text as Text
-import qualified Debug.Trace as Debug
+import qualified Data.Text.Read as Text
 import Specstrom.Lexer (Position, dummyPosition)
 import Specstrom.Syntax
+import Data.Vector (unfoldrM)
+import qualified Data.Vector as Vector
 
 type Env = M.HashMap Name Value
 
@@ -36,6 +38,7 @@ data PrimOp
   | NextT
   | NextD
   | Not
+  | ParseInt
   | -- binary
     And
   | Or
@@ -57,6 +60,7 @@ data PrimOp
   | Index
   | -- HOFs (binary)
     Map
+  | Unfoldr
   | -- ternary
     IfThenElse
   | Foldr
@@ -72,6 +76,7 @@ primOpVar op = case op of
   NextD -> "next_"
   Always -> "always{_}_"
   Not -> "not_"
+  ParseInt -> "parseInt"
   And -> "_&&_"
   Or -> "_||_"
   Implies -> "_==>_"
@@ -89,6 +94,7 @@ primOpVar op = case op of
   IfThenElse -> "if_{_}else{_}"
   Index -> "nth"
   Map -> "map"
+  Unfoldr -> "unfoldr"
   Foldr -> "foldr"
   Foldl -> "foldl"
 
@@ -109,7 +115,7 @@ basicEnv =
       ]
 
 isUnary :: PrimOp -> Bool
-isUnary = (<= Not)
+isUnary = (<= ParseInt)
 
 isBinary :: PrimOp -> Bool
 isBinary x = not (isUnary x) && x <= Map
@@ -394,6 +400,11 @@ unaryOp Not s v' = do
     Trivial -> pure Absurd
     Residual f -> Residual <$> negateResidual f
     _ -> evalError ("Not expects boolean, got: " <> show v')
+unaryOp ParseInt s v' = do
+  case v' of
+    LitVal (StringLit s') | Right (v, _) <- Text.double s' -> pure (LitVal (FloatLit v))
+    LitVal (StringLit s') | Right (v, _) <- Text.decimal s' -> pure (LitVal (IntLit v))
+    _ -> evalError ("parseInt expects a string, got: " <> show v')
 unaryOp NextF s (Thunk t) = pure (Residual (Next AssumeFalse t))
 unaryOp NextT s (Thunk t) = pure (Residual (Next AssumeTrue t))
 unaryOp NextD s (Thunk t) = pure (Residual (Next Demand t))
@@ -515,6 +526,16 @@ binaryOp Index s e1 e2 = do
           Nothing -> pure Null
         _ -> evalError ("Objects are only indexable by strings or raw constructors")
     _ -> evalError ("Indexing doesn't work on non-list/object values")
+binaryOp Unfoldr s func start = do
+  vs <- unfoldrM (\v -> do
+    f <- force s func
+    v' <- app s f v
+    case v' of
+      List [v, next] -> pure (Just (v, next))
+      Null -> pure Nothing
+      _ -> evalError ("`unfoldr` expected a list of two values or null, but got: " <> show v')
+    ) start
+  pure (List (Vector.toList vs))
 
 binaryCmpOp :: State -> Value -> Value -> PrimOp -> IO Value
 binaryCmpOp s v1' v2' op = do

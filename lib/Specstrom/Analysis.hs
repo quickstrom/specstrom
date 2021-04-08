@@ -52,9 +52,9 @@ builtIns =
          ]
   where
     binOps = ["_==_", "_&&_", "_||_", "_until_", "_!=_", "_==>_", "_+_", "_-_", "_/_", "_*_", "_%_", "_>_", "_<_", "_>=_", "_<=_"]
-    unOps = ["not_", "always{_}_", "next_", "nextT_", "nextF_"]
+    unOps = ["not_", "parseInt", "always{_}_", "next_", "nextT_", "nextF_"]
     values = ["true", "false", "null", "happened"]
-    hofs = ["map"]
+    hofs = ["map", "unfoldr"]
     hofAnn = toAnnotation (\f v -> List (applyAnnotation f (projectAnnotation ListElement v)))
 
 depOf :: Annotation -> Dep

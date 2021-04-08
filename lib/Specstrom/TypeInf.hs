@@ -73,7 +73,9 @@ builtInTypes =
       ("always{_}_", val3),
       ("nth", val3),
       ("not_", val2),
+      ("parseInt", val2),
       ("map", hof),
+      ("unfoldr", hof),
       ("foldl", hof2),
       ("foldr", hof2),
       ("if_{_}else{_}", Forall "a" (Ty (Arrow Value (Arrow (TyVar "a") (Arrow (TyVar "a") (TyVar "a"))))))
