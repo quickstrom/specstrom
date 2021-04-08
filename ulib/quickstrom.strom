@@ -22,3 +22,5 @@ syntax _~>_ 5;
 let a ~> ~b = transition(a, b);
 
 let unchanged(~x) = freeze a = x. next (x == a);
+
+let x = range(1, 2);

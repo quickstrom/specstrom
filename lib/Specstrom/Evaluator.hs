@@ -118,7 +118,7 @@ isUnary :: PrimOp -> Bool
 isUnary = (<= ParseInt)
 
 isBinary :: PrimOp -> Bool
-isBinary x = not (isUnary x) && x <= Map
+isBinary x = not (isUnary x) && x <= Unfoldr
 
 data Residual
   = Next Strength Thunk
@@ -531,11 +531,11 @@ binaryOp Unfoldr s func start = do
     unfoldrM
       ( \v -> do
           f <- force s func
-          v' <- app s f v
+          v' <- force s =<< app s f v
           case v' of
             List [v, next] -> pure (Just (v, next))
             Null -> pure Nothing
-            _ -> evalError ("`unfoldr` expected a list of two values or null, but got: " <> show v')
+            _ -> evalError ("`unfoldr` expected a list of two values or null")
       )
       start
   pure (List (Vector.toList vs))

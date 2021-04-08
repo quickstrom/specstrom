@@ -31,4 +31,4 @@ let filter = map;
 
 let zip(xs, ys) =
     let l = min(length(xs), length(ys));
-    forall i in range(0, l). [xs[i], ys[i]];
+    for i in range(0, l - 1). [xs[i], ys[i]];
