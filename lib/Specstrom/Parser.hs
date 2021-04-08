@@ -133,6 +133,7 @@ parseTopLevel search t ((p, DocTok doc) : ts) = do
     (DocBlock ds : rest) -> (t', DocBlock (doc : ds) : rest)
     (MacroDecl ds mac args bod : rest) -> (t', MacroDecl (doc : ds) mac args bod : rest)
     (SyntaxDecl ds a b c : rest) -> (t', SyntaxDecl (doc : ds) a b c : rest)
+    (ActionDecl ds b : rest) -> (t', ActionDecl (doc : ds) b : rest)
     (Binding ds b : rest) -> (t', Binding (doc : ds) b : rest)
     _ -> (t', DocBlock [doc] : tls)
 parseTopLevel search t ((p, Ident "import") : ts) = case ts of

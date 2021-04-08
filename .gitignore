@@ -10,3 +10,4 @@ docs/*.tex
 # Nix and such
 .direnv
 /result*
+/docs-test

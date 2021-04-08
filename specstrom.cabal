@@ -27,7 +27,6 @@ common shared
                      , prettyprinter
                      , text
                      , hashable
-                     , optparse-applicative
                      , mtl
                      , filepath
                      , directory
@@ -59,8 +58,18 @@ library
                      , Specstrom.Dependency
                      , Specstrom.Syntax
                      , Specstrom.TypeInf
+                     , Specstrom.Load
 
 
+executable docstrom 
+  import:              shared
+  hs-source-dirs:      doc-gen
+  main-is:             Main.hs
+  data-files:          template.html
+  build-depends:       pandoc, specstrom, doctemplates, doclayout, file-embed,time
+                     , optparse-applicative
+                     , prettyprinter-ansi-terminal
+                     , prettyprinter
 
 executable specstrom
   import:              shared
@@ -70,6 +79,7 @@ executable specstrom
   build-depends:       prettyprinter-ansi-terminal
                      , specstrom
                      , haskeline
+                     , optparse-applicative
   other-modules:       REPL, Util
 
 test-suite specstrom-test

@@ -114,6 +114,9 @@ prettyToken EOF = "EOF"
 prettyBind :: Bind -> Doc AnsiStyle
 prettyBind b = keyword "let" <+> prettyBind' b
 
+prettyBindBrief :: Bind -> Doc AnsiStyle
+prettyBindBrief  (Bind bp ps) = prettyBindPattern bp
+
 prettyBind' :: Bind -> Doc AnsiStyle
 prettyBind' (Bind bp bs) =
   prettyBindPattern bp
@@ -134,6 +137,25 @@ prettyGlob = hsep . map prettyGlobTerm
 prettyDocs :: Text -> Doc AnsiStyle
 prettyDocs t = docStyle $ "///" <> pretty t
 
+
+prettyToplevelHeader :: TopLevel -> Doc AnsiStyle
+prettyToplevelHeader (Properties _p g1 g2 g3) =
+  keyword "check" <+> prettyGlob g1 <+> keyword "with" <+> prettyGlob g2
+    <> maybe mempty ((space <>) . (keyword "when" <+>) . prettyExpr) g3
+    <> keyword ";"
+prettyToplevelHeader (Binding docs b) = prettyBindBrief b
+prettyToplevelHeader (DocBlock docs) = ""
+prettyToplevelHeader (ActionDecl docs b) = prettyBindBrief b
+prettyToplevelHeader (MacroDecl docs lhs _vars _rhs) = prettyExpr lhs
+prettyToplevelHeader (SyntaxDecl docs tokens lv assoc) = hsep (map pretty tokens) <+> prettyLit (IntLit lv) <+> prettyAssoc assoc <> keyword ";"
+prettyToplevelHeader (Imported i bs) = literal (pretty i) <> keyword ";" 
+
+prettyAssoc :: Associativity -> Doc AnsiStyle
+prettyAssoc LeftAssoc = "left"
+prettyAssoc RightAssoc = "right"
+prettyAssoc _ = ""
+
+
 prettyToplevel :: TopLevel -> Doc AnsiStyle
 prettyToplevel (Properties _p g1 g2 g3) =
   keyword "check" <+> prettyGlob g1 <+> keyword "with" <+> prettyGlob g2
@@ -150,11 +172,6 @@ prettyToplevel (SyntaxDecl docs tokens lv assoc) =
   vcat $
     map prettyDocs docs
       ++ [keyword "syntax" <+> hsep (map pretty tokens) <+> prettyLit (IntLit lv) <+> prettyAssoc assoc <> keyword ";"]
-  where
-    prettyAssoc :: Associativity -> Doc AnsiStyle
-    prettyAssoc LeftAssoc = "left"
-    prettyAssoc RightAssoc = "right"
-    prettyAssoc _ = ""
 prettyToplevel (Imported i bs) = keyword "import" <+> literal (pretty i) <> keyword ";" <> line <> indent 2 (prettyAll bs)
 
 prettyLit :: Lit -> Doc AnsiStyle

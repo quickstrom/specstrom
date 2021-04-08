@@ -1,4 +1,4 @@
-module Util where
+module Specstrom.Load where
 
 import Control.Monad.Except (runExceptT)
 import Data.Bifunctor (first)
