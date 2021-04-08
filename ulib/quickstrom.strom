@@ -1,8 +1,13 @@
 import control;
 import list;
 import ltl;
+import quickstrom/keys;
 
 action click!(x) = for element in x. { id: "click", event: false, args: [element.ref] } when element.enabled;
+
+action focus!(x) = for element in x. { id: "focus", event: false, args: [element.ref] } when element.active;
+
+action keyPress!(key) = { id: "focus", event: false, args: [key] };
 
 action changed?(x) = for element in x. { id: "changed", event: true, args: [x.ref]};
 
