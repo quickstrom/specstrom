@@ -22,9 +22,9 @@ macro exists X in Y. E  = any(fun X. E, Y);
 /// Compute the length (number of elements) in a list.
 let length(xs) = foldl(fun acc. fun x. acc + 1, 0, xs);
 
-let first(xs) = if length(xs) > 0 { xs[0] };
+let first(xs) = xs[0];
 
-let last(xs) = let i = length(xs) - 1; if i >= 0 { xs[i] };
+let last(xs) = xs[-1];
 
 let range(start, end) = unfoldr(fun n. if n <= end { [n, n + 1] }, start);
 
@@ -34,6 +34,6 @@ let filter(f) = map(fun x. if f(x) { x } else { null });
 /// from corresponding elements of `xs` and `ys`. The
 /// resulting list has the same length as the shortest
 /// input list.
-let zip(xs, ys) =
+let zip(xs, ys) = // this is quite slow. Consider making it a builtin.
     let l = min(length(xs), length(ys));
     for i in range(0, l - 1). [xs[i], ys[i]];
