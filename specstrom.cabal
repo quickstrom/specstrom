@@ -25,6 +25,7 @@ common shared
                      , containers
                      , exceptions
                      , prettyprinter
+                     , generic-functor
                      , text
                      , hashable
                      , mtl

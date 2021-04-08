@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Specstrom.Syntax where
@@ -10,8 +11,12 @@ import Data.Hashable (Hashable)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
-import Specstrom.Lexer (Position)
+import Specstrom.Lexer (Position, dummyPosition)
 import Text.Earley.Mixfix (Associativity)
+import Data.Bitraversable
+import Data.Bifunctor
+import Data.Bifoldable
+import Generic.Functor
 
 newtype Selector = Selector Text
   deriving (Show, Eq, Ord, Generic, Hashable, JSON.FromJSON, JSON.ToJSON, JSON.FromJSONKey, JSON.ToJSONKey)
@@ -34,7 +39,7 @@ data Expr p
   | ListLiteral Position [Expr p]
   | ObjectLiteral Position [(Name, Expr p)]
   | Projection (Expr p) Text
-  deriving (Eq, Show, Functor, Foldable, Traversable)
+  deriving (Eq, Show, Functor, Foldable, Traversable, Generic)
 
 newtype TempExpr = E (Expr TempExpr) deriving (Eq, Show)
 
@@ -84,6 +89,7 @@ expand names g =
 data BindPattern
   = Direct TopPattern
   | FunP Name Position [TopPattern]
+  | MacroExpansionBP BindPattern (Expr TempExpr)
   deriving (Eq, Show)
 
 data TopPattern
@@ -106,6 +112,7 @@ data Pattern
   deriving (Eq, Show)
 
 bindPatternVars :: BindPattern -> [Name]
+bindPatternVars (MacroExpansionBP p _) = bindPatternVars p
 bindPatternVars (FunP n p ps) = n : concatMap topPatternVars ps
 bindPatternVars (Direct p) = topPatternVars p
 
@@ -142,20 +149,41 @@ patternVars (BoolP p _) = []
 patternVars (IgnoreP p) = []
 patternVars (NullP p) = []
 
-data Bind = Bind BindPattern (Expr TopPattern)
-  deriving (Eq, Show)
+type Bind = Bind' TopPattern BindPattern
+
+data Bind' e bp = Bind bp (Expr e)
+  deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
+  deriving (Bifunctor, Bifoldable) via (GenericBifunctor Bind')
+
+instance Bitraversable Bind' where 
+  bitraverse = gbitraverse
+
+instance Bitraversable TopLevel' where 
+  bitraverse = gbitraverse
 
 type Documentation = [Text]
 
-data TopLevel
-  = Binding Documentation Bind
-  | ActionDecl Documentation Bind
-  | SyntaxDecl Documentation [Text] Int Associativity
+type TopLevel = TopLevel' TopPattern BindPattern
+
+
+data TopLevel' e bp
+  = Binding Documentation (Bind' e bp)
+  | ActionDecl Documentation (Bind' e bp)
+  | SyntaxDecl Documentation Position  [Text] Int Associativity
   | MacroDecl Documentation (Expr TempExpr) [Name] (Expr TempExpr)
   | DocBlock Documentation
-  | Properties Position Glob Glob (Maybe (Expr TopPattern))
-  | Imported Text [TopLevel]
-  deriving (Eq, Show)
+  | Properties Position Glob Glob (Maybe (Expr e))
+  | Imported Position Text [TopLevel' e bp]
+  deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
+  deriving (Bifunctor, Bifoldable) via (GenericBifunctor TopLevel')
+
+tlPos :: (bp -> Position) -> TopLevel' e bp -> Position
+tlPos f (Binding _ (Bind b _)) = f b
+tlPos f (ActionDecl _ (Bind b _)) = f b
+tlPos f (SyntaxDecl _ p _ _ _) = p
+tlPos f (DocBlock _) = dummyPosition
+tlPos f (Properties p _ _ _) = p
+tlPos f (Imported p _ _) = p
 
 class MapPosition a where
   mapPosition :: (Position -> Position) -> a -> a
@@ -195,16 +223,17 @@ instance MapPosition Pattern where
 instance MapPosition BindPattern where
   mapPosition f (Direct pat) = Direct (mapPosition f pat)
   mapPosition f (FunP name pos patterns) = FunP name (f pos) (map (mapPosition f) patterns)
+  mapPosition f (MacroExpansionBP t p) = MacroExpansionBP (mapPosition f t) (mapPosition f p)
 
-instance MapPosition Bind where
+instance (MapPosition bp, MapPosition p) => MapPosition (Bind' p bp) where
   mapPosition f (Bind pat body) = Bind (mapPosition f pat) (mapPosition f body)
 
-instance MapPosition TopLevel where
+instance (MapPosition bp, MapPosition p) => MapPosition (TopLevel' p bp) where
   mapPosition f expr = case expr of
     Binding docs bind -> Binding docs (mapPosition f bind)
     ActionDecl docs bind -> ActionDecl docs (mapPosition f bind)
     DocBlock docs -> DocBlock docs
-    SyntaxDecl docs tokens l assoc -> SyntaxDecl docs tokens l assoc
+    SyntaxDecl docs pos tokens l assoc -> SyntaxDecl docs pos tokens l assoc
     MacroDecl docs e1 names e2 -> MacroDecl docs (mapPosition f e1) names (mapPosition f e2)
     Properties pos g1 g2 expr' -> Properties (f pos) g1 g2 (fmap (mapPosition f) expr')
-    Imported name ts -> Imported name (map (mapPosition f) ts)
+    Imported pos name ts -> Imported pos name (map (mapPosition f) ts)

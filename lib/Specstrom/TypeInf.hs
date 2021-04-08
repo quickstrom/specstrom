@@ -150,6 +150,7 @@ tvGamma :: Context -> [Name]
 tvGamma = foldMap tvQ
 
 inferActionBind :: Context -> Bind -> TC (Context, Subst)
+inferActionBind g (Bind (MacroExpansionBP p _) bod) = inferActionBind g (Bind p bod)
 inferActionBind g (Bind (Direct (MacroExpansionTP p _)) bod) = inferActionBind g (Bind (Direct p) bod)
 inferActionBind g (Bind (Direct (MatchP (MacroExpansionP p _))) bod) = inferActionBind g (Bind (Direct (MatchP p)) bod)
 inferActionBind g (Bind (Direct (LazyP n p)) bod) = do
@@ -166,6 +167,7 @@ inferActionBind g (Bind (FunP n _ lams) bod) = do
 inferActionBind g (Bind (Direct (MatchP p)) bod) = typeError (patternPos p) [StrE "Action binding cannot use a pattern of the form", PtnE p]
 
 inferBind :: Context -> Bind -> TC (Context, Subst)
+inferBind g (Bind (MacroExpansionBP p _) bod) = inferBind g (Bind p bod)
 inferBind g (Bind (Direct (MacroExpansionTP p _)) bod) = inferBind g (Bind (Direct p) bod)
 inferBind g (Bind (Direct (LazyP n _)) bod) = do
   (t, s) <- inferExp g bod
@@ -283,7 +285,7 @@ inferTopLevels g (Binding _ b : rest) = do
 inferTopLevels g (ActionDecl _ b : rest) = do
   g' <- runTC (fst <$> inferActionBind g b)
   inferTopLevels g' rest
-inferTopLevels g (Imported t ts : rest) = do
+inferTopLevels g (Imported _ t ts : rest) = do
   g' <- inferTopLevels g ts
   inferTopLevels g' rest
 inferTopLevels g (Properties pos g1 g2 Nothing : rest) = inferTopLevels g rest

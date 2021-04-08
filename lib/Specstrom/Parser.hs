@@ -2,16 +2,16 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE TupleSections #-}
 
-module Specstrom.Parser where
-
+module Specstrom.Parser(loadImmediate, ParseError(..), loadModule, Table, builtIns, parseTopLevel, GrammarResult) where
 import Control.Applicative
 import Control.Monad.Except
 import Data.Bifunctor (first)
+import Data.Bitraversable
 import qualified Data.HashMap.Strict as M
-import Data.List (intersperse, nub, (\\))
+import Data.List (nub, (\\))
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe
-import Data.Text (Text, splitOn)
+import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Specstrom.Lexer
@@ -31,20 +31,12 @@ holey t =
         (i, rest) = Text.span (/= '_') t
 
 data ParseError
-  = MalformedSyntaxDeclaration Position
-  | SyntaxAlreadyDeclared Name Position
-  | ExpectedPattern (Expr TopPattern)
-  | ExpectedPattern' (Expr TempExpr)
-  | ExpectedSemicolon Position
-  | ExpectedSemicolonOrWhen Position
+  = SyntaxAlreadyDeclared Name Position
+  | ExpectedPattern (Expr TempExpr)
   | InvalidMacroLHS Position
-  | ExpectedEquals Position
-  | ExpectedWith Position
-  | ExpectedModuleName Position
   | ExpectedGot Position [Text] Token
-  | ExpressionAmbiguous (NonEmpty (Expr TempExpr))
+  | Ambiguous (NonEmpty GrammarResult)
   | DuplicatePatternBinding Position [Text]
-  | TrailingGarbage Position Token
   | LexerFailure LexerError
   | ModuleNotFound Position Text
   deriving (Show)
@@ -92,13 +84,6 @@ builtIns =
         [("~_", NonAssoc)]
       ]
 
-parseGlob :: [(Position, Token)] -> Either ParseError ([(Position, Token)], Glob)
-parseGlob ((_p, Ident n) : rest) | n `notElem` ["with", "when", ";"] = do
-  fmap (asGlobTerm n :) <$> parseGlob rest
-  where
-    asGlobTerm _n = filter (/= Just "") $ intersperse Nothing (map Just (splitOn "*" n))
-parseGlob rest = Right (rest, [])
-
 wrap :: Either ParseError a -> ExceptT ParseError IO a
 wrap = ExceptT . pure
 
@@ -116,115 +101,10 @@ loadModule search p n t = do
           (t', inc) <- parseTopLevel search t toks
           pure (t', inc)
 
-loadImmediate :: Int -> [FilePath] -> Table -> Text -> ExceptT ParseError IO (Table, [TopLevel])
+loadImmediate :: Int -> [FilePath] -> Table -> Text -> ExceptT ParseError IO (Table, Either [TopLevel] (Expr TopPattern))
 loadImmediate lno search t txt = case lexer ("<immediate>", lno, 1) txt of
   Left e -> throwError $ LexerFailure e
-  Right toks -> parseTopLevel search t toks
-
-immediateExpr :: Int -> Table -> Text -> Either ParseError (Expr TopPattern)
-immediateExpr line tbl txt = case lexer ("<immediate>", line, 1) txt of
-  Left e -> throwError $ LexerFailure e
-  Right toks -> snd <$> parseExpressionTo EOF tbl toks
-
-parseTopLevel :: [FilePath] -> Table -> [(Position, Token)] -> ExceptT ParseError IO (Table, [TopLevel])
-parseTopLevel search t ((p, DocTok doc) : ts) = do
-  (t', tls) <- parseTopLevel search t ts
-  pure $ case tls of
-    (DocBlock ds : rest) -> (t', DocBlock (doc : ds) : rest)
-    (MacroDecl ds mac args bod : rest) -> (t', MacroDecl (doc : ds) mac args bod : rest)
-    (SyntaxDecl ds a b c : rest) -> (t', SyntaxDecl (doc : ds) a b c : rest)
-    (ActionDecl ds b : rest) -> (t', ActionDecl (doc : ds) b : rest)
-    (Binding ds b : rest) -> (t', Binding (doc : ds) b : rest)
-    _ -> (t', DocBlock [doc] : tls)
-parseTopLevel search t ((p, Ident "import") : ts) = case ts of
-  ((_, StringLitTok n) : ts') -> case ts' of
-    ((_, Ident ";") : ts'') -> do
-      (t', inc) <- loadModule search p n t
-      fmap (Imported n inc :) <$> parseTopLevel search t' ts''
-    ((p', _) : _) -> throwError $ ExpectedSemicolon p'
-    [] -> error "impossible?"
-  ((_, Ident n) : ts') -> case ts' of
-    ((_, Ident ";") : ts'') -> do
-      (t', inc) <- loadModule search p n t
-      fmap (Imported n inc :) <$> parseTopLevel search t' ts''
-    ((p', _) : _) -> throwError $ ExpectedSemicolon p'
-    [] -> error "impossible?"
-  ((p', _) : _) -> throwError $ ExpectedModuleName p'
-  [] -> error "impossible?"
-parseTopLevel search t ((p, Ident "macro") : ts) = do
-  (ts', mac) <- wrap (parseExpressionTo' (Ident "=") t ts)
-  let fromVar x = case x of Var _ n -> Just n; _ -> Nothing
-  case peelAps mac [] of
-    (Var _ macroName, args) | Just args' <- mapM fromVar args,
-                              args' == nub args' ->
-      case ts' of
-        ((_, Ident "=") : ts'') -> do
-          (rest, body) <- wrap (parseExpressionTo' (Ident ";") t ts'')
-          case rest of
-            ((_, Ident ";") : rest') ->
-              let t' = t {macros = M.insert macroName (args', body) (macros t)}
-               in fmap (MacroDecl [] mac args' body :) <$> parseTopLevel search t' rest'
-            ((p', _) : _) -> throwError $ ExpectedSemicolon p'
-            [] -> error "impossible?"
-        ((p', _) : _) -> throwError $ ExpectedEquals p'
-        [] -> error "impossible?"
-    _ -> throwError $ InvalidMacroLHS p
-parseTopLevel search t ((p, Ident "syntax") : ts) = do
-  (d, (ts', t')) <- wrap (parseSyntax t p ts)
-  fmap (d :) <$> parseTopLevel search t' ts'
-parseTopLevel search t ((p, Ident "let") : ts) = do
-  (rest, b) <- wrap (parseBind t p ts)
-  fmap (Binding [] b :) <$> parseTopLevel search t rest
-parseTopLevel search t ((p, Ident "action") : ts) = do
-  (rest, b@(Bind pat _)) <- wrap (parseBind t p ts)
-  let t' = t {actionNames = bindPatternBoundVars pat ++ actionNames t}
-  fmap (ActionDecl [] b :) <$> parseTopLevel search t' rest
-parseTopLevel search t ((p, Ident "check") : ts) = do
-  (rest, g1) <- wrap (parseGlob ts)
-  case rest of
-    ((_, Ident "with") : ts') -> do
-      (rest', g2) <- wrap (parseGlob ts')
-      case rest' of
-        ((_, Ident "when") : ts'') -> do
-          (rest'', g3) <- wrap (parseExpressionTo (Ident ";") t ts'')
-          case rest'' of
-            ((_, Ident ";") : rest''') -> fmap (Properties p g1 g2 (Just g3) :) <$> parseTopLevel search t rest'''
-            ((p', _) : _) -> throwError $ ExpectedSemicolon p
-            [] -> error "impossible?"
-        ((_, Ident ";") : rest'') -> fmap (Properties p g1 g2 Nothing :) <$> parseTopLevel search t rest''
-        ((p', _) : _) -> throwError $ ExpectedSemicolonOrWhen p'
-        [] -> error "impossible?"
-    ((p', _) : _) -> throwError $ ExpectedWith p'
-    [] -> error "impossible?"
-parseTopLevel search t [] = pure (t, [])
-parseTopLevel search t [(p, EOF)] = pure (t, [])
-parseTopLevel search t ((p, tok) : ts) = throwError $ TrailingGarbage p tok
-
-parseBind :: Table -> Position -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Bind)
-parseBind t p ts = do
-  (ts', pat) <- parseBindPattern t ts
-  case ts' of
-    ((_, Ident "=") : ts'') -> do
-      (rest, body) <- parseExpressionTo (Ident ";") t ts''
-      case rest of
-        ((_, Ident ";") : rest') -> Right (rest', Bind pat body)
-        ((p', _) : _) -> Left $ ExpectedSemicolon p'
-        [] -> error "impossible?"
-    ((p', _) : _) -> Left $ ExpectedEquals p'
-    [] -> error "impossible?"
-
-parseSyntax :: Table -> Position -> [(Position, Token)] -> Either ParseError (TopLevel, ([(Position, Token)], Table))
-parseSyntax t p ts = do
-  let isIdent x = case x of Ident {} -> True; _ -> False
-      fromIdent x = case x of Ident i -> i; _ -> error "Impossible"
-  (n, assoc, i, ts') <- case span (isIdent . snd) ts of
-    (ids@(_ : _), (_, IntLitTok i) : (_, Ident ";") : ts') -> pure (map (fromIdent . snd) ids, NonAssoc, i, ts')
-    (ids@(_ : _), (_, IntLitTok i) : (_, Ident "left") : (_, Ident ";") : ts') -> pure (map (fromIdent . snd) ids, LeftAssoc, i, ts')
-    (ids@(_ : _), (_, IntLitTok i) : (_, Ident "right") : (_, Ident ";") : ts') -> pure (map (fromIdent . snd) ids, RightAssoc, i, ts')
-    _ -> Left $ MalformedSyntaxDeclaration p
-  if i < 0
-    then (SyntaxDecl [] n i assoc,) <$> (insertSyntax p n (- i) assoc (reverse $ negativeHoles t) >>= \t' -> Right (ts', t {negativeHoles = reverse t'}))
-    else (SyntaxDecl [] n i assoc,) <$> (insertSyntax p n i assoc (positiveHoles t) >>= \t' -> Right (ts', t {positiveHoles = t'}))
+  Right toks -> parseTL True search t toks
 
 insertSyntax :: Position -> [Name] -> Int -> Associativity -> [[(Holey Text, Associativity)]] -> Either ParseError [[(Holey Text, Associativity)]]
 insertSyntax p n i a t
@@ -235,23 +115,23 @@ insertSyntax p n i a t
     go n' (r : rs) = r : (go (n' -1) rs)
     go n' [] = go n' [[]]
 
-parseBindPattern :: Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], BindPattern)
-parseBindPattern t ts = do
-  (ts', e) <- parseExpressionTo (Ident "=") t ts
+bindPatFromExpr :: [Name] -> Expr TempExpr -> Either ParseError BindPattern
+bindPatFromExpr acts (MacroExpansion e' e) = (flip MacroExpansionBP e) <$> bindPatFromExpr acts e'
+bindPatFromExpr acts e = do
   case peelAps e [] of
     (Var p n, es) | not (null es),
                     n /= "~_",
-                    n `notElem` (actionNames t) -> do
-      es' <- mapM (patFromExpr (actionNames t)) es
+                    n `notElem` acts -> do
+      es' <- mapM (patFromExpr acts) es
       let ns = concatMap topPatternVars es'
           uniques = nub ns
           dupes = ns \\ uniques
       if uniques /= ns
         then Left (DuplicatePatternBinding p dupes)
-        else pure (ts', FunP n p es')
+        else pure (FunP n p es')
     _ -> do
-      p <- patFromExpr (actionNames t) e
-      pure (ts', Direct p)
+      p <- patFromExpr acts e
+      pure (Direct p)
 
 patFromAnyExpr :: [Name] -> Expr e -> Maybe TopPattern
 patFromAnyExpr ns (MacroExpansion p e) = MacroExpansionTP <$> patFromAnyExpr ns p <*> pure e
@@ -275,15 +155,10 @@ patFromAnyExpr ns e = MatchP <$> helper ns e
       _ -> Nothing
     helper t _ = Nothing
 
-patFromExpr :: [Name] -> Expr TopPattern -> Either ParseError TopPattern
+patFromExpr :: [Name] -> Expr TempExpr -> Either ParseError TopPattern
 patFromExpr t e = case patFromAnyExpr t e of
   Just e' -> pure e'
   Nothing -> Left $ ExpectedPattern e
-
-patFromExpr' :: [Name] -> Expr TempExpr -> Either ParseError TopPattern
-patFromExpr' t e = case patFromAnyExpr t e of
-  Just e' -> pure e'
-  Nothing -> Left $ ExpectedPattern' e
 
 macroExpand' :: M.HashMap Name (Expr TempExpr) -> M.HashMap Name ([Name], Expr TempExpr) -> TempExpr -> Either ParseError TempExpr
 macroExpand' locs env (E t) = E <$> macroExpand locs env t
@@ -308,27 +183,78 @@ macroExpand locs env expr = case expr of
   (Var p name) -> pure $ Var p name
   App e1 e2 -> App <$> macroExpand locs env e1 <*> macroExpand locs env e2
 
-parseExpressionTo' :: Token -> Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Expr TempExpr)
-parseExpressionTo' terminator t ts =
-  case allParses (parser $ grammar t) ts of
+parseTopLevel :: [FilePath] -> Table -> [(Position, Token)] -> ExceptT ParseError IO (Table, [TopLevel])
+parseTopLevel search t toks = fmap (\(Left e) -> e) <$> parseTL False search t toks 
+
+parseTL :: Bool -> [FilePath] -> Table -> [(Position, Token)] -> ExceptT ParseError IO (Table, Either [TopLevel] (Expr TopPattern))
+parseTL repl search t ((_,EOF):_) = pure (t, Left [])
+parseTL repl search t ts = do
+  (ts', etl) <- wrap (parseTL' repl t ts)
+  let handle tl = case tl of 
+        SyntaxDecl ds p toks i assoc -> do 
+          t' <- wrap $ if i < 0 then insertSyntax p toks (- i) assoc (reverse $ negativeHoles t) >>= \t' -> pure $ t {negativeHoles = reverse t'}
+                                else insertSyntax p toks i assoc (positiveHoles t) >>= \t' -> pure $ t {positiveHoles = t'}
+          fmap (SyntaxDecl ds p toks i assoc:) <$> parseTopLevel search t' ts'
+        Binding ds bind@(Bind pat bod) -> do
+          bind' <- wrap (Bind <$> macroEx pat <*> macroEx bod)
+          bind''@(Bind pat' _) <- wrap $ bitraverse interpretP interpretBP bind'
+          fmap (Binding ds bind'':) <$> parseTopLevel search t ts'  
+        ActionDecl ds bind@(Bind pat bod) -> do
+          bind' <- wrap (Bind <$> macroEx pat <*> macroEx bod)
+          bind''@(Bind pat' _) <- wrap $ bitraverse interpretP interpretBP bind'
+          let t' = t {actionNames = bindPatternBoundVars pat' ++ actionNames t}
+          fmap (ActionDecl ds bind'':) <$> parseTopLevel search t' ts'
+        MacroDecl ds e1 as e2 -> do 
+          let fromVar x = case x of Var _ n -> Just n; _ -> Nothing
+          case peelAps e1 [] of
+             (Var _ macroName, args) | Just args' <- mapM fromVar args,
+                                       args' == nub args' -> do
+                                          let t' = t {macros = M.insert macroName (args', e2) (macros t)}
+                                          fmap (MacroDecl ds e1 args' e2:) <$> parseTopLevel search t' ts'
+             _ -> throwError $ InvalidMacroLHS (exprPos e1)
+        Properties p g1 g2 e -> do 
+          e' <- wrap (traverse (macroEx >=> traverse interpretP) e)
+          fmap (Properties p g1 g2 e':) <$> parseTopLevel search t ts'
+        DocBlock doc -> if Text.take 1 (head doc) == "#" then  fmap (DocBlock doc:) <$> parseTopLevel search t ts'
+                       else parseTopLevel search t ts' >>= \x -> pure $ case x of
+                         (t',DocBlock ds : rest) -> (t', DocBlock (doc ++ ds) : rest)
+                         (t',MacroDecl ds mac args bod : rest) -> (t', MacroDecl (doc ++ ds) mac args bod : rest)
+                         (t',SyntaxDecl ds p a b c : rest) -> (t', SyntaxDecl (doc ++ ds) p a b c : rest)
+                         (t',ActionDecl ds b : rest) -> (t', ActionDecl (doc ++ ds) b : rest)
+                         (t',Binding ds b : rest) -> (t', Binding (doc ++ ds) b : rest)
+                         (t',rest) -> (t', DocBlock doc:rest) 
+        Imported p n _ -> do 
+          (t', inc) <- loadModule search p n t
+          fmap (Imported p n inc:) <$> parseTopLevel search t' ts'
+  case etl of 
+    Left tl -> fmap Left <$> handle tl
+    Right e -> (t,) . Right <$> wrap (macroEx e >>= traverse interpretP)
+  where 
+    macroEx :: Expr TempExpr -> Either ParseError (Expr TempExpr)
+    macroEx = macroExpand mempty (macros t)
+
+    interpretP :: TempExpr -> Either ParseError TopPattern 
+    interpretP (E e) = patFromExpr (actionNames t) e
+
+    interpretBP :: Expr TempExpr -> Either ParseError BindPattern
+    interpretBP e = bindPatFromExpr (actionNames t) e
+
+parseTL' :: Bool -> Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], GrammarResult)
+parseTL' repl t ts =
+  case allParses (parser $ fmap (if repl then fst else snd) $ grammar t) ts of
     ([], r) -> case unconsumed r of
       ((p, t') : _) -> Left (ExpectedGot p (expected r) t')
       [] -> Left (ExpectedGot dummyPosition (expected r) EOF) -- not sure how this happens
-    (ls, r) ->
-      let i = maximum (map snd ls)
-       in case map fst (filter ((== i) . snd) ls) of
-            [] -> error "impossible"
-            [one] -> let ts' = drop i ts in pure (ts', one)
-            (e : es) -> Left (ExpressionAmbiguous (e :| es))
+    (ls, r) -> let i = maximum (map snd ls)
+                in case map fst (filter ((== i) . snd) ls) of
+                     [] -> error "impossible"
+                     [one] -> let ts' = drop i ts in pure (ts', one)
+                     (e : es) -> Left (Ambiguous (e :| es))
 
-parseExpressionTo :: Token -> Table -> [(Position, Token)] -> Either ParseError ([(Position, Token)], Expr TopPattern)
-parseExpressionTo terminator t ts = do
-  (ts', one) <- parseExpressionTo' terminator t ts
-  one' <- macroExpand mempty (macros t) one
-  (ts',) <$> traverse (\(E e) -> patFromExpr' (actionNames t) e) one'
-
-grammar :: Table -> Grammar r (Prod r Text (Position, Token) (Expr TempExpr))
+type GrammarResult = Either (TopLevel' TempExpr (Expr TempExpr)) (Expr TempExpr)
+grammar :: Table -> Grammar r (Prod r Text (Position, Token) GrammarResult, Prod r Text (Position, Token) GrammarResult)
 grammar table = mdo
+  intLit <- rule $ terminal (\t -> case t of (p, IntLitTok s) -> Just s; _ -> Nothing)
   literal <-
     rule $
       terminal (\t -> case t of (p, StringLitTok s) -> Just $ Literal p (StringLit s); _ -> Nothing)
@@ -363,7 +289,22 @@ grammar table = mdo
         <|> ((app <$> normalApp <* lparen <*> argList <* rparen) <?> "function application")
   expr' <- mixfixExpression tbl normalApp makeAp
   expr <- rule $ expr' <?> "expression"
-  return expr
+  associativity <- rule $    LeftAssoc <$ identToken "left" 
+                        <|>  RightAssoc <$ identToken "right"
+                        <|> pure NonAssoc
+  glob <- rule $
+      (:) <$> many globName <*> (identToken "," *> glob <|> pure [])
+  topLevel <- rule $ SyntaxDecl [] . fst <$> identToken "syntax" <*> many rawName <*> intLit <*> associativity <* semicolon
+          <|> ActionDecl [] <$ identToken "action" <*> (Bind <$> expr <* identToken "=" <*> expr <* semicolon)
+          <|> Binding [] <$ identToken "let" <*> (Bind <$> expr <* identToken "=" <*> expr <* semicolon)
+          <|> MacroDecl [] <$ identToken "macro" <*> expr <*> pure [] <* identToken "=" <*> expr <* semicolon
+          <|> Properties . fst <$> identToken "check" <*> glob <* identToken "with" <*> glob <*> (Just <$ identToken "when" <*> expr <* semicolon <|> Nothing <$ semicolon)
+          <|> Imported . fst <$> identToken "import" <*> (mconcat <$> many importName) <*> pure [] <* semicolon
+          <|> DocBlock . pure <$> docToken
+          <?> "Top level declaration"
+  replCommand <- rule $ Left <$> topLevel <|> Right <$> expr <* eofTok       
+  topLevel' <- rule $ Left <$> topLevel
+  return (replCommand, topLevel')
   where
     app x [] = x
     app f (x : xs) = app (App f x) xs
@@ -378,19 +319,34 @@ grammar table = mdo
     rbrace = identToken "}"
     lbrack = identToken "["
     rbrack = identToken "]"
+    eofTok = satisfy ((== EOF) . snd) <?> "end of file"
     lparen = satisfy ((== LParen) . snd) <?> "left parenthesis"
     rparen = satisfy ((== RParen) . snd) <?> "right parenthesis"
     colon = satisfy ((== Ident ":") . snd) <?> "colon"
+    semicolon = satisfy ((== Ident ";") . snd) <?> "semicolon"
     identToken s = isToken (Ident s) s
     isToken s t = satisfy ((== s) . snd) <?> t
     projection = terminal $ \(p, t) ->
       case t of
         ProjectionTok s -> pure s
         _ -> Nothing
+    docToken = terminal $ \(p, t) ->
+      case t of
+        DocTok s -> pure s
+        _ -> Nothing    
+    globName = terminal $ \(p, t) ->
+      case t of
+        Ident "*" -> pure Nothing
+        Ident s | s `notElem` [",","with","when"] -> pure (Just s)
+        _ -> Nothing    
     rawName = terminal $ \(p, t) ->
       case t of
         Ident s -> pure s
         _ -> Nothing
+    importName = terminal $ \(p, t) ->
+      case t of
+        Ident s | s `notElem` [";",","] -> pure s
+        _ -> Nothing        
     symbol = Symbol . fst <$> colon <*> rawName
     variable = terminal $ \(p, t) ->
       case t of

@@ -58,12 +58,10 @@ loop lno opts tbl g e e' s ae = flip catch (\err -> liftIO (renderIO stderr (lay
     Just x -> do
       r <- liftIO $ runExceptT (Parser.loadImmediate lno (searchPaths opts) tbl $ pack x)
       case r of
-        Left err' -> case Parser.immediateExpr lno tbl (pack x) of
-          Left err -> do
-            liftIO $ renderIO stderr (layoutPretty defaultLayoutOptions (prettyParseError err <> line))
-            liftIO $ renderIO stderr (layoutPretty defaultLayoutOptions (prettyParseError err' <> line))
-            loop lno opts tbl g e e' s ae
-          Right expr -> case TypeInf.inferExpImmediate g expr of
+        Left err -> do 
+          liftIO $ renderIO stderr (layoutPretty defaultLayoutOptions (prettyParseError err <> line))
+          loop lno opts tbl g e e' s ae
+        Right (tbl2, Right expr) -> case TypeInf.inferExpImmediate g expr of
             Left err -> do
               liftIO $ renderIO stderr (layoutPretty defaultLayoutOptions (prettyTypeError err <> line))
               loop lno opts tbl g e e' s ae
@@ -76,8 +74,8 @@ loop lno opts tbl g e e' s ae = flip catch (\err -> liftIO (renderIO stderr (lay
                 else return ()
               val <- liftIO $ (Evaluator.deepForce s =<< Evaluator.evaluate s e expr)
               liftIO $ renderIO stdout (layoutPretty defaultLayoutOptions (prettyValue val <> line))
-              loop lno opts tbl g e e' s ae
-        Right (tbl2, tls) -> do
+              loop lno opts tbl2 g e e' s ae  
+        Right (tbl2, Left tls) -> do
           case TypeInf.inferTopLevels g tls of
             Left err -> do
               liftIO $ renderIO stderr (layoutPretty defaultLayoutOptions (prettyTypeError err <> line))
@@ -102,7 +100,7 @@ checkTopLevel evalEnv actionEnv analysisEnv tl = case tl of
     evalEnv' <- Evaluator.evaluateActionBind evalEnv b
     let analysisEnv' = Analysis.analyseBind analysisEnv b
     pure (evalEnv', actionEnv', analysisEnv')
-  Imported _ ts' -> do
+  Imported _ _ ts' -> do
     (e', acte', ae') <- checkTopLevels evalEnv actionEnv analysisEnv ts'
     pure (e', acte', ae')
   Properties {} -> pure (evalEnv, actionEnv, analysisEnv)

@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Specstrom.PrettyPrinter where
 
@@ -75,28 +76,20 @@ prettyLexerError (UnterminatedSelectorLit p) = errorMessage p "no closing backti
 prettyParseError :: ParseError -> Doc AnsiStyle
 prettyParseError (LexerFailure e) = prettyLexerError e
 prettyParseError (ModuleNotFound p n) = errorMessage p "module not found" [ident n]
-prettyParseError (MalformedSyntaxDeclaration p) = errorMessage p "malformed syntax declaration" []
 prettyParseError (SyntaxAlreadyDeclared n p) = errorMessage p "syntax already declared:" [ident n]
 prettyParseError (InvalidMacroLHS p) = errorMessage p "Invalid macro definition" []
 prettyParseError (ExpectedPattern e) = errorMessage (exprPos e) "expected pattern, got:" [prettyExpr e]
-prettyParseError (ExpectedPattern' e) = errorMessage (exprPos e) "expected pattern, got:" [prettyExpr e]
-prettyParseError (ExpectedSemicolon p) = errorMessage p "expected semicolon." []
-prettyParseError (ExpectedSemicolonOrWhen p) = errorMessage p "expected semicolon or 'when'." []
-prettyParseError (ExpectedEquals p) = errorMessage p "expected equals sign." []
-prettyParseError (ExpectedModuleName p) = errorMessage p "expected module name." []
-prettyParseError (ExpectedWith p) = errorMessage p "expected 'with'." []
 prettyParseError (ExpectedGot p s t) =
   errorMessage
     p
     "expected one of:"
     [sep (punctuate comma (map pretty s)), annotate (bold <> color Red) "but got:", prettyToken t]
-prettyParseError (ExpressionAmbiguous (e :| es)) =
-  errorMessage (exprPos e) "ambiguous expression; can be parsed as:" $
-    punctuate (line <> annotate (bold <> color Red) "or:") (map prettyExpr (e : es))
+prettyParseError (Ambiguous (e :| es)) =
+  errorMessage (either (tlPos exprPos) exprPos e) "ambiguous expression; can be parsed as:" $
+    punctuate (line <> annotate (bold <> color Red) "or:") (map (either prettyToplevel prettyExpr) (e : es))
 prettyParseError (DuplicatePatternBinding p [b]) = errorMessage p "duplicate bound variable in pattern:" [pretty b]
 prettyParseError (DuplicatePatternBinding p bs) =
   errorMessage p "duplicate bound variables in pattern:" [sep (punctuate comma (map pretty bs))]
-prettyParseError (TrailingGarbage p t) = errorMessage p "trailing tokens in file:" [prettyToken t]
 
 prettyToken :: Token -> Doc AnsiStyle
 prettyToken (Ident s) = ident s
@@ -111,22 +104,22 @@ prettyToken (DocTok str) = docStyle $ "///" <> pretty str
 prettyToken RParen = ")"
 prettyToken EOF = "EOF"
 
-prettyBind :: Bind -> Doc AnsiStyle
+prettyBind :: (PrettyPattern p, PrettyPattern q) => Bind' p q -> Doc AnsiStyle
 prettyBind b = keyword "let" <+> prettyBind' b
 
-prettyBindBrief :: Bind -> Doc AnsiStyle
-prettyBindBrief (Bind bp ps) = prettyBindPattern bp
+prettyBindBrief :: (PrettyPattern p, PrettyPattern q) => Bind' p q -> Doc AnsiStyle
+prettyBindBrief (Bind bp ps) = prettyPattern bp
 
-prettyBind' :: Bind -> Doc AnsiStyle
+prettyBind' :: (PrettyPattern p, PrettyPattern q) => Bind' p q -> Doc AnsiStyle
 prettyBind' (Bind bp bs) =
-  prettyBindPattern bp
+  prettyPattern bp
     <+> nest
       3
       ( keyword "=" <> softline
           <> (prettyExpr bs <> keyword ";")
       )
 
-prettyAll :: [TopLevel] -> Doc AnsiStyle
+prettyAll :: (PrettyPattern p, PrettyPattern q) => [TopLevel' p q] -> Doc AnsiStyle
 prettyAll = vcat . map prettyToplevel
 
 prettyGlob :: Glob -> Doc AnsiStyle
@@ -146,15 +139,15 @@ prettyToplevelHeader (Binding docs b) = prettyBindBrief b
 prettyToplevelHeader (DocBlock docs) = ""
 prettyToplevelHeader (ActionDecl docs b) = prettyBindBrief b
 prettyToplevelHeader (MacroDecl docs lhs _vars _rhs) = prettyExpr lhs
-prettyToplevelHeader (SyntaxDecl docs tokens lv assoc) = hsep (map pretty tokens) <+> prettyLit (IntLit lv) <+> prettyAssoc assoc <> keyword ";"
-prettyToplevelHeader (Imported i bs) = literal (pretty i) <> keyword ";"
+prettyToplevelHeader (SyntaxDecl docs _ tokens lv assoc) = hsep (map pretty tokens) <+> prettyLit (IntLit lv) <+> prettyAssoc assoc <> keyword ";"
+prettyToplevelHeader (Imported _ i bs) = literal (pretty i) <> keyword ";"
 
 prettyAssoc :: Associativity -> Doc AnsiStyle
 prettyAssoc LeftAssoc = "left"
 prettyAssoc RightAssoc = "right"
 prettyAssoc _ = ""
 
-prettyToplevel :: TopLevel -> Doc AnsiStyle
+prettyToplevel :: (PrettyPattern p, PrettyPattern q) => TopLevel' p q -> Doc AnsiStyle
 prettyToplevel (Properties _p g1 g2 g3) =
   keyword "check" <+> prettyGlob g1 <+> keyword "with" <+> prettyGlob g2
     <> maybe mempty ((space <>) . (keyword "when" <+>) . prettyExpr) g3
@@ -166,11 +159,11 @@ prettyToplevel (MacroDecl docs lhs _vars rhs) =
   vcat $
     map prettyDocs docs
       ++ [keyword "macro" <+> prettyExpr lhs <+> keyword "=" <+> prettyExpr rhs <> keyword ";"]
-prettyToplevel (SyntaxDecl docs tokens lv assoc) =
+prettyToplevel (SyntaxDecl docs _ tokens lv assoc) =
   vcat $
     map prettyDocs docs
       ++ [keyword "syntax" <+> hsep (map pretty tokens) <+> prettyLit (IntLit lv) <+> prettyAssoc assoc <> keyword ";"]
-prettyToplevel (Imported i bs) = keyword "import" <+> literal (pretty i) <> keyword ";" <> line <> indent 2 (prettyAll bs)
+prettyToplevel (Imported _ i bs) = keyword "import" <+> literal (pretty i) <> keyword ";" <> line <> indent 2 (prettyAll bs)
 
 prettyLit :: Lit -> Doc AnsiStyle
 prettyLit (CharLit s) = literal (pretty (show s))
@@ -197,6 +190,7 @@ patternToExpr (ActionP n p ps) = unpeelAps (Var p n) (map patternToExpr ps)
 patternToExpr (SymbolP n p ps) = unpeelAps (Symbol p n) (map patternToExpr ps)
 
 bindPatternToExpr :: BindPattern -> Expr TempExpr
+bindPatternToExpr (MacroExpansionBP _ e) = e
 bindPatternToExpr (FunP n p ps) = unpeelAps (Var p n) (map topPatternToExpr ps)
 bindPatternToExpr (Direct p) = topPatternToExpr p
 
@@ -209,11 +203,14 @@ instance PrettyPattern TopPattern where
 instance PrettyPattern Pattern where
   prettyPattern p = prettyExpr (patternToExpr p)
 
+instance PrettyPattern (Expr TempExpr) where
+  prettyPattern p = prettyExpr p
+  
 instance PrettyPattern TempExpr where
   prettyPattern (E e) = prettyExpr e
 
-prettyBindPattern :: BindPattern -> Doc AnsiStyle
-prettyBindPattern p = prettyExpr (bindPatternToExpr p)
+instance PrettyPattern BindPattern where
+  prettyPattern p = prettyExpr (bindPatternToExpr p)
 
 prettyExpr :: (PrettyPattern p) => Expr p -> Doc AnsiStyle
 prettyExpr trm = renderTerm True trm

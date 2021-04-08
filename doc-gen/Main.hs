@@ -90,12 +90,12 @@ generateDocs base path out reader ls ctx = do
         let docdiv = if null doc then Div ("", ["bottom"], []) [] else Div ("", ["docs"], []) doc
         let header' = P.renderStrict (P.layoutCompact (prettyToplevelHeader tl))
         (Div ("", ["macro-binding"], []) [Div ("", ["header"], []) [Plain [Strong [Str "macro"], Space, Span ("", ["term"], []) [Str header']]], Plain (map (\n -> Span (n, [], []) []) name), docdiv] :) <$> go rest
-      go (tl@(SyntaxDecl docs _ _ _) : rest) = do
+      go (tl@(SyntaxDecl docs _ _ _ _) : rest) = do
         Pandoc _ doc <- rd ros (T.unlines docs)
         let docdiv = if null doc then Div ("", ["bottom"], []) [] else Div ("", ["docs"], []) doc
         let header' = P.renderStrict (P.layoutCompact (prettyToplevelHeader tl))
         (Div ("", ["syntax-decl"], []) [Div ("", ["header"], []) [Plain [Strong [Str "syntax"], Space, Span ("", ["term"], []) [Str header']]], docdiv] :) <$> go rest
-      go (Imported f tls : rest) = do
+      go (Imported _ f tls : rest) = do
         generateDocs base (T.unpack f) out reader tls ctx
         (Div ("", ["import"], []) [Div ("", ["header"], []) [Plain [Strong [Str "import"], Space, Link ("", [], []) [Str f] (T.pack (T.unpack base </> T.unpack f <.> "html"), "")]]] :) <$> go rest
       go (tl : rest) = do

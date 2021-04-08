@@ -80,6 +80,7 @@ analyseBodyWithParams g (p : ps) b = Function f
     f a = withAnalysePatternLocal a p g $ \g' -> analyseBodyWithParams g' ps b
 
 analyseBind :: AnalysisEnv -> Bind -> AnalysisEnv
+analyseBind g (Bind (MacroExpansionBP e _) body) = analyseBind g (Bind e body)
 analyseBind g (Bind (Direct pat) body) = analysePatternLet (analyseExpr g body) pat g
 analyseBind g (Bind (FunP n _ pats) body) =
   let a = analyseBodyWithParams g pats body
@@ -162,7 +163,7 @@ analyseTopLevels = foldl' toAnalysisEnv builtIns
     toAnalysisEnv env = \case
       Binding _ b -> analyseBind env b
       ActionDecl _ b -> analyseBind env b
-      Imported _ ts' -> foldl' toAnalysisEnv env ts'
+      Imported _ _ ts' -> foldl' toAnalysisEnv env ts'
       Properties {} -> env
       DocBlock {} -> env
       SyntaxDecl {} -> env

@@ -171,6 +171,7 @@ evaluateBind s g b = evaluateBind' s g g b
 
 evaluateActionBind :: Env -> Bind -> Eval Env
 evaluateActionBind g (Bind (Direct (MacroExpansionTP pat _)) bod) = evaluateActionBind g (Bind (Direct pat) bod)
+evaluateActionBind g (Bind (MacroExpansionBP pat _) bod) = evaluateActionBind g (Bind pat bod)
 evaluateActionBind g (Bind (Direct (MatchP (MacroExpansionP pat _))) bod) = evaluateActionBind g (Bind (Direct (MatchP pat)) bod)
 evaluateActionBind g (Bind (Direct (MatchP (VarP n _))) _) = pure (M.insert n (Action n [] Nothing) g)
 evaluateActionBind g (Bind (Direct (LazyP n _)) _) = pure (M.insert n (Action n [] Nothing) g)
@@ -179,6 +180,7 @@ evaluateActionBind g (Bind _ _) = evalError "impossible"
 
 evaluateBind' :: State -> Env -> Env -> Bind -> Eval Env
 evaluateBind' s g g' (Bind (Direct (MacroExpansionTP pat _)) bod) = evaluateBind' s g g' (Bind (Direct pat) bod)
+evaluateBind' s g g' (Bind (MacroExpansionBP pat _) bod) = evaluateBind' s g g' (Bind pat bod)
 evaluateBind' s g g' (Bind (Direct (MatchP (MacroExpansionP pat _))) bod) = evaluateBind' s g g' (Bind (Direct (MatchP pat)) bod)
 evaluateBind' s g g' (Bind (Direct (LazyP n _)) e) = M.insert n <$> delayedEvaluate s g' e <*> pure g
 evaluateBind' s g g' (Bind (Direct (MatchP pat)) e) = do
@@ -251,7 +253,7 @@ delayedEvaluate s g e = Thunk <$> newThunk g e
 
 appAll :: State -> Value -> [Value] -> Eval Value
 appAll s v [] = pure v
-appAll s v (x : xs) = force s v >>= \v' -> app s v' x >>= \v' -> appAll s v' xs
+appAll s v (x : xs) = force s v >>= \v' -> app s v' x >>= \v'' -> appAll s v'' xs
 
 -- if the next argument to this thing should be delayed or not
 isLazy :: Value -> Bool
@@ -299,7 +301,7 @@ app s v v2 =
         Nothing -> pure Null
         Just g'' -> pure (Closure (n, p, ai + 1) g'' pats body)
     Null -> pure Null
-    Thunk (T _ e _) -> evalError $ (show e)
+    _ -> error "Impossible?"
 
 evaluate :: State -> Env -> Expr TopPattern -> Eval Value
 evaluate s g (Projection e t) = do
@@ -371,6 +373,7 @@ ternaryOp Foldl s func zero list = do
   case list of
     List ls -> foldlM (\a b -> appAll s func [a, b]) zero ls
     x -> appAll s func [zero, x]
+ternaryOp _ _ _ _ _ = error "Impossible (ternary)"
 
 backtrace :: Position -> Text.Text -> Eval a -> Eval a
 backtrace pos text act = catch act (\(e :: EvalError) -> throwIO (Backtrace pos text e))
@@ -414,6 +417,7 @@ unaryOp NextT s (Thunk t) = pure (Residual (Next AssumeTrue t))
 unaryOp NextD s (Thunk t) = pure (Residual (Next Demand t))
 unaryOp op _ arg = evalError ("Impossible unary operation " <> show op <> " on: " <> show arg)
 
+negateResidual :: Residual -> Eval Residual
 negateResidual (Conjunction a b) = Disjunction <$> negateResidual a <*> negateResidual b
 negateResidual (Disjunction a b) = Conjunction <$> negateResidual a <*> negateResidual b
 negateResidual (Implication a b) = Conjunction <$> pure a <*> negateResidual b
@@ -442,7 +446,8 @@ binaryOp Always s v1' v2 =
               residual <- mkResidual
               pure (Residual (Conjunction r residual))
             _ -> evalError ("Always expects formula, got: " <> show v2')
-    v -> pure v
+        _ -> evalError ("Always count argument was not an integer")
+    v -> evalError "Always argument was already evaluated!"
 binaryOp Implies s v1' v2 = do
   case v1' of
     Absurd -> pure Trivial
@@ -515,17 +520,18 @@ binaryOp Index s e1 e2 = do
     List ls -> do
       case i' of
         LitVal (IntLit i) ->
-          let l = length ls; i' = if i < 0 then l + i else i
-           in if i' < l && i' >= 0
-                then pure (ls !! i')
+          let l = length ls
+              i'' = if i < 0 then l + i else i
+           in if i'' < l && i'' >= 0
+                then pure (ls !! i'')
                 else pure Null
         _ -> evalError ("Lists are only indexable by integers")
-    Object _ m -> do
+    Object False m -> do
       case i' of
-        LitVal (StringLit s) -> case M.lookup s m of
+        LitVal (StringLit str) -> case M.lookup str m of
           Just v -> pure v
           Nothing -> pure Null
-        Constructor s [] -> case M.lookup s m of
+        Constructor str [] -> case M.lookup str m of
           Just v -> pure v
           Nothing -> pure Null
         _ -> evalError ("Objects are only indexable by strings or raw constructors")
@@ -550,6 +556,7 @@ binaryOp Unfoldr s func start = do
       )
       start
   pure (List (Vector.toList vs))
+binaryOp _ _ _ _ = error "Impossible (binaryop)"
 
 binaryCmpOp :: State -> Value -> Value -> PrimOp -> IO Value
 binaryCmpOp s v1' v2' op = do
@@ -567,6 +574,7 @@ binaryCmpOp s v1' v2' op = do
     cmpOp Greater = (>)
     cmpOp LessEq = (<=)
     cmpOp GreaterEq = (>=)
+    cmpOp _ = error "Impossible"
 
 binaryNumOp :: State -> Value -> Value -> PrimOp -> IO Value
 binaryNumOp s v1' v2' op = do
@@ -586,6 +594,7 @@ binaryNumOp s v1' v2' op = do
     numOp Addition = (+)
     numOp Subtraction = (-)
     numOp Multiplication = (*)
+    numOp _ = error "Impossible"
 
 -- The output value will be Trivial if the formula is now true, Absurd if false,
 -- Or another Residual if still requiring more states.

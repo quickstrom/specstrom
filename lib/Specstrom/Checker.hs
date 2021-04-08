@@ -30,7 +30,7 @@ import Specstrom.Channel (Receive, Send, newChannel, receive, send, tryReceive, 
 import Specstrom.Checker.Protocol
 import Specstrom.Dependency (Dep)
 import qualified Specstrom.Evaluator as Evaluator
-import Specstrom.Syntax (Name, TopLevel (..))
+import Specstrom.Syntax (Name, TopLevel, TopLevel' (..))
 import qualified Specstrom.Syntax as Syntax
 import System.IO (hPutStrLn, isEOF, stderr)
 import System.Random (randomRIO)
@@ -81,7 +81,7 @@ checkTopLevel input output currentModule evalEnv actionEnv analysisEnv results =
     evalEnv' <- Evaluator.evaluateActionBind evalEnv b
     let analysisEnv' = Analysis.analyseBind analysisEnv b
     pure (second (Syntax.bindPatternBoundVars pat ++) currentModule, evalEnv', actionEnv', analysisEnv', results)
-  Imported _ ts' -> do
+  Imported _ _ ts' -> do
     (_, e', acte', ae', results') <- checkTopLevels input output ([], []) evalEnv actionEnv analysisEnv results ts'
     pure (currentModule, e', acte', ae', results')
   Properties _ propGlob actsGlob initial -> do
