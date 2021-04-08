@@ -13,10 +13,10 @@ import qualified Data.HashMap.Strict as M
 import Data.IORef
 import qualified Data.Text as Text
 import qualified Data.Text.Read as Text
-import Specstrom.Lexer (Position, dummyPosition)
-import Specstrom.Syntax
 import Data.Vector (unfoldrM)
 import qualified Data.Vector as Vector
+import Specstrom.Lexer (Position, dummyPosition)
+import Specstrom.Syntax
 
 type Env = M.HashMap Name Value
 
@@ -527,14 +527,17 @@ binaryOp Index s e1 e2 = do
         _ -> evalError ("Objects are only indexable by strings or raw constructors")
     _ -> evalError ("Indexing doesn't work on non-list/object values")
 binaryOp Unfoldr s func start = do
-  vs <- unfoldrM (\v -> do
-    f <- force s func
-    v' <- app s f v
-    case v' of
-      List [v, next] -> pure (Just (v, next))
-      Null -> pure Nothing
-      _ -> evalError ("`unfoldr` expected a list of two values or null, but got: " <> show v')
-    ) start
+  vs <-
+    unfoldrM
+      ( \v -> do
+          f <- force s func
+          v' <- app s f v
+          case v' of
+            List [v, next] -> pure (Just (v, next))
+            Null -> pure Nothing
+            _ -> evalError ("`unfoldr` expected a list of two values or null, but got: " <> show v')
+      )
+      start
   pure (List (Vector.toList vs))
 
 binaryCmpOp :: State -> Value -> Value -> PrimOp -> IO Value
