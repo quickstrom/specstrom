@@ -9,13 +9,13 @@ import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty, line)
 import Prettyprinter.Render.Terminal (renderIO)
 import qualified Specstrom.Analysis as Analysis
 import qualified Specstrom.Evaluator as Evaluator
+import Specstrom.Load
 import qualified Specstrom.Parser as Parser
 import Specstrom.PrettyPrinter
 import Specstrom.Syntax as Syntax
 import qualified Specstrom.TypeInf as TypeInf
 import System.Console.Haskeline
 import System.IO (hPutStrLn, stderr, stdout)
-import Specstrom.Load
 
 repl :: [FilePath] -> Text -> IO ()
 repl searchPaths' fp = do

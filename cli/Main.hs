@@ -9,9 +9,9 @@ import Options.Applicative
 import Prettyprinter.Render.Terminal (renderIO)
 import REPL (repl)
 import qualified Specstrom.Checker as Checker
+import Specstrom.Load
 import Specstrom.PrettyPrinter
 import System.IO (BufferMode (LineBuffering), hSetBuffering, stderr, stdout)
-import Specstrom.Load
 
 data CliOptions = CliOptions
   { searchPaths :: [FilePath],
