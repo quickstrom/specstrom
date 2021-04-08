@@ -58,23 +58,23 @@ loop lno opts tbl g e e' s ae = flip catch (\err -> liftIO (renderIO stderr (lay
     Just x -> do
       r <- liftIO $ runExceptT (Parser.loadImmediate lno (searchPaths opts) tbl $ pack x)
       case r of
-        Left err -> do 
+        Left err -> do
           liftIO $ renderIO stderr (layoutPretty defaultLayoutOptions (prettyParseError err <> line))
           loop lno opts tbl g e e' s ae
         Right (tbl2, Right expr) -> case TypeInf.inferExpImmediate g expr of
-            Left err -> do
-              liftIO $ renderIO stderr (layoutPretty defaultLayoutOptions (prettyTypeError err <> line))
-              loop lno opts tbl g e e' s ae
-            Right typ -> do
-              if showTypes opts
-                then liftIO $ renderIO stdout (layoutPretty defaultLayoutOptions (prettyType typ <> line))
-                else return ()
-              if showAnalysis opts
-                then liftIO $ LBS.putStrLn (JSON.encode (Analysis.depOf (Analysis.analyseExpr ae expr)))
-                else return ()
-              val <- liftIO $ (Evaluator.deepForce s =<< Evaluator.evaluate s e expr)
-              liftIO $ renderIO stdout (layoutPretty defaultLayoutOptions (prettyValue val <> line))
-              loop lno opts tbl2 g e e' s ae  
+          Left err -> do
+            liftIO $ renderIO stderr (layoutPretty defaultLayoutOptions (prettyTypeError err <> line))
+            loop lno opts tbl g e e' s ae
+          Right typ -> do
+            if showTypes opts
+              then liftIO $ renderIO stdout (layoutPretty defaultLayoutOptions (prettyType typ <> line))
+              else return ()
+            if showAnalysis opts
+              then liftIO $ LBS.putStrLn (JSON.encode (Analysis.depOf (Analysis.analyseExpr ae expr)))
+              else return ()
+            val <- liftIO $ (Evaluator.deepForce s =<< Evaluator.evaluate s e expr)
+            liftIO $ renderIO stdout (layoutPretty defaultLayoutOptions (prettyValue val <> line))
+            loop lno opts tbl2 g e e' s ae
         Right (tbl2, Left tls) -> do
           case TypeInf.inferTopLevels g tls of
             Left err -> do

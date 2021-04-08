@@ -1,8 +1,8 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE FlexibleInstances #-}
 
 module Specstrom.PrettyPrinter where
 
@@ -205,7 +205,7 @@ instance PrettyPattern Pattern where
 
 instance PrettyPattern (Expr TempExpr) where
   prettyPattern p = prettyExpr p
-  
+
 instance PrettyPattern TempExpr where
   prettyPattern (E e) = prettyExpr e
 

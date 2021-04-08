@@ -6,16 +6,16 @@
 module Specstrom.Syntax where
 
 import qualified Data.Aeson as JSON
+import Data.Bifoldable
+import Data.Bifunctor
+import Data.Bitraversable
 import Data.Hashable (Hashable)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
+import Generic.Functor
 import Specstrom.Lexer (Position, dummyPosition)
 import Text.Earley.Mixfix (Associativity)
-import Data.Bitraversable
-import Data.Bifunctor
-import Data.Bifoldable
-import Generic.Functor
 
 newtype Selector = Selector Text
   deriving (Show, Eq, Ord, Generic, Hashable, JSON.FromJSON, JSON.ToJSON, JSON.FromJSONKey, JSON.ToJSONKey)
@@ -155,21 +155,20 @@ data Bind' e bp = Bind bp (Expr e)
   deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
   deriving (Bifunctor, Bifoldable) via (GenericBifunctor Bind')
 
-instance Bitraversable Bind' where 
+instance Bitraversable Bind' where
   bitraverse = gbitraverse
 
-instance Bitraversable TopLevel' where 
+instance Bitraversable TopLevel' where
   bitraverse = gbitraverse
 
 type Documentation = [Text]
 
 type TopLevel = TopLevel' TopPattern BindPattern
 
-
 data TopLevel' e bp
   = Binding Documentation (Bind' e bp)
   | ActionDecl Documentation (Bind' e bp)
-  | SyntaxDecl Documentation Position  [Text] Int Associativity
+  | SyntaxDecl Documentation Position [Text] Int Associativity
   | MacroDecl Documentation (Expr TempExpr) [Name] (Expr TempExpr)
   | DocBlock Documentation
   | Properties Position Glob Glob (Maybe (Expr e))
