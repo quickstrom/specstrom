@@ -137,6 +137,12 @@ parseTopLevel search t ((p, DocTok doc) : ts) = do
     (Binding ds b : rest) -> (t', Binding (doc : ds) b : rest)
     _ -> (t', DocBlock [doc] : tls)
 parseTopLevel search t ((p, Ident "import") : ts) = case ts of
+  ((_, StringLitTok n) : ts') -> case ts' of
+    ((_, Ident ";") : ts'') -> do
+      (t', inc) <- loadModule search p n t
+      fmap (Imported n inc :) <$> parseTopLevel search t' ts''
+    ((p', _) : _) -> throwError $ ExpectedSemicolon p'
+    [] -> error "impossible?"
   ((_, Ident n) : ts') -> case ts' of
     ((_, Ident ";") : ts'') -> do
       (t', inc) <- loadModule search p n t
