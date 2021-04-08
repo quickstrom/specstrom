@@ -80,7 +80,7 @@ executable specstrom
                      , specstrom
                      , haskeline
                      , optparse-applicative
-  other-modules:       REPL, Util
+  other-modules:       REPL
 
 test-suite specstrom-test
   import:              shared
