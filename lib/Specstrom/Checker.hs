@@ -10,7 +10,7 @@ module Specstrom.Checker where
 
 import qualified Control.Concurrent.Async as Async
 import Control.Exception (BlockedIndefinitelyOnSTM (..))
-import Control.Monad (unless)
+import Control.Monad (unless, void)
 import Control.Monad.Catch (MonadCatch, MonadThrow, catch)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Writer (WriterT, runWriterT, tell)
@@ -40,9 +40,9 @@ checkAllStdio ts = do
   (interpreterRecv, interpreterSend) <- newChannel
   (executorRecv, executorSend) <- newChannel
   Async.withAsync (readStdinTo executorSend) $ \_inputDone ->
-    Async.withAsync (writeStdoutFrom interpreterRecv) $ \_outputDone -> do
+    Async.withAsync (writeStdoutFrom interpreterRecv) $ \outputDone -> do
       Async.withAsync (checkAll executorRecv interpreterSend ts) $ \checkerDone -> do
-        Async.wait checkerDone
+        void (Async.waitBoth outputDone checkerDone)
           `catch` \BlockedIndefinitelyOnSTM {} ->
             fail "Checker failed due to premature end of input."
 
@@ -123,7 +123,7 @@ readStdinTo output = do
 
 writeStdoutFrom :: Receive InterpreterMessage -> IO [Result]
 writeStdoutFrom output = do
-  let write msg = LBS.putStrLn (JSON.encode msg)
+  let write msg = logInfo ("Writing: " <> show msg) >> LBS.putStrLn (JSON.encode msg)
   receive output >>= \case
     Done results -> write (Done results) $> results
     msg -> write msg >> writeStdoutFrom output
