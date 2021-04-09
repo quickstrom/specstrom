@@ -3,11 +3,11 @@ import list;
 import ltl;
 import quickstrom/keys;
 
-action click!(x) = for element in x. { id: "click", event: false, args: [element.ref] } when element.enabled;
+action click!(x) = for element in x. { id: "click", event: false, args: [element.ref] } when element.enabled && element.visible;
 
-action focus!(x) = for element in x. { id: "focus", event: false, args: [element.ref] } when element.active;
+action focus!(x) = for element in x. { id: "focus", event: false, args: [element.ref] } when not element.active;
 
-action keyPress!(key) = { id: "focus", event: false, args: [key] };
+action keyPress!(key) = { id: "keyPress", event: false, args: [key] };
 
 action changed?(x) = for element in x. { id: "changed", event: true, args: [x.ref]};
 
@@ -22,5 +22,3 @@ syntax _~>_ 5;
 let a ~> ~b = transition(a, b);
 
 let unchanged(~x) = freeze a = x. next (x == a);
-
-let x = range(1, 2);

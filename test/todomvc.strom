@@ -28,6 +28,9 @@ let ~x +=' n = freeze x' = x. next (x' == x + n);
 syntax _-='_ 8;
 let ~x -=' n = freeze x' = x. next (x' == x - n);
 
+syntax _=='_ 8;
+let ~a ==' b = next (a == b);
+
 //-------------------------------------------------
 // Actions
 //-------------------------------------------------
@@ -42,25 +45,26 @@ action ~toggleAllTodos! = click!(`.todoapp label[for=toggle-all]`);
 
 action ~deleteTodo! = click!(`.todoapp .destroy`);
 
-action ~focusInput! = focus!(`.todoapp .new-todo`)
+action ~focusInput! = focus!(`.todoapp .new-todo`) when not `.todoapp .new-todo`.active
   // weighted 5.0
   ;
 
-action ~clickAnyLink! = click!(`a`)
+action ~clickAnyLink! = click!(`.todoapp a`)
   // weighted 5.0
   ;
 
-action ~createTodo! = keyPress!(keys.return)
+action ~createTodo! = [keyPress!(keys.return), keyPress!("a")] when first(`.todoapp .new-todo`).active
   // weighted 5.0
   ;
 
-let ~selectedFilter = `.todoapp .filters a.selected`.textContent;
+let ~selectedFilter = 
+  let element = first(`.todoapp .filters a.selected`);
+  if element != null { element.textContent };
 
 let ~items =
-  map
-    // TODO: just a lambda syntax sketch
-    (fun [li, label]. if li.css.display != "none" { label })
-    (zip(`.todo-list li`, `.todo-list li label`));
+  for [li, label] in zip(`.todo-list li`, `.todo-list li label`) {
+    if li.css.display != "none" { label }
+  };
 
 let ~lastItem = last(items);
 
@@ -72,10 +76,12 @@ let ~numUnchecked = length(filter(fun c. not c.checked, checkboxes));
 
 let ~numChecked = length(filter(fun c. c.checked, checkboxes));
 
-let ~pendingText = `.todoapp .new-todo`.value ?? "";
+let ~pendingText = 
+  let element = first(`.todoapp .new-todo`);
+  if element != null { element.value } else { "" };
 
 let ~numItemsLeft =
-    let strong = `.todoapp .todo-count strong`.textContent;
+    let strong = first(`.todoapp .todo-count strong`).textContent;
     if strong != null {
       parseInt(first(split(" ", trim(strong))))
     } else { 0 };
@@ -108,22 +114,33 @@ let ~changeFilter =
   ;
 
 let ~addNew =
-  next pendingText == ""
-    && not (next selectedFilter == null)
-    && (match selectedFilter {
-      | case "All". pendingText == (next lastItem)
-      | case "Active". pendingText == (next lastItem)
-      | case "Completed". unchanged(items)
-    });
+  next (pendingText == "")
+    && not (next (selectedFilter == null))
+
+    // && (match selectedFilter {
+    //   | case "All". pendingText ==' lastItem
+    //   | case "Active". pendingText ==' lastItem
+    //   | case "Completed". unchanged(items)
+    // })
+
+    && selectedFilter == "All" ==> pendingText ==' lastItem
+    && selectedFilter == "Active" ==> pendingText ==' lastItem
+    && selectedFilter == "Completed" ==> unchanged(items)
+    ;
 
 let ~checkOne =
   unchanged(pendingText)
     && unchanged(selectedFilter)
     && (selectedFilter != "Completed")
-    && (match selectedFilter {
-      | case "All". unchanged(numItems) && (numChecked <' numChecked)
-      | case "Active". (numItems >' numItems) && (numItemsLeft >' numItemsLeft)
-    });
+
+    // && (match selectedFilter {
+    //   | case "All". unchanged(numItems) && (numChecked <' numChecked)
+    //   | case "Active". (numItems >' numItems) && (numItemsLeft >' numItemsLeft)
+    // })
+
+    && selectedFilter == "All" ==> unchanged(numItems) && (numChecked <' numChecked)
+    && selectedFilter == "Active" ==> (numItems >' numItems) && (numItemsLeft >' numItemsLeft)
+    ;
 
 let ~uncheckOne =
   unchanged(pendingText)
@@ -158,10 +175,10 @@ let ~toggleAll =
       && selectedFilter == "All" ==> unchanged(numItems) && next (numItems == numChecked)
       && (selectedFilter == "Active" ==>
            // If there are active items, they're checked
-           (numItems > 0 && next numItems == 0)
+           (numItems > 0 && next (numItems == 0))
            // If there are none, all checked items are unchecked (but we can't see how many
            // there are, just more than 0)
-           || (numItems == 0 && next numItems > 0)
+           || (numItems == 0 && next (numItems > 0))
          )
       && selectedFilter == "Completed" ==> numItems +=' numItemsLeft
   ;
@@ -174,14 +191,15 @@ let ~prop_safety =
     && always
         ( enterText
             || addNew
-            || changeFilter
-            || checkOne
-            || uncheckOne
-            || delete
-            || toggleAll
+            // || changeFilter
+            // || checkOne
+            // || uncheckOne
+            // || delete
+            // || toggleAll
         )
-    && always hasFilters;
+    // && always hasFilters
+    ;
 
-let ~ready? = changed?(`.todoapp .new-todo`) when length(`.todoapp .new-todo`) == 1; // is the query result a list?
+// let ~ready? = changed?(`.todoapp .new-todo`) when length(`.todoapp .new-todo`) == 1; // is the query result a list?
 
-check prop_* with * when ready?;
+check prop_safety with * when loaded?;
