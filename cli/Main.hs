@@ -12,8 +12,8 @@ import REPL (repl)
 import qualified Specstrom.Checker as Checker
 import Specstrom.Load
 import Specstrom.PrettyPrinter
+import System.Exit (exitFailure)
 import System.IO (BufferMode (LineBuffering), hSetBuffering, stderr, stdout)
-import System.Exit(exitFailure)
 
 data CliOptions = CliOptions
   { searchPaths :: [FilePath],
