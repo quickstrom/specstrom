@@ -45,7 +45,6 @@ checkAllStdio ts = do
         Async.wait checkerDone
           `catch` \BlockedIndefinitelyOnSTM {} ->
             fail "Checker failed due to premature end of input."
-              `catch` \(Evaluator.Error msg) -> fail msg
 
 checkAll :: Receive ExecutorMessage -> Send InterpreterMessage -> [TopLevel] -> IO ()
 checkAll input output ts = do

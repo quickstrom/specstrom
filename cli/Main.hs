@@ -3,6 +3,7 @@
 
 module Main where
 
+import Control.Monad.Catch (catch)
 import Data.Text (Text)
 import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty, line)
 import Options.Applicative
@@ -12,6 +13,7 @@ import qualified Specstrom.Checker as Checker
 import Specstrom.Load
 import Specstrom.PrettyPrinter
 import System.IO (BufferMode (LineBuffering), hSetBuffering, stderr, stdout)
+import System.Exit(exitFailure)
 
 data CliOptions = CliOptions
   { searchPaths :: [FilePath],
@@ -83,3 +85,6 @@ main = do
       hSetBuffering stderr LineBuffering
       hSetBuffering stdout LineBuffering
       Checker.checkAllStdio ts
+        `catch` \err -> do
+          renderIO stderr (layoutPretty defaultLayoutOptions (prettyEvalError [] err))
+          exitFailure
