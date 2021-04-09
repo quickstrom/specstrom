@@ -79,7 +79,8 @@ executable specstrom
   -- other-extensions:
   build-depends:       prettyprinter-ansi-terminal
                      , specstrom
-                     , haskeline
+                     , haskeline >= 0.8
+                     , exceptions >= 0.10
                      , optparse-applicative
   other-modules:       REPL
 

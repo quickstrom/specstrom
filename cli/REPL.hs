@@ -15,6 +15,7 @@ import Specstrom.PrettyPrinter
 import Specstrom.Syntax as Syntax
 import qualified Specstrom.TypeInf as TypeInf
 import System.Console.Haskeline
+import Control.Monad.Catch
 import System.IO (hPutStrLn, stderr, stdout)
 
 repl :: [FilePath] -> Text -> IO ()
