@@ -1,0 +1,113 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Specstrom",
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#terminators"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#selectors"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#constants"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.block.documentation.specstrom",
+					"match": "///.*$"
+				},
+				{
+					"name": "comment.line.specstrom",
+					"match": "//.*$"
+				}
+			]
+		},
+		"terminators": {
+			"patterns": [
+				{
+					"name": "punctuation.terminator",
+					"match": ";"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.specstrom",
+					"match": "\\b(import|let|syntax|macro|if|else|action|check|with)\\b"
+				},
+				{
+					"name": "keyword.operator.word.specstrom",
+					"match": "\\s(not|next|nextF|nextT|always|eventually|until)\\s"
+				},
+				{
+					"name": "keyword.operator.other.specstrom",
+					"match": "\\s(==|\\|\\||!=|<=|>=|<|>)\\s"
+				},
+				{
+					"name": "keyword.operator.logical.specstrom",
+					"match": "\\s(&&|not)\\s"
+				},
+				{
+					"name": "keyword.operator.arithmetic.specstrom",
+					"match": "\\s(\\+|\\-|\\*|\\/)\\s"
+				},
+				{
+					"name": "keyword.operator.lazy.specstrom",
+					"match": "~(?=\\w)"
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.specstrom",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.specstrom",
+					"match": "\\\\."
+				}
+			]
+		},
+		"selectors": {
+			"name": "string.quoted.other.specstrom",
+			"begin": "`",
+			"end": "`",
+			"patterns": [
+				{
+					"name": "constant.character.escape.specstrom",
+					"match": "\\\\."
+				}
+			]
+		},
+		"constants": {
+			"patterns": [
+				{
+					"name": "constant.numeric.specstrom",
+					"match": "\\d+(\\d+)?([Ee]\\d+)?"
+				},
+				{
+					"name": "constant.language.specstrom",
+					"match": "\\b(null|true|false)\\b"
+				},
+				{
+					"name": "constant.other.specstrom",
+					"match": ":\\w+"
+				}
+			]
+		}
+	},
+	"scopeName": "source.specstrom"
+}

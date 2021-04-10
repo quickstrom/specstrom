@@ -1,0 +1,25 @@
+{
+    "name": "vscode-specstrom",
+    "displayName": "vscode-specstrom",
+    "description": "Language support for the Specstrom specification language",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.55.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [{
+            "id": "specstrom",
+            "aliases": ["Specstrom", "specstrom"],
+            "extensions": [".strom"],
+            "configuration": "./language-configuration.json"
+        }],
+        "grammars": [{
+            "language": "specstrom",
+            "scopeName": "source.specstrom",
+            "path": "./syntaxes/specstrom.tmLanguage.json"
+        }]
+    }
+}
