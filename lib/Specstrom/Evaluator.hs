@@ -472,8 +472,8 @@ binaryOp And s v1' v2 = do
         Absurd -> pure Absurd
         Trivial -> pure (Residual r)
         Residual r' -> pure (Residual (Conjunction r r'))
-        _ -> evalError "And expects formulae"
-    _ -> evalError "And expects formulae"
+        _ -> evalError ("And expects formulae, got as second argument: " <> show v2')
+    _ -> evalError ("And expects formulae, got as first argument: " <> show v1')
 binaryOp Or s v1' v2 = do
   case v1' of
     Trivial -> pure Trivial
