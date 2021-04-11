@@ -25,12 +25,33 @@
 		"comments": {
 			"patterns": [
 				{
-					"name": "comment.block.documentation.specstrom",
-					"match": "///.*$"
+					"begin": "(^|\\G)\\s*(///)",
+					"beginCaptures": {
+						"2": {
+							"name": "comment.block.documentation.specstrom"
+						}
+					},
+					"end": "(^|\\G)\\s*(?![^/]{3,})",
+					"patterns": [
+						{
+							"include": "#docblock"
+						}
+					]
 				},
 				{
 					"name": "comment.line.specstrom",
 					"match": "//.*$"
+				}
+			]
+		},
+		"docblock": {
+			"patterns": [
+				{
+					"name": "comment.block.documentation.specstrom",
+					"match": "(^|\\G)\\s*(///)"
+				},
+				{
+					"include": "text.html.markdown#inline"
 				}
 			]
 		},
@@ -39,6 +60,16 @@
 				{
 					"name": "punctuation.terminator",
 					"match": ";"
+				},
+				{
+					"comment": "Dot used before the body expression in fun, for, forall, exists.",
+					"name": "punctuation.separator",
+					"match": "\\.(?=\\s)"
+				},
+				{
+					"comment": "Dot used in projections.",
+					"name": "punctuation.accessor",
+					"match": "\\.(?=[^\\s])"
 				}
 			]
 		},

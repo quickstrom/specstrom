@@ -19,7 +19,10 @@
         "grammars": [{
             "language": "specstrom",
             "scopeName": "source.specstrom",
-            "path": "./syntaxes/specstrom.tmLanguage.json"
+            "path": "./syntaxes/specstrom.tmLanguage.json",
+            "embeddedLanguages": {
+                "meta.embedded.block.markdown": "markdown"
+            }
         }]
     }
 }
