@@ -436,11 +436,7 @@ binaryOp Always s v1' v2 =
       case v1' of
         LitVal (IntLit n) -> do
           let mkResidual =
-                let nextOp =
-                      if n > 0
-                        then Next Demand
-                        else Next AssumeTrue
-                 in nextOp <$> newThunk g (App (App (Var dummyPosition (primOpVar Always)) (Literal dummyPosition (IntLit (n - 1)))) e)
+                      Next strength <$> newThunk g (App (App (Var dummyPosition (primOpVar Always)) (Literal dummyPosition (IntLit n'))) e)
           case v2' of
             Absurd -> pure Absurd
             Trivial -> do
