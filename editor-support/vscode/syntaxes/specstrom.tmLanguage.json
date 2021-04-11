@@ -31,27 +31,20 @@
 							"name": "comment.block.documentation.specstrom"
 						}
 					},
-					"end": "(^|\\G)\\s*(?![^/]{3,})",
+					"end": "$",
 					"patterns": [
 						{
-							"include": "#docblock"
+							"include": "text.html.markdown#inline"
+						},
+						{
+							"name": "comment.block.documentation.specstrom",
+							"match": "."
 						}
 					]
 				},
 				{
 					"name": "comment.line.specstrom",
 					"match": "//.*$"
-				}
-			]
-		},
-		"docblock": {
-			"patterns": [
-				{
-					"name": "comment.block.documentation.specstrom",
-					"match": "(^|\\G)\\s*(///)"
-				},
-				{
-					"include": "text.html.markdown#inline"
 				}
 			]
 		},
