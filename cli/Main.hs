@@ -38,7 +38,7 @@ data Command
   deriving (Show)
 
 data FormatOptions = FormatOptions
-  {  formatModule :: Text
+  { formatModule :: Text
   }
   deriving (Show)
 
