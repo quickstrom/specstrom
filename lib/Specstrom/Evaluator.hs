@@ -39,6 +39,7 @@ data PrimOp
   | NextD
   | Not
   | ParseInt
+  | IsNull
   | StringTrim
   | -- binary
     And
@@ -78,6 +79,7 @@ primOpVar op = case op of
   NextD -> "next_"
   Always -> "always{_}_"
   Not -> "not_"
+  IsNull -> "isNull"
   ParseInt -> "parseInt"
   StringTrim -> "trim"
   And -> "_&&_"
@@ -362,8 +364,8 @@ force s v = pure v
 ternaryOp :: PrimOp -> State -> Value -> Value -> Value -> Eval Value
 ternaryOp IfThenElse s v1' v2 v3 = do
   case v1' of
-    Trivial -> pure v2
-    Absurd -> pure v3
+    Trivial -> force s v2
+    Absurd -> force s v3
     _ -> evalError "Expected boolean in if condition"
 ternaryOp Foldr s func zero list = do
   case list of
@@ -401,6 +403,7 @@ areEqual s v1' v2' = areEqual' v1' v2'
     areEqual' _ _ = pure False
 
 unaryOp :: PrimOp -> State -> Value -> Eval Value
+unaryOp IsNull s v = case v of Null -> pure Trivial; _ -> pure Absurd
 unaryOp Not s v' = do
   case v' of
     Absurd -> pure Trivial
@@ -446,7 +449,7 @@ binaryOp Always s v1' v2 =
               residual <- mkResidual
               pure (Residual (Conjunction r residual))
             _ -> evalError ("Always expects formula, got: " <> show v2')
-        _ -> evalError ("Always count argument was not an integer")
+        _ -> evalError $ "Always count argument was not an integer"
     v -> evalError "Always argument was already evaluated!"
 binaryOp Implies s v1' v2 = do
   case v1' of
@@ -509,7 +512,8 @@ binaryOp TimeoutAct s v1' v2' = do
     Action act args _ -> pure (Action act args (Just t))
     _ -> evalError "Timeout expects an action"
 binaryOp Map s v1' v2' = do
-  let notNull x = pure $ case x of Null -> False; _ -> True
+  -- force shouldn't be needed here but added just in case
+  let notNull x = force s x >>= \x' -> pure $ case x' of Null -> False; _ -> True
   case v2' of
     List ls -> List <$> (filterM notNull =<< mapM (app s v1') ls)
     r -> app s v1' v2'
@@ -525,7 +529,7 @@ binaryOp Index s e1 e2 = do
            in if i'' < l && i'' >= 0
                 then pure (ls !! i'')
                 else pure Null
-        _ -> evalError ("Lists are only indexable by integers")
+        _ -> evalError "Lists are only indexable by integers"
     Object False m -> do
       case i' of
         LitVal (StringLit str) -> case M.lookup str m of
@@ -542,7 +546,7 @@ binaryOp StringSplit s e1 e2 = do
   case (needle', haystack') of
     (LitVal (StringLit needle''), LitVal (StringLit haystack'')) ->
       pure (List (map (LitVal . StringLit) (Text.splitOn needle'' haystack'')))
-    _ -> evalError ("`split` expects two strings (needle and haystack)")
+    _ -> evalError $ "`split` expects two strings (needle and haystack)"
 binaryOp Unfoldr s func start = do
   vs <-
     unfoldrM
@@ -550,9 +554,9 @@ binaryOp Unfoldr s func start = do
           f <- force s func
           v' <- force s =<< app s f v
           case v' of
-            List [v, next] -> pure (Just (v, next))
+            List [hd, next] -> pure (Just (hd, next))
             Null -> pure Nothing
-            _ -> evalError ("`unfoldr` expected a list of two values or null")
+            _ -> evalError $ "`unfoldr` expected a list of two values or null"
       )
       start
   pure (List (Vector.toList vs))

@@ -73,6 +73,7 @@ builtInTypes =
       ("always{_}_", val3),
       ("nth", val3),
       ("not_", val2),
+      ("isNull", Forall "a" (Ty (Arrow (TyVar "a") Value))),
       ("parseInt", val2),
       ("trim", val2),
       ("split", val3),
