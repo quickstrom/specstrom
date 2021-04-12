@@ -19,6 +19,9 @@
 		},
 		{
 			"include": "#constants"
+		},
+		{
+			"include": "#builtins"
 		}
 	],
 	"repository": {
@@ -70,23 +73,23 @@
 			"patterns": [
 				{
 					"name": "keyword.control.specstrom",
-					"match": "\\b(import|let|syntax|macro|if|else|action|check|with)\\b"
+					"match": "\\b(import|let|syntax|macro|if|else|when|action|check|with|for|forall|exists|in|match|case)\\b"
 				},
 				{
-					"name": "keyword.operator.word.specstrom",
-					"match": "\\s(not|next|nextF|nextT|always|eventually|until)\\s"
+					"name": "keyword.operator.temporal.specstrom",
+					"match": "\\b(not|next|nextF|nextT|always|eventually|until|unchanged|\\~>)\\b"
 				},
 				{
 					"name": "keyword.operator.other.specstrom",
-					"match": "\\s(==|\\|\\||!=|<=|>=|<|>)\\s"
+					"match": "\\s(==|\\!=|<=|>=|<|>|\\~>)\\s"
 				},
 				{
 					"name": "keyword.operator.logical.specstrom",
-					"match": "\\s(&&|not)\\s"
+					"match": "\\s(\\&\\&|\\|\\|not)\\s"
 				},
 				{
 					"name": "keyword.operator.arithmetic.specstrom",
-					"match": "\\s(\\+|\\-|\\*|\\/)\\s"
+					"match": "\\b(\\+|\\-|\\*|\\/)\\b"
 				},
 				{
 					"name": "keyword.operator.lazy.specstrom",
@@ -129,6 +132,14 @@
 				{
 					"name": "constant.other.specstrom",
 					"match": ":\\w+"
+				}
+			]
+		},
+		"builtins": {
+			"patterns": [
+				{
+					"name": "support.function",
+					"match": "\\b(parseInt|trim|split|conjunction|disjunction|all|any|length|first|last|range|filter|zip|transition)\\b"
 				}
 			]
 		}
