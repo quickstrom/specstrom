@@ -6,3 +6,5 @@ let eventually {n} ~p = not (always {n} (not p));
 
 syntax eventually_ 0 right;
 let eventually ~p = eventually {100} p;
+
+let unchanged(~x) = freeze a = x. nextT (x == a);

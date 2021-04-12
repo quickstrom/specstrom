@@ -20,5 +20,3 @@ let transition(a, ~b) = a && next b;
 
 syntax _~>_ 5;
 let a ~> ~b = transition(a, b);
-
-let unchanged(~x) = freeze a = x. next (x == a);
