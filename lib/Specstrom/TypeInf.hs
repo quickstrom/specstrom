@@ -75,6 +75,7 @@ builtInTypes =
       ("not_", val2),
       ("isNull", Forall "a" (Ty (Arrow (TyVar "a") Value))),
       ("parseInt", val2),
+      ("parseFloat", val2),
       ("trim", val2),
       ("split", val3),
       ("map", hof),

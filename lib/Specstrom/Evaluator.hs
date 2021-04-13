@@ -39,6 +39,7 @@ data PrimOp
   | NextD
   | Not
   | ParseInt
+  | ParseFloat
   | IsNull
   | StringTrim
   | -- binary
@@ -81,6 +82,7 @@ primOpVar op = case op of
   Not -> "not_"
   IsNull -> "isNull"
   ParseInt -> "parseInt"
+  ParseFloat -> "parseFloat"
   StringTrim -> "trim"
   And -> "_&&_"
   Or -> "_||_"
@@ -411,9 +413,17 @@ unaryOp Not s v' = do
     Residual f -> Residual <$> negateResidual f
     _ -> evalError ("Not expects boolean, got: " <> show v')
 unaryOp ParseInt s (LitVal (StringLit s'))
-  | Right (v, _) <- Text.double s' = pure (LitVal (FloatLit v))
-  | Right (v, _) <- Text.decimal s' = pure (LitVal (IntLit v))
+  | Right (v, residue) <- Text.decimal s' =
+    if Text.null residue
+      then pure (LitVal (IntLit v))
+      else evalError ("parseInt could parse prefix but string has non-parsable suffix: " <> show residue)
   | otherwise = evalError ("parseInt could not parse: " <> show s')
+unaryOp ParseFloat s (LitVal (StringLit s'))
+  | Right (v, residue) <- Text.double s' =
+    if Text.null residue
+      then pure (LitVal (FloatLit v))
+      else evalError ("parseFloat could parse prefix but string has non-parsable suffix: " <> show residue)
+  | otherwise = evalError ("parseFloat could not parse: " <> show s')
 unaryOp StringTrim _ (LitVal (StringLit s')) = pure (LitVal (StringLit (Text.strip s')))
 unaryOp NextF s (Thunk t) = pure (Residual (Next AssumeFalse t))
 unaryOp NextT s (Thunk t) = pure (Residual (Next AssumeTrue t))
