@@ -37,3 +37,16 @@ let filter(f) = map(fun x. if f(x) { x } else { null });
 let zip(xs, ys) = // this is quite slow. Consider making it a builtin.
     let l = min(length(xs), length(ys));
     for i in range(0, l - 1). [xs[i], ys[i]];
+
+/// Construct a list of lists from corresponding elements in the given 
+/// argument `lists`. The resulting list has the same length as the 
+/// shortest
+/// input list.
+let zipAll(lists) = // this is quite slow. Consider making it a builtin.
+    match lists {
+        | case [] { [] }
+        | case other { 
+            let l = foldl(fun acc. (fun l. min(acc, length(l))), length(lists[0]), lists);
+            for i in range(0, l - 1). for list in lists. list[i]
+        }
+    };
