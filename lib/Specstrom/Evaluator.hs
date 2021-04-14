@@ -61,6 +61,7 @@ data PrimOp
   | NotEquals
   | Equals
   | Index
+  | Zip
   | StringSplit
   | -- HOFs (binary)
     Map
@@ -100,6 +101,7 @@ primOpVar op = case op of
   Division -> "_/_"
   IfThenElse -> "if_{_}else{_}"
   Index -> "nth"
+  Zip -> "zip"
   StringSplit -> "split"
   Map -> "map"
   Unfoldr -> "unfoldr"
@@ -549,6 +551,13 @@ binaryOp Index s e1 e2 = do
           Nothing -> pure Null
         _ -> evalError ("Objects are only indexable by strings or raw constructors")
     _ -> evalError ("Indexing doesn't work on non-list/object values")
+binaryOp Zip s e1 e2 = do
+  xs' <- force s e1
+  ys' <- force s e2
+  case (xs', ys') of
+    (List xs, List ys) -> do
+      pure (List (zipWith (\x y -> List [x, y]) xs ys))
+    _ -> evalError "zip requires two lists as arguments"
 binaryOp StringSplit s e1 e2 = do
   needle' <- force s e1
   haystack' <- force s e2
