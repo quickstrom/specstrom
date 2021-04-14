@@ -40,8 +40,7 @@ let zip(xs, ys) = // this is quite slow. Consider making it a builtin.
 
 /// Construct a list of lists from corresponding elements in the given 
 /// argument `lists`. The resulting list has the same length as the 
-/// shortest
-/// input list.
+/// shortest input list.
 let zipAll(lists) = // this is quite slow. Consider making it a builtin.
     match lists {
         | case [] { [] }
