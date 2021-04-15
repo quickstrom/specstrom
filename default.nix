@@ -1,16 +1,30 @@
-{ pkgs ? import <nixpkgs> {}, compiler ? "ghc884", enableProfiling ? false }:
+{ pkgs ? import <nixpkgs> { }, compiler ? "ghc884", enableProfiling ? false }:
 let
   src = pkgs.nix-gitignore.gitignoreSource [ ] ./.;
   haskellPackages = pkgs.haskell.packages.${compiler}.override {
     overrides = self: super: {
-      haskeline = pkgs.haskell.lib.dontCheck (self.callHackage "haskeline" "0.8.0.0" {});
+      haskeline =
+        pkgs.haskell.lib.dontCheck (self.callHackage "haskeline" "0.8.0.0" { });
     };
   };
-  drv = (haskellPackages.callCabal2nix "specstrom" "${src}" { });
+  pkg = (haskellPackages.callCabal2nix "specstrom" "${src}" { });
+  specstrom = if enableProfiling then
+    pkgs.haskell.lib.enableExecutableProfiling pkg
+  else
+    pkgs.haskell.lib.justStaticExecutables pkg;
+  specstrom-wrapped = pkgs.symlinkJoin {
+    name = "specstrom";
+    paths = [ specstrom ];
+    buildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      mkdir -p $out/share
+      cp -r ${./ulib} $out/share/ulib
+      wrapProgram $out/bin/specstrom \
+        --add-flags "-I$out/share/ulib"
+    '';
+  };
 in {
   inherit haskellPackages;
-  specstrom = 
-    if enableProfiling 
-    then pkgs.haskell.lib.enableExecutableProfiling drv
-    else pkgs.haskell.lib.justStaticExecutables drv;
+  package = pkg;
+  specstrom = specstrom-wrapped;
 }
