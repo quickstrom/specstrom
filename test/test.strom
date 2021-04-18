@@ -1,12 +1,17 @@
 /// Raw documentation block
 
-import quickstrom;
+import control;
+import list;
+import ltl;
 
-// Proposed syntax for Quickstrom specs.
+// Proposed syntax for specs.
 // Reserved syntax is the word "syntax", "let", // for comments, semicolons, parentheses and the equals sign.
 // You also can't begin a symbol with ' or " or a number, as they are used for literals.
 // All other syntax is user-definable using syntax-keywords using mix-fix operators.
 // Note that this means spaces between symbols and words is important. a&&b is not a && b!
+
+/// Click one of the elements in the given list.
+action click!(x) = for element in x. { id: "click", event: false, args: [element.ref] } when element.enabled && element.visible;
 
 /// Documentation on `foo`
 let foo = :bar(1,2,3);

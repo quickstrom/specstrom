@@ -8,3 +8,8 @@ syntax eventually_ 0 right;
 let eventually ~p = eventually {100} p;
 
 let unchanged(~x) = freeze a = x. nextT (x == a);
+
+let transition(a, ~b) = a && next b;
+
+syntax _~>_ 5;
+let a ~> ~b = transition(a, b);

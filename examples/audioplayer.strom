@@ -1,4 +1,16 @@
-import quickstrom;
+import control;
+import list;
+import ltl;
+
+// Web stuff (normally defined in Quickstrom)
+
+action click!(x) = for element in x. { id: "click", event: false, args: [element.ref] } when element.enabled && element.visible;
+
+action changed?(x) = for element in x. { id: "changed", event: true, args: [x.ref]};
+
+action loaded? = { id: "loaded", event: true, args: [] };
+
+action noop! = {id:"noop",event:false,args:[]};
 
 // The following specifies a stripped-down audio player, featuring a
 // button that toggles between the paused and playing states.
@@ -42,4 +54,4 @@ let tick =
 
 let prop_safety = paused && always (play || pause || tick);
 
-check prop_* with *;
+check prop_* with * when loaded?;

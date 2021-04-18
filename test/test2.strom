@@ -1,3 +1,4 @@
+import control;
 import ltl;
 
 let ~prop = not (eventually `blah`) && next `blah`;
