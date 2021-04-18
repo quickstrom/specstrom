@@ -29,3 +29,5 @@ let last(xs) = xs[-1];
 let range(start, end) = unfoldr(fun n. if n <= end { [n, n + 1] }, start);
 
 let filter(f) = map(fun x. if f(x) { x } else { null });
+
+let contains(needle, haystack) = exists x in haystack { x == needle };
