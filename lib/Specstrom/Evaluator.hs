@@ -437,7 +437,7 @@ unaryOp ZipAll s xs = do
   xs' <- force s xs
   case xs' of
     (List lists) -> do
-      let maxIndex = minimum [length xs | List xs <- lists]  - 1
+      let maxIndex = minimum [length xs | List xs <- lists] - 1
           at i (List vs) = pure (vs !! i)
           at i _ = evalError "zipAll requires a list of lists as its argument"
       List <$> traverse (\i -> List <$> traverse (at i) lists) [0 .. maxIndex]
