@@ -312,7 +312,7 @@ app s v v2 =
 evaluate :: State -> Env -> Expr TopPattern -> Eval Value
 evaluate s g (Projection e t) = do
   v' <- force s =<< evaluate s g e
-  let lookupIn m = 
+  let lookupIn m =
         case M.lookup t m of
           Just v -> pure v
           Nothing -> evalError ("Field '" <> Text.unpack t <> "' is not present in object: " <> show m)
