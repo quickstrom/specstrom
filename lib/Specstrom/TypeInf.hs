@@ -70,6 +70,7 @@ builtInTypes =
       ("nextF_", val2),
       ("nextT_", val2),
       ("next_", val2),
+      ("zipAll", val2),
       ("always{_}_", val3),
       ("nth", val3),
       ("zip", val3),

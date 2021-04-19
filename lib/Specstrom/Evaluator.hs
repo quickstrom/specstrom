@@ -41,6 +41,7 @@ data PrimOp
   | ParseInt
   | ParseFloat
   | IsNull
+  | ZipAll
   | StringTrim
   | -- binary
     And
@@ -84,6 +85,7 @@ primOpVar op = case op of
   IsNull -> "isNull"
   ParseInt -> "parseInt"
   ParseFloat -> "parseFloat"
+  ZipAll -> "zipAll"
   StringTrim -> "trim"
   And -> "_&&_"
   Or -> "_||_"
@@ -431,6 +433,15 @@ unaryOp ParseFloat s (LitVal (StringLit s'))
       else evalError ("parseFloat could parse prefix but string has non-parsable suffix: " <> show residue)
   | otherwise = evalError ("parseFloat could not parse: " <> show s')
 unaryOp StringTrim _ (LitVal (StringLit s')) = pure (LitVal (StringLit (Text.strip s')))
+unaryOp ZipAll s xs = do
+  xs' <- force s xs
+  case xs' of
+    (List lists) -> do
+      let maxIndex = minimum [length xs | List xs <- lists]  - 1
+          at i (List vs) = pure (vs !! i)
+          at i _ = evalError "zipAll requires a list of lists as its argument"
+      List <$> traverse (\i -> List <$> traverse (at i) lists) [0 .. maxIndex]
+    _ -> evalError "zipAll requires a list of lists as its argument"
 unaryOp NextF s (Thunk t) = pure (Residual (Next AssumeFalse t))
 unaryOp NextT s (Thunk t) = pure (Residual (Next AssumeTrue t))
 unaryOp NextD s (Thunk t) = pure (Residual (Next Demand t))
