@@ -312,9 +312,13 @@ app s v v2 =
 evaluate :: State -> Env -> Expr TopPattern -> Eval Value
 evaluate s g (Projection e t) = do
   v' <- force s =<< evaluate s g e
+  let lookupIn m = 
+        case M.lookup t m of
+          Just v -> pure v
+          Nothing -> evalError ("Field '" <> Text.unpack t <> "' is not present in object: " <> show m)
   case v' of
-    List (Object _ m : _) | Just v <- M.lookup t m -> pure v
-    Object _ m | Just v <- M.lookup t m -> pure v
+    List (Object _ m : _) -> lookupIn m
+    Object _ m -> lookupIn m
     _ -> evalError "Cannot take projection of a non-object (or list of objects)"
 evaluate s g (Symbol _ t) = pure $ Constructor t []
 evaluate s g (Var p "happened") = case fst (snd s) of
@@ -541,7 +545,7 @@ binaryOp Index s e1 e2 = do
                 then pure (ls !! i'')
                 else pure Null
         _ -> evalError "Lists are only indexable by integers"
-    Object False m -> do
+    Object _ m -> do
       case i' of
         LitVal (StringLit str) -> case M.lookup str m of
           Just v -> pure v
@@ -549,8 +553,8 @@ binaryOp Index s e1 e2 = do
         Constructor str [] -> case M.lookup str m of
           Just v -> pure v
           Nothing -> pure Null
-        _ -> evalError ("Objects are only indexable by strings or raw constructors")
-    _ -> evalError ("Indexing doesn't work on non-list/object values")
+        _ -> evalError ("Objects are only indexable by strings or raw constructors, got: " <> show i')
+    _ -> evalError ("Indexing doesn't work on non-list/object values: " <> show v')
 binaryOp Zip s e1 e2 = do
   xs' <- force s e1
   ys' <- force s e2
