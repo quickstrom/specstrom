@@ -77,7 +77,7 @@
 				},
 				{
 					"name": "keyword.operator.temporal.specstrom",
-					"match": "\\b(not|next|nextF|nextT|always|eventually|until|unchanged|\\~>)\\b"
+					"match": "\\b(not|next|nextF|nextT|always|eventually|until|changed|unchanged|\\~>)\\b"
 				},
 				{
 					"name": "keyword.operator.other.specstrom",
@@ -139,7 +139,7 @@
 			"patterns": [
 				{
 					"name": "support.function",
-					"match": "\\b(parseInt|trim|split|conjunction|disjunction|all|any|length|first|last|range|filter|zip|transition)\\b"
+					"match": "\\b(parseInt|trim|split|conjunction|disjunction|all|any|length|first|last|range|filter|contains|zip|transition)\\b"
 				}
 			]
 		}
