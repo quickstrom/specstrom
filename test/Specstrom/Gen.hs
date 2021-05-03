@@ -1,32 +1,25 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Specstrom.Gen where
 
-import Data.Text (Text)
+import qualified Data.Aeson as JSON
+import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Text as Text
+import qualified Data.Vector as Vector
 import Hedgehog (Gen)
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import Specstrom.Evaluator (Accessor, Formula (..), FormulaExpr (..), IValue (..), Op (..), Value (..))
-import Specstrom.Lexer (Position)
-import Specstrom.Parser (Expr (..), Lit (..), Name)
+import qualified Specstrom.Checker.Protocol as Protocol
+import qualified Specstrom.Dependency as Dependency
+import Specstrom.Lexer (dummyPosition)
+import Specstrom.Syntax (Expr (..), Lit (..), Name, Selector (..), TopPattern)
 
 name :: Gen Name
 name = ("n" <>) . Text.pack . show @Int <$> Gen.integral (Range.linear 1 100)
 
-selector :: Gen Text
-selector = ("sel-" <>) <$> Gen.text (Range.linear 1 10) Gen.alphaNum
-
-position :: Gen Position
-position =
-  ("test.spec",,)
-    <$> Gen.integral (Range.linear 1 10)
-    <*> Gen.integral (Range.linear 1 10)
-
-pos1 :: Position
-pos1 = ("test.spec", 1, 1)
+selector :: Gen Selector
+selector = Selector . ("sel-" <>) <$> Gen.text (Range.linear 1 10) Gen.alphaNum
 
 literal :: Gen Lit
 literal =
@@ -39,133 +32,67 @@ literal =
     ]
 
 -- | * Expr
-literalExpr :: Gen Expr
-literalExpr = Literal <$> position <*> literal
+literalExpr :: Gen (Expr TopPattern)
+literalExpr = Literal dummyPosition <$> literal
 
-boolExpr :: Gen Expr
+intExpr :: Gen (Expr TopPattern)
+intExpr =
+  Gen.recursive
+    Gen.choice
+    [ Literal dummyPosition . IntLit <$> Gen.integral (Range.linear 0 10)
+    ]
+    [ Gen.subterm2 intExpr intExpr (App . App (Var dummyPosition "_+_")),
+      Gen.subterm2 intExpr intExpr (App . App (Var dummyPosition "_-_"))
+    ]
+
+boolExpr :: Gen (Expr TopPattern)
 boolExpr =
   Gen.recursive
     Gen.choice
     [ -- Var <$> position <*> name,
       -- Literal <$> position <*> literal
-      App . App (Var pos1 "_==_") <$> literalExpr <*> literalExpr,
-      App . App (Var pos1 "_!=_") <$> literalExpr <*> literalExpr
+      App . App (Var dummyPosition "_==_") <$> literalExpr <*> literalExpr,
+      App . App (Var dummyPosition "_!=_") <$> literalExpr <*> literalExpr
     ]
-    [ Gen.subterm boolExpr (App (Var pos1 "not_")),
-      Gen.subterm2 boolExpr boolExpr (App . App (Var pos1 "_&&_")),
-      Gen.subterm2 boolExpr boolExpr (App . App (Var pos1 "_||_")),
-      Gen.subterm2 boolExpr boolExpr (App . App (Var pos1 "_==>_"))
+    [ Gen.subterm boolExpr (App (Var dummyPosition "not_")),
+      Gen.subterm2 boolExpr boolExpr (App . App (Var dummyPosition "_&&_")),
+      Gen.subterm2 boolExpr boolExpr (App . App (Var dummyPosition "_||_")),
+      Gen.subterm2 boolExpr boolExpr (App . App (Var dummyPosition "_==>_"))
     ]
 
-expr :: Gen Expr
+expr :: Gen (Expr TopPattern)
 expr =
   Gen.recursive
     Gen.choice
     [ -- Var <$> position <*> name,
       -- Literal <$> position <*> literal
-      Gen.subterm boolExpr (App (Var pos1 "always_")),
-      Gen.subterm boolExpr (App (Var pos1 "next_")),
-      Gen.subterm boolExpr (App (Var pos1 "eventually_")),
-      Gen.subterm2 boolExpr boolExpr (App . App (Var pos1 "_until_"))
+      Gen.subterm boolExpr (App (Var dummyPosition "next_")),
+      -- Gen.subterm boolExpr (App (Var dummyPosition "eventually_")),
+      Gen.subterm2 intExpr boolExpr (App . App (Var dummyPosition "always{_}_")),
+      Gen.subterm2 boolExpr boolExpr (App . App (Var dummyPosition "_until_"))
     ]
-    [ Gen.subterm expr (App (Var pos1 "not_")),
-      Gen.subterm2 expr expr (App . App (Var pos1 "_&&_")),
-      Gen.subterm2 expr expr (App . App (Var pos1 "_||_")),
-      Gen.subterm2 expr expr (App . App (Var pos1 "_==>_"))
-    ]
-
--- | * Formula and FormulaExpr
-unaryBoolFormulaExprOp :: Gen Op
-unaryBoolFormulaExprOp =
-  Gen.element [NotOp]
-
-binaryBoolFormulaExprOp :: Gen Op
-binaryBoolFormulaExprOp =
-  Gen.element
-    [ Equals,
-      NotEquals,
-      Less,
-      LessEq,
-      Greater,
-      GreaterEq,
-      AndOp,
-      OrOp,
-      ImpliesOp
+    [ Gen.subterm expr (App (Var dummyPosition "not_")),
+      Gen.subterm2 expr expr (App . App (Var dummyPosition "_&&_")),
+      Gen.subterm2 expr expr (App . App (Var dummyPosition "_||_")),
+      Gen.subterm2 expr expr (App . App (Var dummyPosition "_==>_"))
     ]
 
-unaryFormulaOp :: Gen Op
-unaryFormulaOp =
-  Gen.element
-    [ NotOp,
-      AlwaysOp,
-      EventuallyOp,
-      NextOp
-    ]
+-- * Dep
 
-binaryFormulaExprOp :: Gen Op
-binaryFormulaExprOp =
-  Gen.element
-    [ Equals,
-      NotEquals,
-      Plus,
-      Times,
-      Divide,
-      Modulo,
-      Less,
-      LessEq,
-      Greater,
-      GreaterEq,
-      AndOp,
-      OrOp
-      -- ImpliesOp,
-      -- UntilOp
-    ]
+elementState :: Dependency.DepSchema -> Gen JSON.Value
+elementState (Dependency.DepSchema fields)
+  | HashMap.null fields = JSON.Bool <$> Gen.bool
+  | otherwise = JSON.Object <$> traverse elementState fields
 
-boolFormulaExpr :: Gen (FormulaExpr Accessor)
-boolFormulaExpr =
-  Gen.recursive
-    Gen.choice
-    [ pure (Constant (BoolVal True)),
-      pure (Constant (BoolVal False))
-      -- , FreezeVar <$> name <*> position
-    ]
-    [ Gen.subtermM boolFormulaExpr (\e -> Op <$> unaryBoolFormulaExprOp <*> pure [e]),
-      Gen.subtermM2 boolFormulaExpr boolFormulaExpr (\e1 e2 -> Op <$> binaryBoolFormulaExprOp <*> pure [e1, e2]),
-      Gen.subtermM boolFormulaExpr (\e -> LocExpr <$> name <*> position <*> pure e)
-    ]
-
-formula :: Gen (Formula Accessor)
-formula =
-  Gen.recursive
-    Gen.choice
-    [Atomic <$> boolFormulaExpr]
-    [ Gen.subterm formula Not,
-      Gen.subterm formula Always,
-      Gen.subterm formula Eventually,
-      Gen.subterm formula Next,
-      Gen.subterm2 formula formula Until,
-      Gen.subterm2 formula formula And,
-      Gen.subterm2 formula formula Or,
-      Gen.subterm2 formula formula Implies,
-      Gen.subtermM formula (\f -> LocFormula <$> name <*> position <*> pure f)
-      -- FreezeIn Position Name (FormulaExpr a) (Formula a)
-    ]
-
-ivalue :: Gen IValue
-ivalue =
-  Gen.choice
-    [ LitVal <$> literal,
-      pure (BoolVal True),
-      pure (BoolVal False),
-      pure Null
-    ]
-
-value :: Gen Value
-value =
-  Gen.choice
-    [ Independent <$> ivalue,
-      Formula mempty <$> formula
-      -- StateDependent (S.Set Accessor) (FormulaExpr Accessor)
-      -- Closure (Maybe (Name, Position)) Env [(Name, Position)] Body
-      -- PartialOp Op [Value]
-    ]
+state :: Dependency.Dep -> Gen Protocol.State
+state (Dependency.Dep bySelector) =
+  flip HashMap.traverseWithKey bySelector $ \(Selector s) schema -> do
+    elements <- Gen.list (Range.linear 1 10) (elementState schema)
+    pure
+      ( JSON.Array
+          ( Vector.fromList
+              [ JSON.Object (element <> HashMap.singleton "ref" (JSON.String (s <> "-" <> Text.pack (show i))))
+                | (i, JSON.Object element) <- zip [0 :: Int ..] elements
+              ]
+          )
+      )

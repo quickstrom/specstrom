@@ -1,0 +1,15 @@
+import control;
+import list;
+import ltl;
+
+action click!(x) = for element in x. { id: "click", event: false, args: [element.ref] } when element.enabled && element.visible;
+
+action loaded? = { id: "loaded", event: true, args: [] };
+
+action ~disable! = click!(`button`);
+
+let ~active = not (`foo`.disabled && `bar`.disabled);
+
+let ~prop = active && next (always (not active));
+
+check prop with disable! when loaded?;

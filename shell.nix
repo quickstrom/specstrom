@@ -3,7 +3,7 @@ let
   project = import ./. { inherit pkgs; };
 in project.haskellPackages.shellFor {
   withHoogle = true;
-  packages = (p: [project.specstrom]);
+  packages = (p: [project.package]);
   buildInputs = (with pkgs; [
     cabal-install
     nixfmt

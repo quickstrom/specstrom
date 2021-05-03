@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
@@ -5,14 +6,37 @@
 
 module Specstrom.PrettyPrinter where
 
+import Data.Bifunctor (second)
+import qualified Data.HashMap.Strict as M
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 import Prettyprinter.Render.Terminal
-import Specstrom.Evaluator
+import qualified Specstrom.Evaluator as Evaluator
 import Specstrom.Lexer
 import Specstrom.Parser
+import Specstrom.Syntax
+import Specstrom.TypeInf
+import Text.Earley.Mixfix (Associativity (..))
+
+prettyEvalError :: [Doc AnsiStyle] -> Evaluator.EvalError -> Doc AnsiStyle
+prettyEvalError bts (Evaluator.Backtrace p n r) = prettyEvalError ((pretty n <+> "@" <+> prettyPos p) : bts) r
+prettyEvalError bts (Evaluator.Error e) = annotate (bold <> color Red) (pretty e) <> line <> indent 2 (vcat bts)
+
+prettyValue :: Evaluator.Value -> Doc AnsiStyle
+prettyValue (Evaluator.Action n [] _) = pretty n
+prettyValue (Evaluator.Action n vs _) = pretty n <> "(" <> sep (punctuate comma (map prettyValue vs)) <> ")"
+prettyValue (Evaluator.Closure (n, _, i) _ _ _) = "<<function:" <> pretty n <> "|" <> pretty (show i) <> ">>"
+prettyValue (Evaluator.Trivial) = "true"
+prettyValue (Evaluator.Absurd) = "false"
+prettyValue (Evaluator.Constructor n []) = symbol (":" <> pretty n)
+prettyValue (Evaluator.Constructor n vs) = symbol (":" <> pretty n) <> "(" <> sep (punctuate comma (map prettyValue vs)) <> ")"
+prettyValue (Evaluator.Null) = "null"
+prettyValue (Evaluator.List vs) = "[" <> sep (punctuate comma (map prettyValue vs)) <> "]"
+prettyValue (Evaluator.LitVal l) = prettyLit l
+prettyValue (Evaluator.Object b o) = "{" <> sep (punctuate comma (map (\(k, v) -> pretty k <> ":" <+> prettyValue v) (M.toList o))) <> (if b then "}" else " ... }")
+prettyValue v = pretty (show v) -- for now
 
 prettyPos :: Position -> Doc AnsiStyle
 prettyPos (f, l, c) = pretty f <> ":" <> pretty l <> ":" <> pretty c
@@ -24,6 +48,21 @@ errorMessage p s extra =
 errorMessageNoPos :: Doc AnsiStyle -> [Doc AnsiStyle] -> Doc AnsiStyle
 errorMessageNoPos s extra =
   annotate (bold <> color Red) s <> line <> indent 2 (vcat extra)
+
+prettyTypeError :: (Position, [TypeErrorBit]) -> Doc AnsiStyle
+prettyTypeError (p, (StrE s : rest)) = errorMessage p (pretty s) (map prettyTyBit rest)
+prettyTypeError (p, rest) = errorMessage p "Type error" (map prettyTyBit rest)
+
+prettyTyBit :: TypeErrorBit -> Doc AnsiStyle
+prettyTyBit (StrE s) = pretty s
+prettyTyBit (TypeE t) = prettyType t
+prettyTyBit (PtnE t) = prettyPattern t
+prettyTyBit (VarNameE s) = ident s
+
+prettyType :: Type -> Doc AnsiStyle
+prettyType (Arrow t1 t2) = parens (prettyType t1 <+> keyword "->" <+> prettyType t2)
+prettyType (Value) = keyword "@"
+prettyType (TyVar n) = ident n
 
 prettyLexerError :: LexerError -> Doc AnsiStyle
 prettyLexerError (InvalidIntLit p s) = errorMessage p "invalid integer literal:" [pretty s]
@@ -37,58 +76,50 @@ prettyLexerError (UnterminatedSelectorLit p) = errorMessage p "no closing backti
 prettyParseError :: ParseError -> Doc AnsiStyle
 prettyParseError (LexerFailure e) = prettyLexerError e
 prettyParseError (ModuleNotFound p n) = errorMessage p "module not found" [ident n]
-prettyParseError (MalformedSyntaxDeclaration p) = errorMessage p "malformed syntax declaration" []
 prettyParseError (SyntaxAlreadyDeclared n p) = errorMessage p "syntax already declared:" [ident n]
+prettyParseError (InvalidMacroLHS p) = errorMessage p "Invalid macro definition" []
 prettyParseError (ExpectedPattern e) = errorMessage (exprPos e) "expected pattern, got:" [prettyExpr e]
-prettyParseError (ExpectedSemicolon p) = errorMessage p "expected semicolon." []
-prettyParseError (ExpectedEquals p) = errorMessage p "expected equals sign." []
-prettyParseError (ExpectedModuleName p) = errorMessage p "expected module name." []
-prettyParseError (ExpectedWith p) = errorMessage p "expected 'with'." []
 prettyParseError (ExpectedGot p s t) =
   errorMessage
     p
     "expected one of:"
     [sep (punctuate comma (map pretty s)), annotate (bold <> color Red) "but got:", prettyToken t]
-prettyParseError (ExpressionAmbiguous (e :| es)) =
-  errorMessage (exprPos e) "ambiguous expression; can be parsed as:" $
-    punctuate (line <> annotate (bold <> color Red) "or:") (map prettyExpr es)
+prettyParseError (Ambiguous (e :| es)) =
+  errorMessage (either (tlPos exprPos) exprPos e) "ambiguous expression; can be parsed as:" $
+    punctuate (line <> annotate (bold <> color Red) "or:") (map (either prettyToplevel prettyExpr) (e : es))
 prettyParseError (DuplicatePatternBinding p [b]) = errorMessage p "duplicate bound variable in pattern:" [pretty b]
 prettyParseError (DuplicatePatternBinding p bs) =
   errorMessage p "duplicate bound variables in pattern:" [sep (punctuate comma (map pretty bs))]
-prettyParseError (TrailingGarbage p t) = errorMessage p "trailing tokens in file:" [prettyToken t]
 
 prettyToken :: Token -> Doc AnsiStyle
 prettyToken (Ident s) = ident s
-prettyToken (Reserved Define) = keyword "="
-prettyToken (Reserved Let) = keyword "let"
-prettyToken (Reserved Check) = keyword "check"
-prettyToken (Reserved With) = keyword "with"
-prettyToken (Reserved Import) = keyword "import"
 prettyToken (ProjectionTok t) = projection ("." <> t)
-prettyToken (Reserved Syntax) = keyword "syntax"
 prettyToken (StringLitTok str) = literal (pretty (show str))
 prettyToken (CharLitTok str) = literal (pretty (show str))
 prettyToken (IntLitTok str) = literal (pretty (show str))
 prettyToken (FloatLitTok str) = literal (pretty (show str))
 prettyToken (SelectorLitTok str) = literal ("`" <> pretty str <> "`")
 prettyToken LParen = "("
+prettyToken (DocTok str) = docStyle $ "///" <> pretty str
 prettyToken RParen = ")"
-prettyToken Semi = ";"
-prettyToken Dot = "."
 prettyToken EOF = "EOF"
 
-prettyBind :: Bind -> Doc AnsiStyle
-prettyBind (Bind n _p ps bs) =
-  keyword "let" <+> prettyExpr (unpeelAps (var' n) (map (var' . fst) ps))
+prettyBind :: (PrettyPattern p, PrettyPattern q) => Bind' p q -> Doc AnsiStyle
+prettyBind b = keyword "let" <+> prettyBind' b
+
+prettyBindBrief :: (PrettyPattern p, PrettyPattern q) => Bind' p q -> Doc AnsiStyle
+prettyBindBrief (Bind bp ps) = prettyPattern bp
+
+prettyBind' :: (PrettyPattern p, PrettyPattern q) => Bind' p q -> Doc AnsiStyle
+prettyBind' (Bind bp bs) =
+  prettyPattern bp
     <+> nest
       3
       ( keyword "=" <> softline
-          <> (prettyBody bs <> keyword ";")
+          <> (prettyExpr bs <> keyword ";")
       )
-  where
-    var' = Var undefined
 
-prettyAll :: [TopLevel] -> Doc AnsiStyle
+prettyAll :: (PrettyPattern p, PrettyPattern q) => [TopLevel' p q] -> Doc AnsiStyle
 prettyAll = vcat . map prettyToplevel
 
 prettyGlob :: Glob -> Doc AnsiStyle
@@ -96,149 +127,119 @@ prettyGlob = hsep . map prettyGlobTerm
   where
     prettyGlobTerm = hcat . map (maybe "*" ident)
 
-prettyToplevel :: TopLevel -> Doc AnsiStyle
-prettyToplevel (Properties _p g1 g2) = keyword "check" <+> prettyGlob g1 <+> keyword "with" <+> prettyGlob g2 <> keyword ";"
-prettyToplevel (Binding b) = prettyBind b
-prettyToplevel (Imported i bs) = keyword "import" <+> literal (pretty i) <> keyword ";" <> line <> indent 2 (prettyAll bs)
+prettyDocs :: Text -> Doc AnsiStyle
+prettyDocs t = docStyle $ "///" <> pretty t
 
-prettyBody :: Body -> Doc AnsiStyle
-prettyBody (Local b e) =
-  prettyBind b
-    <> line
-    <> prettyBody e
-prettyBody (Done e) = prettyExpr e
+prettyToplevelHeader :: TopLevel -> Doc AnsiStyle
+prettyToplevelHeader (Properties _p g1 g2 g3) =
+  keyword "check" <+> prettyGlob g1 <+> keyword "with" <+> prettyGlob g2
+    <> maybe mempty ((space <>) . (keyword "when" <+>) . prettyExpr) g3
+    <> keyword ";"
+prettyToplevelHeader (Binding docs b) = prettyBindBrief b
+prettyToplevelHeader (DocBlock docs) = ""
+prettyToplevelHeader (ActionDecl docs b) = prettyBindBrief b
+prettyToplevelHeader (MacroDecl docs lhs _vars _rhs) = prettyExpr lhs
+prettyToplevelHeader (SyntaxDecl docs _ tokens lv assoc) = hsep (map pretty tokens) <+> prettyLit (IntLit lv) <+> prettyAssoc assoc <> keyword ";"
+prettyToplevelHeader (Imported _ i bs) = literal (pretty i) <> keyword ";"
+
+prettyAssoc :: Associativity -> Doc AnsiStyle
+prettyAssoc LeftAssoc = "left"
+prettyAssoc RightAssoc = "right"
+prettyAssoc _ = ""
+
+prettyToplevel :: (PrettyPattern p, PrettyPattern q) => TopLevel' p q -> Doc AnsiStyle
+prettyToplevel (Properties _p g1 g2 g3) =
+  keyword "check" <+> prettyGlob g1 <+> keyword "with" <+> prettyGlob g2
+    <> maybe mempty ((space <>) . (keyword "when" <+>) . prettyExpr) g3
+    <> keyword ";"
+prettyToplevel (Binding docs b) = vcat $ map prettyDocs docs ++ [prettyBind b]
+prettyToplevel (DocBlock docs) = vcat $ map prettyDocs docs
+prettyToplevel (ActionDecl docs b) = vcat $ map prettyDocs docs ++ [keyword "action" <+> prettyBind' b]
+prettyToplevel (MacroDecl docs lhs _vars rhs) =
+  vcat $
+    map prettyDocs docs
+      ++ [keyword "macro" <+> prettyExpr lhs <+> keyword "=" <+> prettyExpr rhs <> keyword ";"]
+prettyToplevel (SyntaxDecl docs _ tokens lv assoc) =
+  vcat $
+    map prettyDocs docs
+      ++ [keyword "syntax" <+> hsep (map pretty tokens) <+> prettyLit (IntLit lv) <+> prettyAssoc assoc <> keyword ";"]
+prettyToplevel (Imported _ i bs) = keyword "import" <+> literal (pretty i) <> keyword ";" <> line <> indent 2 (prettyAll bs)
 
 prettyLit :: Lit -> Doc AnsiStyle
 prettyLit (CharLit s) = literal (pretty (show s))
 prettyLit (StringLit s) = literal (pretty (show s))
-prettyLit (SelectorLit s) = literal ("`" <> pretty s <> "`")
+prettyLit (SelectorLit (Selector s)) = literal ("`" <> pretty s <> "`")
 prettyLit (IntLit s) = literal (pretty (show s))
 prettyLit (FloatLit s) = literal (pretty (show s))
 
-prettyExpr :: Expr -> Doc AnsiStyle
+topPatternToExpr :: TopPattern -> Expr TempExpr
+topPatternToExpr (LazyP p n) = App (Var n "~_") (Var n p)
+topPatternToExpr (MatchP p) = patternToExpr p
+topPatternToExpr (MacroExpansionTP p e) = MacroExpansion (topPatternToExpr p) e
+
+patternToExpr :: Pattern -> Expr TempExpr
+patternToExpr (VarP p n) = Var n p
+patternToExpr (MacroExpansionP p e) = MacroExpansion (patternToExpr p) e
+patternToExpr (IgnoreP p) = Var p "_"
+patternToExpr (LitP p l) = Literal p l
+patternToExpr (BoolP p l) = if l then Var p "true" else Var p "false"
+patternToExpr (NullP p) = Var p "null"
+patternToExpr (ListP p ps) = ListLiteral p (map patternToExpr ps)
+patternToExpr (ObjectP p ps) = ObjectLiteral p (map (second patternToExpr) ps)
+patternToExpr (ActionP n p ps) = unpeelAps (Var p n) (map patternToExpr ps)
+patternToExpr (SymbolP n p ps) = unpeelAps (Symbol p n) (map patternToExpr ps)
+
+bindPatternToExpr :: BindPattern -> Expr TempExpr
+bindPatternToExpr (MacroExpansionBP _ e) = e
+bindPatternToExpr (FunP n p ps) = unpeelAps (Var p n) (map topPatternToExpr ps)
+bindPatternToExpr (Direct p) = topPatternToExpr p
+
+class PrettyPattern a where
+  prettyPattern :: a -> Doc AnsiStyle
+
+instance PrettyPattern TopPattern where
+  prettyPattern p = prettyExpr (topPatternToExpr p)
+
+instance PrettyPattern Pattern where
+  prettyPattern p = prettyExpr (patternToExpr p)
+
+instance PrettyPattern (Expr TempExpr) where
+  prettyPattern p = prettyExpr p
+
+instance PrettyPattern TempExpr where
+  prettyPattern (E e) = prettyExpr e
+
+instance PrettyPattern BindPattern where
+  prettyPattern p = prettyExpr (bindPatternToExpr p)
+
+prettyExpr :: (PrettyPattern p) => Expr p -> Doc AnsiStyle
 prettyExpr trm = renderTerm True trm
   where
+    renderTerm :: (PrettyPattern q) => Bool -> Expr q -> Doc AnsiStyle
     renderTerm outer t
       | (x, []) <- peelAps t [] = case x of
         Var _ s -> ident s
+        Symbol _ s -> symbol (":" <> pretty s)
         Literal _p l -> prettyLit l
+        MacroExpansion _ e -> renderTerm outer e
         Projection e pr -> renderTerm False e <> projection ("." <> pr)
         App {} -> mempty -- Handled by peelAps
-        Freeze _ n e b ->
+        ListLiteral _ ls -> "[" <> hsep (punctuate comma $ map (renderTerm True) ls) <> "]"
+        ObjectLiteral _ ls -> "{" <> hsep (punctuate comma $ map (\(i, e) -> pretty i <> ":" <+> renderTerm True e) ls) <> "}"
+        Lam _ n e ->
           (if outer then id else parens) $
-            "freeze" <+> prettyExpr n <+> "=" <+> prettyExpr e <> "." <+> prettyExpr b
+            "fun(" <> hsep (punctuate comma $ map prettyPattern n) <> ") {" <+> renderTerm True e <+> "}"
       | (Var _ n, args) <- peelAps t [],
         Text.length (Text.filter (== '_') n) == length args =
         (if outer then id else parens) $ hsep $ infixTerms n args
       | (x, args) <- peelAps t [] =
-        (if outer then id else parens) $
-          hsep $
-            renderTerm False x : map (renderTerm False) args
+        --        (if outer then id else parens) $
+        renderTerm False x <> "(" <> hsep (punctuate comma $ map (renderTerm True) args) <> ")"
 
-    infixTerms :: Text -> [Expr] -> [Doc AnsiStyle]
+    infixTerms :: (PrettyPattern p) => Text -> [Expr p] -> [Doc AnsiStyle]
     infixTerms str [] = if Text.null str then [] else [ident str]
     infixTerms (Text.uncons -> Just ('_', str)) (x : xs) = renderTerm False x : infixTerms str xs
     infixTerms str args | (first, rest) <- Text.span (/= '_') str = ident first : infixTerms rest args
-
-prettyEvalError :: EvalError -> Doc AnsiStyle
-prettyEvalError = \case
-  ScopeError pos name -> errorMessage pos "name not in scope" [pretty name]
-  ModuloOnFloats d1 d2 -> errorMessageNoPos "invalid modulo on floats" [pretty d1 <+> "%" <+> pretty d2]
-  NotAFunction v -> errorMessageNoPos ("not a function") [prettyValue v]
-  BinaryOpOnInvalidTypes op v1 v2 -> errorMessageNoPos ("binary operation" <+> prettyBinaryOp op <+> "is not valid on parameters:") [prettyValue v1, prettyValue v2]
-  UnaryOpOnInvalidTypes op v -> errorMessageNoPos ("unary operation" <+> prettyUnaryOp op <+> "is not valid on parameters:") [prettyValue v]
-  FreezeLHSNotVar pos -> errorMessage pos "left-hand side of freeze is not a variable name" []
-  FreezeRHSNotValue pos -> errorMessage pos "right-hand side of freeze is not a value" []
-  FreezeInNotFormula pos -> errorMessage pos "body of freeze is not a formula" []
-  VariableAlreadyDefined name pos -> errorMessage pos ("variable already defined:" <+> pretty name) []
-
-prettyFormulaExpr :: Int -> FormulaExpr Accessor -> Doc AnsiStyle
-prettyFormulaExpr p = \case
-  LocExpr _name _pos expr -> prettyFormulaExpr p expr
-  Accessor a -> parensIf (p >= 0) ("access" <+> literal (enclose "`" "`" (pretty a)))
-  Op op args ->
-    case args of
-      [e] -> parensIf (p >= opPrecedence op) (prettyUnaryOp op <+> prettyFormulaExpr (opPrecedence op) e)
-      [e1, e2] -> parensIf (p >= opPrecedence op) (prettyFormulaExpr (opPrecedence op) e1 <+> prettyBinaryOp op <+> prettyFormulaExpr (opPrecedence op) e2)
-      _ -> "<invalid>"
-  Constant val -> prettyIValue val
-  FreezeVar name _ -> pretty name
-
-opPrecedence :: Op -> Int
-opPrecedence = \case
-  NotOp -> 6
-  AlwaysOp -> 6
-  EventuallyOp -> 6
-  NextOp -> 6
-  MkAccessor -> 1
-  Equals -> 7
-  NotEquals -> 7
-  Plus -> 8
-  Times -> 8
-  Divide -> 8
-  Modulo -> 8
-  Less -> 7
-  LessEq -> 7
-  Greater -> 7
-  GreaterEq -> 7
-  AndOp -> 4
-  OrOp -> 3
-  ImpliesOp -> 2
-  UntilOp -> 5
-
-prettyUnaryOp :: Op -> Doc ann
-prettyUnaryOp NotOp = "not"
-prettyUnaryOp AlwaysOp = "always"
-prettyUnaryOp EventuallyOp = "eventually"
-prettyUnaryOp NextOp = "next"
-prettyUnaryOp MkAccessor = "access"
-
-prettyBinaryOp :: Op -> Doc ann
-prettyBinaryOp Equals = "=="
-prettyBinaryOp NotEquals = "!="
-prettyBinaryOp Plus = "+"
-prettyBinaryOp Times = "*"
-prettyBinaryOp Divide = "/"
-prettyBinaryOp Modulo = "%"
-prettyBinaryOp Less = "<"
-prettyBinaryOp LessEq = "<="
-prettyBinaryOp Greater = ">"
-prettyBinaryOp GreaterEq = ">="
-prettyBinaryOp AndOp = "&&"
-prettyBinaryOp OrOp = "||"
-prettyBinaryOp ImpliesOp = "==>"
-prettyBinaryOp UntilOp = "until"
-
-prettyIValue :: IValue -> Doc AnsiStyle
-prettyIValue = \case
-  LitVal lit -> prettyLit lit
-  BoolVal True -> "true"
-  BoolVal False -> "false"
-  Null -> "null"
-
-prettyValue :: Value -> Doc AnsiStyle
-prettyValue = \case
-  Independent v -> prettyIValue v
-  StateDependent _ expr -> prettyFormulaExpr 0 expr
-  Formula _ f -> prettyFormula 0 f
-  Closure _pos _env _args _body -> ""
-  PartialOp _op _params -> "<partial op>"
-
-prettyFormula :: Int -> Formula Accessor -> Doc AnsiStyle
-prettyFormula p = \case
-  Atomic e -> prettyFormulaExpr p e
-  Until f1 f2 -> parensIf (p >= 5) (prettyFormula 5 f1 <+> "until" <+> prettyFormula 5 f2)
-  Not f -> parensIf (p >= 6) ("not" <+> prettyFormula 6 f)
-  And f1 f2 -> parensIf (p >= 4) (prettyFormula 4 f1 <> line <> "&&" <+> align (prettyFormula 4 f2))
-  Or f1 f2 -> parensIf (p >= 3) (prettyFormula 3 f1 <> line <> "||" <+> align (prettyFormula 3 f2))
-  Implies f1 f2 -> parensIf (p >= 2) (prettyFormula 2 f1 <+> "==>" <+> prettyFormula 2 f2)
-  Always f -> parens ("always" <+> prettyFormula 6 f)
-  Eventually f -> parensIf (p >= 6) ("eventually" <+> prettyFormula 6 f)
-  Next f -> parensIf (p >= 6) ("next" <+> prettyFormula 6 f)
-  Trivial -> "true"
-  Absurd -> "false"
-  LocFormula _name _pos f -> prettyFormula p f
-  FreezeIn _pos name e f -> parensIf (p >= 0) (keyword "freeze" <+> pretty name <+> keyword "=" <+> prettyFormulaExpr 0 e <+> keyword "." <> prettyFormula 0 f)
 
 parensIf :: Bool -> Doc ann -> Doc ann
 parensIf True = parens . align
@@ -250,8 +251,14 @@ keyword = annotate bold
 literal :: Doc AnsiStyle -> Doc AnsiStyle
 literal = annotate (colorDull Cyan)
 
+symbol :: Doc AnsiStyle -> Doc AnsiStyle
+symbol = annotate (colorDull Magenta)
+
 ident :: Pretty p => p -> Doc AnsiStyle
 ident = annotate (color Black) . pretty
 
 projection :: Pretty p => p -> Doc AnsiStyle
 projection = annotate (color Green) . pretty
+
+docStyle :: Doc AnsiStyle -> Doc AnsiStyle
+docStyle = annotate (colorDull Yellow)

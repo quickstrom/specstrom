@@ -1,0 +1,17 @@
+syntax always_ 6;
+let always ~p = always {100} p;
+
+syntax eventually {_}_ 0;
+let eventually {n} ~p = not (always {n} (not p));
+
+syntax eventually_ 0 right;
+let eventually ~p = eventually {100} p;
+
+let changed(~x) = freeze a = x. nextT (x != a);
+
+let unchanged(~x) = freeze a = x. nextT (x == a);
+
+let transition(a, ~b) = a && nextT b;
+
+syntax _~>_ 5;
+let a ~> ~b = transition(a, b);

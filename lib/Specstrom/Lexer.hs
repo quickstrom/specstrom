@@ -10,25 +10,24 @@ import qualified Data.Text as Text
 import qualified Data.Text.Read as Text
 import Text.Read (readMaybe)
 
-data Kwd = Define | Syntax | Let | Import | Check | With deriving (Show, Eq)
-
 data Token
   = Ident Text
-  | Reserved Kwd
   | ProjectionTok Text
   | StringLitTok Text
+  | DocTok Text
   | CharLitTok Char
   | IntLitTok Int
   | FloatLitTok Double
   | SelectorLitTok Text
   | LParen
   | RParen
-  | Semi
-  | Dot
   | EOF
   deriving (Show, Eq)
 
 type Position = (FilePath, Int, Int)
+
+dummyPosition :: Position
+dummyPosition = ("", 0, 0)
 
 addRow :: Int -> Position -> Position
 addRow i (f, l, _c) = (f, l + i, 0)
@@ -69,24 +68,45 @@ readLiteral' delimiter rest =
         Just (x, xs) | x == delimiter -> Just (chunk, xs)
         _ -> Nothing
 
-reserved :: Char -> Bool
-reserved c = isSpace c || c `elem` ("();." :: [Char])
+isAlphaIdentChar :: Char -> Bool
+isAlphaIdentChar c = isAlpha c || isDigit c || c `elem` ("_'!?@#$" :: [Char])
+
+isBracketIdentChar :: Char -> Bool
+isBracketIdentChar c = c `elem` ("[]{};," :: [Char])
+
+isSymbolIdentChar :: Char -> Bool
+isSymbolIdentChar c = not (isSpace c || isAlphaNum c || c `elem` ("(),[]{};\"" :: [Char]))
 
 lexer :: Position -> Text -> Either LexerError [(Position, Token)]
 lexer p t
+  | Text.take 3 t == "///" =
+    let (content, rest) = Text.break (== '\n') (Text.drop 3 t)
+     in ((p, DocTok content) :) <$> lexer (nextRow p) (Text.drop 1 rest)
   | Text.take 2 t == "//" =
     lexer (nextRow p) (Text.drop 1 (Text.dropWhile (/= '\n') (Text.drop 2 t)))
   | otherwise = case Text.uncons t of
     Nothing -> Right [(p, EOF)]
     Just ('\n', cs) -> lexer (nextRow p) cs
     Just (c, cs) | isSpace c -> lexer (nextCol p) cs
+    Just ('-', cs)
+      | Just (i, _) <- Text.uncons cs,
+        isDigit i,
+        Right ((p', FloatLitTok v) : rest) <- lexer (nextCol p) cs ->
+        pure $ (p', FloatLitTok (- v)) : rest
+    Just ('-', cs)
+      | Just (i, _) <- Text.uncons cs,
+        isDigit i,
+        Right ((p', IntLitTok v) : rest) <- lexer (nextCol p) cs ->
+        pure $ (p', IntLitTok (- v)) : rest
     Just (i, _cs) | isDigit i -> case Text.span isDigit t of
-      (digits, Text.uncons -> Just ('.', rest)) ->
-        let (decimals, rest') = Text.span (\x -> isDigit x || x `elem` ("eE+-" :: [Char])) rest
-            candidate = digits <> "." <> decimals
-         in case Text.double candidate of
-              Left _ -> Left $ InvalidFloatLit p candidate
-              Right (v, _) -> ((p, FloatLitTok v) :) <$> lexer (advance candidate p) rest'
+      (digits, Text.uncons -> Just ('.', rest))
+        | Just (i', _) <- Text.uncons rest,
+          isDigit i' ->
+          let (decimals, rest') = Text.span (\x -> isDigit x || x `elem` ("eE+-" :: [Char])) rest
+              candidate = digits <> "." <> decimals
+           in case Text.double candidate of
+                Left _ -> Left $ InvalidFloatLit p candidate
+                Right (v, _) -> ((p, FloatLitTok v) :) <$> lexer (advance candidate p) rest'
       (digits, rest) -> case Text.decimal digits of
         Left _ -> Left $ InvalidIntLit p digits
         Right (v, _) -> ((p, IntLitTok v) :) <$> lexer (advance digits p) rest
@@ -105,21 +125,21 @@ lexer p t
       Just (lit, rest) -> ((p, SelectorLitTok (Text.drop 1 (Text.take (Text.length lit - 1) lit))) :) <$> lexer (advance lit p) rest
     Just ('(', cs) -> ((p, LParen) :) <$> lexer (nextCol p) cs
     Just (')', cs) -> ((p, RParen) :) <$> lexer (nextCol p) cs
-    Just (';', cs) -> ((p, Semi) :) <$> lexer (nextCol p) cs
-    Just ('.', cs) ->
-      let (candidate, rest) = Text.break reserved cs
-       in if Text.null candidate
-            then ((p, Dot) :) <$> lexer (nextCol p) cs
-            else ((p, ProjectionTok candidate) :) <$> lexer (advance candidate p) rest
-    Just (c, cs) ->
-      let (candidate, rest) = Text.break reserved t
-       in ((p, fromCandidate candidate) :) <$> lexer (advance candidate p) rest
+    Just ('.', cs)
+      | (candidate, rest) <- Text.break (not . isAlphaNum) cs,
+        not (Text.null candidate) ->
+        ((p, ProjectionTok candidate) :) <$> lexer (advance candidate p) rest
+    Just (c, cs)
+      | isBracketIdentChar c -> ((p, fromCandidate (Text.take 1 t)) :) <$> lexer (nextCol p) cs
+    Just (c, cs)
+      | isAlpha c ->
+        let (candidate, rest) = Text.break (not . isAlphaIdentChar) t
+         in ((p, fromCandidate candidate) :) <$> lexer (advance candidate p) rest
+    Just (c, cs)
+      | isSymbolIdentChar c ->
+        let (candidate, rest) = Text.break (not . isSymbolIdentChar) t
+         in ((p, fromCandidate candidate) :) <$> lexer (advance candidate p) rest
+    _ -> error "Impossible"
 
 fromCandidate :: Text -> Token
-fromCandidate "=" = Reserved Define
-fromCandidate "syntax" = Reserved Syntax
-fromCandidate "let" = Reserved Let
-fromCandidate "import" = Reserved Import
-fromCandidate "check" = Reserved Check
-fromCandidate "with" = Reserved With
 fromCandidate s = Ident s

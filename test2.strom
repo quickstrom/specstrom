@@ -1,2 +1,0 @@
-let test = access `accessor` until access `funky`;
-not access `blah` && next test until test;

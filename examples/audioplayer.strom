@@ -1,0 +1,57 @@
+import control;
+import list;
+import ltl;
+
+// Web stuff (normally defined in Quickstrom)
+
+action click!(x) = for element in x. { id: "click", event: false, args: [element.ref] } when element.enabled && element.visible;
+
+action changed?(x) = for element in x. { id: "changed", event: true, args: [x.ref]};
+
+action loaded? = { id: "loaded", event: true, args: [] };
+
+action noop! = {id:"noop",event:false,args:[]};
+
+// The following specifies a stripped-down audio player, featuring a
+// button that toggles between the paused and playing states.
+
+// States
+
+let buttonText = `.play-pause`.textContent;
+
+let timeDisplayText = `.time-display`.textContent;
+
+let playing = buttonText == "Pause";
+
+let paused = buttonText == "Play";
+
+// Actions and events
+
+action toggle! = click!(`.toggle`);
+
+action wait! = noop! when playing;
+
+action tick? = changed?(`.time-display`);
+
+// We can play while in the `paused` state.
+let play =
+      next [toggle!] == happened
+      && paused ~> playing
+      && unchanged(timeDisplayText);
+
+// We can pause while in the `playing` state.
+let pause =
+      next [toggle!] == happened
+      && playing ~> paused
+      && unchanged(timeDisplayText);
+
+// The `tick` system event occurs when we're in `playing`, changing
+// the time display's text
+let tick =
+      next [tick?] == happened
+      && playing ~> playing
+      && not unchanged(timeDisplayText);
+
+let prop_safety = paused && always (play || pause || tick);
+
+check prop_* with * when loaded?;

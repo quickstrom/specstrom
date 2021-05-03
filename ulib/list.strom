@@ -1,0 +1,33 @@
+import math;
+
+let conjunction = foldr(_&&_,true);
+let disjunction = foldr(_||_,false);
+let all(f,ls) = conjunction(map(f,ls));
+let any(f,ls) = disjunction(map(f,ls));
+syntax for_in_{_} 10;
+syntax _[_] 9 left;
+let l[x] = nth(l,x);
+macro for X in Y { E } = map(fun X. E, Y);
+syntax for_in_._ -1 right;
+macro for X in Y. E = map(fun X. E, Y);
+syntax forall_in_{_} 0;
+macro forall X in Y { E } = all(fun X. E, Y);
+syntax forall_in_._ -1 right;
+macro forall X in Y. E = all(fun X. E, Y);
+syntax exists_in_{_} 0;
+macro exists X in Y { E } = any(fun X. E, Y);
+syntax exists_in_._ -1 right;
+macro exists X in Y. E  = any(fun X. E, Y);
+
+/// Compute the length (number of elements) in a list.
+let length(xs) = foldl(fun acc. fun x. acc + 1, 0, xs);
+
+let first(xs) = xs[0];
+
+let last(xs) = xs[-1];
+
+let range(start, end) = unfoldr(fun n. if n <= end { [n, n + 1] }, start);
+
+let filter(f) = map(fun x. if f(x) { x } else { null });
+
+let contains(needle, haystack) = exists x in haystack { x == needle };

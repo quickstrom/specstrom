@@ -1,0 +1,30 @@
+syntax _??_ 3 right;
+let _??_(x,~y) = if isNull(x) {y} else {x};
+
+syntax _|_ -2 right;
+let (f | g)(x) = f(x) ?? g(x);
+syntax match_{|_} 10;
+let match x { | f } = f(x);
+
+syntax if_{_} 10;
+let if x { ~e } = if x { e } else { null };
+
+syntax _when_ 0;
+let ~x when y = if y { x };
+
+syntax case_._ -1 right;
+syntax case_{_} 10;
+
+syntax fun_._ -1 right;
+macro fun P. X = fun(P) {X};
+macro case P. X = fun P. X;
+macro case P {X} = fun P. X;
+
+syntax freeze_=_._ -1 right;
+macro freeze P = Y. Z = fun (P) { Z }(Y);
+
+syntax freeze_=_{_} 10 right;
+macro freeze P = Y {Z} = freeze P = Y. Z;
+
+syntax let_=_;_ -1 right;
+macro let X = Y; Z = fun (X) { Z }(Y);

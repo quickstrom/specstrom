@@ -1,0 +1,148 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Specstrom",
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#terminators"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#selectors"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#constants"
+		},
+		{
+			"include": "#builtins"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"begin": "(^|\\G)\\s*(///)",
+					"beginCaptures": {
+						"2": {
+							"name": "comment.block.documentation.specstrom"
+						}
+					},
+					"end": "$",
+					"patterns": [
+						{
+							"include": "text.html.markdown#inline"
+						},
+						{
+							"name": "comment.block.documentation.specstrom",
+							"match": "."
+						}
+					]
+				},
+				{
+					"name": "comment.line.specstrom",
+					"match": "//.*$"
+				}
+			]
+		},
+		"terminators": {
+			"patterns": [
+				{
+					"name": "punctuation.terminator",
+					"match": ";"
+				},
+				{
+					"comment": "Dot used before the body expression in fun, for, forall, exists.",
+					"name": "punctuation.separator",
+					"match": "\\.(?=\\s)"
+				},
+				{
+					"comment": "Dot used in projections.",
+					"name": "punctuation.accessor",
+					"match": "\\.(?=[^\\s])"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.specstrom",
+					"match": "\\b(import|let|syntax|macro|if|else|when|action|check|with|for|forall|exists|in|match|case)\\b"
+				},
+				{
+					"name": "keyword.operator.temporal.specstrom",
+					"match": "\\b(not|next|nextF|nextT|always|eventually|until|changed|unchanged|\\~>)\\b"
+				},
+				{
+					"name": "keyword.operator.other.specstrom",
+					"match": "\\s(==|\\!=|<=|>=|<|>|\\~>)\\s"
+				},
+				{
+					"name": "keyword.operator.logical.specstrom",
+					"match": "\\s(\\&\\&|\\|\\|not)\\s"
+				},
+				{
+					"name": "keyword.operator.arithmetic.specstrom",
+					"match": "\\b(\\+|\\-|\\*|\\/)\\b"
+				},
+				{
+					"name": "keyword.operator.lazy.specstrom",
+					"match": "~(?=\\w)"
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.specstrom",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.specstrom",
+					"match": "\\\\."
+				}
+			]
+		},
+		"selectors": {
+			"name": "string.quoted.other.specstrom",
+			"begin": "`",
+			"end": "`",
+			"patterns": [
+				{
+					"name": "constant.character.escape.specstrom",
+					"match": "\\\\."
+				}
+			]
+		},
+		"constants": {
+			"patterns": [
+				{
+					"name": "constant.numeric.specstrom",
+					"match": "\\d+(\\d+)?([Ee]\\d+)?"
+				},
+				{
+					"name": "constant.language.specstrom",
+					"match": "\\b(null|true|false)\\b"
+				},
+				{
+					"name": "constant.other.specstrom",
+					"match": ":\\w+"
+				}
+			]
+		},
+		"builtins": {
+			"patterns": [
+				{
+					"name": "support.function",
+					"match": "\\b(parseInt|trim|split|conjunction|disjunction|all|any|length|first|last|range|filter|contains|zip|transition)\\b"
+				}
+			]
+		}
+	},
+	"scopeName": "source.specstrom"
+}
