@@ -3,24 +3,53 @@
 (setq specstrom-font-lock-keywords
       (let* (
              ;; define several category of keywords
-             (x-keywords '("let" "freeze" "forall" "exists" "check" "import" "with" "when"))
-             (x-constants '("true" "false" "null"))
-             
+             (x-keyword '("fun" "syntax" "action" "let" "macro" "check" "with" "when" "import" "left" "right"))
+             (x-builtin '(;; builtins and control flow operators
+                          "if"
+                          "else"
+                          "for"
+                          "forall"
+                          "exists"
+                          "in"
+                          "match"
+                          "case"
+                          ;; temporal operators
+                          "not"
+                          "next"
+                          "nextF"
+                          "nextT"
+                          "always"
+                          "eventually"
+                          "until"
+                          "changed"
+                          "unchanged"
+                          ))
+             (x-operator '("~>"
+                           "&&"
+                           "||"
+                           "+"
+                           "-"
+                           "*"
+                           "/"
+                           "~"
+                           ))
+             (x-constant '("true" "false" "null"))
 
              ;; generate regex string for each category of keywords
-             (x-keywords-regexp (regexp-opt x-keywords 'words))
-             (x-constants-regexp (regexp-opt x-constants 'words))
+             (x-keyword-regexp (regexp-opt x-keyword 'words))
+             (x-builtin-regexp (regexp-opt x-builtin 'words))
+             (x-operator-regexp (regexp-opt x-operator 'symbols))
+             (x-constant-regexp (regexp-opt x-constant 'words))
              )
 
         `(
+          (,x-keyword-regexp . font-lock-keyword-face)
+          (,x-builtin-regexp . font-lock-builtin-face)
+          (,x-operator-regexp . font-lock-function-name-face)
+          (,x-constant-regexp . font-lock-constant-face)
 
-          (,x-keywords-regexp . font-lock-keyword-face)
-          (,x-constants-regexp . font-lock-constant-face)
-
-          ("\\(?:[^ ]+?\\?\\)" . font-lock-builtin-face)
-          ("\\(?:[^ ]+?\\!\\)" . font-lock-builtin-face)
-
-          ;;(,x-builtin-regexp . font-lock-function-name-face)
+          ("\\(\\w+?[!?]\\)" . font-lock-type-face)
+          ("\\(\\w+?[!?]\\)" . font-lock-type-face)
 
           ;; note: order above matters, because once colored, that part won't change.
           ;; in general, put longer words first
