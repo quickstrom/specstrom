@@ -115,8 +115,9 @@ readStdinTo output = do
   unless eof $ do
     line <- liftIO getLine
     case JSON.eitherDecodeStrict (BS.pack line) of
-      Left err ->
-        fail ("Input message parsing failed: " <> err)
+      Left err -> do
+        logErr ("Input message parsing failed: " <> err)
+        fail "Input message parsing failed."
       Right msg -> do
         send output msg
         readStdinTo output
@@ -175,6 +176,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
       case msg of
         Performed _state -> error "Was not expecting an action to be performed. Trace must begin with an initial event."
         Event event firstState -> do
+          logInfo ("Got initial event: " <> show event)
           expectedPrims <-
             let f = extractActions Nothing actionEnv (toEvaluatorState (- (fromIntegral (succ version))) Nothing firstState)
              in case expectedEvent of
