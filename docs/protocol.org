@@ -30,15 +30,15 @@ There are two processes involved in the protocol:
 
 ** Messages
    
-| Message ID  | Arguments                                                                          | Sender      | Description                                                                                                     |
-|-------------+------------------------------------------------------------------------------------+-------------+-----------------------------------------------------------------------------------------------------------------|
-| ~start~     | ~propertyName : String~ ~dependencies : Set Dependency~ ~observers : Set Observer~ | Interpreter | Request a new session be started by the Executor. Also specifies which selectors to install event observers for |
-| ~end~       |                                                                                    | Interpreter | Request the current session be ended by the Executor.                                                           |
-| ~action~    | ~action : Action Element~ ~version : Int~                                          | Interpreter | Request the Executor performs the given action, iff version matches local version.                              |
-| ~performed~ | ~state : State~                                                                    | Executor    | Notify the Interpreter that an action was performed, along with the subsequent state.                           |
-| ~event~     | ~event : Event Element~ ~state : State~                                            | Executor    | Notify the Interpreter about an event that occurred, along with the subsequent state.                           |
-| ~stale~     |                                                                                    | Executor    | Reject the request to perform an action, due to version mismatch.                                               |
-| ~result~    | ~results : [(String, Result)]~                                                     | Interpreter | Report the final result of check all properties.                                                                |
+| Message ID      | Arguments                                                                          | Sender      | Description                                                                                                     |
+|-----------------+------------------------------------------------------------------------------------+-------------+-----------------------------------------------------------------------------------------------------------------|
+| ~Start~         | ~propertyName : String~ ~dependencies : Set Dependency~ ~observers : Set Observer~ | Interpreter | Request a new session be started by the Executor. Also specifies which selectors to install event observers for |
+| ~End~           |                                                                                    | Interpreter | Request the current session be ended by the Executor.                                                           |
+| ~RequestAction~ | ~action : Action Element~ ~version : Int~                                          | Interpreter | Request the Executor performs the given action, iff version matches local version.                              |
+| ~Performed~     | ~state : State~                                                                    | Executor    | Notify the Interpreter that an action was performed, along with the subsequent state.                           |
+| ~Event~         | ~event : Event Element~ ~state : State~                                            | Executor    | Notify the Interpreter about an event that occurred, along with the subsequent state.                           |
+| ~Stale~         |                                                                                    | Executor    | Reject the request to perform an action, due to version mismatch.                                               |
+| ~Done~          | ~results : [(String, Result)]~                                                     | Interpreter | Report the final result of check all properties.                                                                |
 
 Types to be defined:
 
