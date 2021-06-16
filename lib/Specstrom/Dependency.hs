@@ -7,6 +7,10 @@ import qualified Data.Aeson as JSON
 import qualified Data.HashMap.Strict as M
 import GHC.Generics (Generic)
 import Specstrom.Syntax (Name, Selector)
+import Specstrom.Action (PrimAction)
+import Data.Hashable (Hashable)
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as HashSet
 
 newtype DepSchema = DepSchema (M.HashMap Name DepSchema)
   deriving (Show, Eq, Generic, JSON.FromJSON, JSON.ToJSON)
@@ -16,21 +20,27 @@ newtype DepSchema = DepSchema (M.HashMap Name DepSchema)
 instance Semigroup DepSchema where
   (<>) (DepSchema a) (DepSchema b) = DepSchema (M.unionWith (<>) a b)
 
-newtype Dep = Dep (M.HashMap Selector DepSchema)
+newtype Monitor = Monitor PrimAction
+  deriving (Eq, Show, Generic, Hashable, JSON.ToJSON, JSON.FromJSON)
+
+data Dep = Dep { queries :: M.HashMap Selector DepSchema, events :: HashSet PrimAction }
   deriving (Show, Eq, Generic, JSON.FromJSON, JSON.ToJSON)
 
 instance Semigroup Dep where
-  (<>) (Dep a) (Dep b) = Dep (M.unionWith (<>) a b)
+  (<>) (Dep q1 a1) (Dep q2 a2) = Dep (M.unionWith (<>) q1 q2) (a1 <> a2)
 
 instance Monoid Dep where
-  mempty = Dep M.empty
+  mempty = Dep mempty mempty
 
 project :: Name -> Dep -> Dep
-project t (Dep m) = Dep (fmap (projectField t) m)
+project t (Dep q a) = Dep (fmap (projectField t) q) a
   where
     projectField n (DepSchema obj)
       | M.null obj = DepSchema (M.singleton n (DepSchema mempty))
       | otherwise = DepSchema (fmap (projectField n) obj)
 
-dep :: Selector -> Dep
-dep t = Dep (M.singleton t (DepSchema mempty))
+queryDep :: Selector -> Dep
+queryDep t = Dep (M.singleton t (DepSchema mempty)) mempty
+
+actionDep :: PrimAction -> Dep
+actionDep a = Dep mempty (HashSet.singleton a)

@@ -67,7 +67,7 @@ depOf (PossibleError) = mempty
 depOf (Action _ as) = foldMap depOf as
 depOf (Constructor _ as) = foldMap depOf as
 depOf (Object as) = foldMap (depOf . snd) as
-depOf (FromSelector sel proj) = go (dep sel) proj
+depOf (FromSelector sel proj) = go (queryDep sel) proj
   where
     go d [] = d
     go d (Field f : ps) = go (project f d) ps

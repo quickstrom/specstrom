@@ -22,6 +22,7 @@ import qualified Specstrom.Analysis as Analysis
 import qualified Specstrom.Channel as Channel
 import qualified Specstrom.Checker as Checker
 import qualified Specstrom.Checker.Protocol as Protocol
+import qualified Specstrom.Action as Action
 import qualified Specstrom.Gen as Gen
 import qualified Specstrom.Parser as Parser
 import Specstrom.PrettyPrinter (prettyParseError)
@@ -63,11 +64,11 @@ runSessions input output = go
           Channel.send
             output
             ( Protocol.Event
-                Protocol.A
-                  { Protocol.id = "loaded",
-                    Protocol.isEvent = True,
-                    Protocol.args = [],
-                    Protocol.timeout = Nothing
+                Action.A
+                  { Action.id = "loaded",
+                    Action.isEvent = True,
+                    Action.args = [],
+                    Action.timeout = Nothing
                   }
                 s
             )

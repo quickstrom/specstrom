@@ -34,6 +34,7 @@ import Specstrom.Syntax (Name, TopLevel, TopLevel' (..))
 import qualified Specstrom.Syntax as Syntax
 import System.IO (hPutStrLn, isEOF, stderr)
 import System.Random (randomRIO)
+import Specstrom.Action (PrimAction(..), timeout)
 
 checkAllStdio :: [TopLevel] -> IO ()
 checkAllStdio ts = do

@@ -48,7 +48,8 @@ library
   hs-source-dirs:      lib
   build-depends:       Earley
                      , prettyprinter-ansi-terminal
-  exposed-modules:     Specstrom.Channel
+  exposed-modules:     Specstrom.Action
+                     , Specstrom.Channel
                      , Specstrom.Checker
                      , Specstrom.Checker.Protocol 
                      , Specstrom.Evaluator 
