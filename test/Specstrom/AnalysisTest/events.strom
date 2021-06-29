@@ -1,0 +1,8 @@
+import control;
+import list;
+
+action loaded? = { id: "loaded", event: true, args: [] };
+
+action changed?(xs) = for x in xs. { id: "loaded", event: true, args: [x] };
+ 
+let test = contains(changed?(`foo`), happened);

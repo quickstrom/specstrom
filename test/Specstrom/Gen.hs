@@ -85,7 +85,7 @@ elementState (Dependency.DepSchema fields)
   | otherwise = JSON.Object <$> traverse elementState fields
 
 state :: Dependency.Dep -> Gen Protocol.State
-state (Dependency.Dep bySelector) =
+state (Dependency.Dep bySelector _) =
   flip HashMap.traverseWithKey bySelector $ \(Selector s) schema -> do
     elements <- Gen.list (Range.linear 1 10) (elementState schema)
     pure

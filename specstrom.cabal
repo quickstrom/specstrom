@@ -95,6 +95,7 @@ test-suite specstrom-test
                      , lens
                      , lens-aeson
                      , specstrom
-  other-modules:       Specstrom.PrettyPrinterTest
+  other-modules:       Specstrom.AnalysisTest
+                     , Specstrom.PrettyPrinterTest
                      , Specstrom.CheckerTest
                      , Specstrom.Gen

@@ -27,6 +27,7 @@ import qualified Specstrom.Gen as Gen
 import qualified Specstrom.Parser as Parser
 import Specstrom.PrettyPrinter (prettyParseError)
 import qualified Specstrom.Syntax as Syntax
+import qualified Data.Text as Text
 
 prop_check_produces_result :: Property
 prop_check_produces_result = property $ do
@@ -80,7 +81,7 @@ runSessions input output = go
 load :: Text -> IO [Syntax.TopLevel]
 load f = do
   let searchPaths = [".", "ulib"]
-  result <- runExceptT (Parser.loadModule searchPaths ("Command line", 0, 0) f Parser.builtIns)
+  result <- runExceptT (Parser.loadModule searchPaths (Text.unpack f, 0, 0) f Parser.builtIns)
   case result of
     Left err -> fail (renderString (Doc.layoutPretty Doc.defaultLayoutOptions (prettyParseError err)))
     Right (_, ts) -> pure ts
