@@ -19,15 +19,15 @@ import Control.Monad.Trans.Writer.Strict (runWriterT)
 import Control.Monad.Writer.Strict (tell)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HashMap
-import Data.List (tails)
+import Data.List (tails, sortBy, sortOn)
 import Data.List.NonEmpty (NonEmpty, (<|))
 import qualified Data.List.NonEmpty as NonEmpty
-import Hedgehog (Gen, Property, annotateShow, checkParallel, discover, forAll, property, (===))
+import Hedgehog (Gen, Property, annotateShow, checkParallel, cover, discover, forAll, property, (===), withTests)
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import System.Random (randomRIO)
 
-newtype Path = Path [Int]
+newtype Path = Path { unPath :: [Int] }
   deriving (Eq, Show, Semigroup, Monoid)
 
 data RoseTree a = Node (NonEmpty (RoseTree a)) | Leaf a
@@ -111,11 +111,40 @@ traverseOnce s path maxActions = do
           result <- go newState (Path remainingPath) (actionsLeft - 1)
           pure (Node (NonEmpty.fromList (unknowns actionIndex <> [result] <> unknowns (length actions' - actionIndex - 1))))
 
+neighbour :: OptimizationResult -> Maybe Path
+neighbour result =
+  case sortOn proximity (unknownPaths (exploredTree result)) of
+    p : _ -> Just p
+    _ -> Nothing
+  where
+    proximity (Path p) = 
+      let diff = abs (length (unPath (highestUtilityValuePath result)) - length p)
+        in negate (length (commonPrefix (unPath (highestUtilityValuePath result)) p)) + diff
+
+commonPrefix :: (Eq e) => [e] -> [e] -> [e]
+commonPrefix _ [] = []
+commonPrefix [] _ = []
+commonPrefix (x:xs) (y:ys)
+  | x == y    = x : commonPrefix xs ys
+  | otherwise = []
+
+type Temperature = Double
+
+-- Returns the probability [0, 1] of accepting the new candidate.
+-- This function is called 'P' in the SA literature.
+acceptProbability :: OptimizationResult -> OptimizationResult -> Temperature -> Double
+acceptProbability old new t =
+  let UtilityValue uv = highestUtilityValue old
+      UtilityValue uv' = highestUtilityValue new
+   in if uv < uv' then 1 else exp (negate (fromIntegral (uv' - uv) / t))
+
 search :: MonadIO m => StateSpace s m => s -> UtilityFunction s -> SearchOptions -> m OptimizationResult
 search s uf opts@SearchOptions {maxRuns} = do
   initialResult <- runOne mempty
   optimize initialResult (maxRuns - 1)
   where
+    initialTemperature = 100
+
     runOne p = do
       (tree, trace) <- traverseOnce s p 10
       let uv = uf trace
@@ -123,14 +152,25 @@ search s uf opts@SearchOptions {maxRuns} = do
 
     optimize oldResult 0 = pure oldResult
     optimize oldResult i = do
-      case unknownPaths (exploredTree oldResult) of
-        [] -> pure oldResult
-        candidateBasePath : _ -> do
+      case neighbour oldResult of
+        Nothing -> pure oldResult
+        Just candidateBasePath -> do
           candidateResult <- runOne candidateBasePath
           let mergedTree = merge (exploredTree oldResult) (exploredTree candidateResult)
-
-          let newResult = (if highestUtilityValue oldResult < highestUtilityValue candidateResult then candidateResult else oldResult) {exploredTree = mergedTree}
+          n <- randomRIO (0, 1)
+          let currentTemp = initialTemperature * (fromIntegral i / fromIntegral maxRuns)
+              newResult =
+                ( if acceptProbability oldResult candidateResult currentTemp >= n
+                    then candidateResult
+                    else oldResult
+                )
+                  { exploredTree = mergedTree
+                  }
           optimize newResult (i - 1)
+
+------------------------------------------------------------------
+-- * Tests
+------------------------------------------------------------------
 
 data TestStateMachine = TestStateMachine
   { initialState :: Char,
@@ -159,7 +199,7 @@ possibleStates = ['a' .. 'z']
 genStateMachine :: Gen TestStateMachine
 genStateMachine = do
   allStates <- do
-    n <- Gen.integral (Range.linear 2 (length possibleStates - 1))
+    n <- Gen.integral (Range.exponential 2 (length possibleStates - 1))
     pure (take n possibleStates)
 
   let initialState = head allStates
@@ -183,13 +223,15 @@ highestValue :: TestStateMachine -> Trace TestStateMachine -> UtilityValue
 highestValue sm (Trace t) = maximum [UtilityValue (HashMap.lookupDefault 0 s (states sm)) | s <- t]
 
 prop_prettyprint_parse_roundtrip :: Property
-prop_prettyprint_parse_roundtrip = property $ do
+prop_prettyprint_parse_roundtrip = withTests 1000 . property $ do
   sm <- forAll genStateMachine
   let numStates = length (states sm)
-  result <- search sm (highestValue sm) SearchOptions {maxRuns = numStates * 10, maxActions = numStates * 10}
+  result <- search sm (highestValue sm) SearchOptions {maxRuns = numStates `div` 2, maxActions = numStates `div` 2}
   annotateShow result
   let maxValue = maximum (HashMap.elems (states sm))
-  highestUtilityValue result === UtilityValue maxValue
+
+  cover 90 "found highest utility value" $
+    highestUtilityValue result == UtilityValue maxValue
 
 tests :: IO Bool
 tests = checkParallel $$(discover)
