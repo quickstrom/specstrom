@@ -13,7 +13,7 @@
 
 module Specstrom.TargetedSearchTest where
 
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Writer.Strict (runWriterT)
 import Control.Monad.Writer.Strict (tell)
@@ -22,11 +22,14 @@ import qualified Data.HashMap.Strict as HashMap
 import Data.List (sortOn, tails)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
-import Hedgehog (Gen, Property, annotateShow, checkParallel, cover, discover, forAll, property, withTests)
+import Hedgehog (Gen, Property, annotateShow, checkParallel, cover, discover, forAll, property, withTests, MonadTest)
 import qualified Hedgehog.Gen as Gen
 import Hedgehog.Internal.Property (CoverPercentage)
 import qualified Hedgehog.Range as Range
 import System.Random (randomRIO)
+import GHC.Stack (withFrozenCallStack)
+import qualified Data.Set as Set
+import Data.List (sort)
 
 newtype Path = Path {unPath :: [Int]}
   deriving (Eq, Show, Semigroup, Monoid)
@@ -176,7 +179,7 @@ search ::
   SearchStrategy ->
   SearchOptions ->
   m OptimizationResult
-search s uf SearchStrategy {neighbour, acceptProbability} opts@SearchOptions {maxRuns}
+search s uf SearchStrategy {neighbour, acceptProbability} opts@SearchOptions {maxRuns, maxActions}
   | maxRuns <= 0 = fail "maxRuns must be greater than 0"
   | otherwise = do
     initialResult <- runOne mempty
@@ -185,7 +188,7 @@ search s uf SearchStrategy {neighbour, acceptProbability} opts@SearchOptions {ma
     initialTemperature = 10
 
     runOne p = do
-      (tree, trace) <- traverseOnce s p 10
+      (tree, trace) <- traverseOnce s p maxActions
       let uv = uf trace
       pure (OptimizationResult {exploredTree = tree, highestUtilityValue = uv, highestUtilityValuePath = head (terminalPaths tree)})
 
@@ -213,7 +216,7 @@ search s uf SearchStrategy {neighbour, acceptProbability} opts@SearchOptions {ma
 
 ------------------------------------------------------------------
 
-type TestState = String
+type TestState = Char
 
 data TestStateMachine = TestStateMachine
   { initialState :: TestState,
@@ -239,8 +242,9 @@ windows n = map (take n) . tails
 genStateMachine :: Gen TestStateMachine
 genStateMachine = do
   allStates <- do
-    count <- Gen.integral (Range.exponential 20 200)
-    pure (map (\n -> "s" <> show n) [1 .. count :: Integer])
+    let allPossibleStates = ['a'..'z']
+    count <- Gen.integral (Range.exponential 3 (length allPossibleStates))
+    pure (take count allPossibleStates)
 
   let initialState = head allStates
       genState = Gen.element allStates
@@ -250,40 +254,73 @@ genStateMachine = do
   anyTransitions <-
     HashMap.fromList
       <$> sequence
-        [ (state,) <$> Gen.list (Range.linear 0 (length allStates `div` 2)) (Gen.filter (/= state) genState)
+        [ (state,) <$> Gen.list (Range.exponential 1 (length allStates)) genState
           | state <- allStates
         ]
 
-  let throughAllTransitions = HashMap.fromList [(a, [b]) | [a, b] <- windows 2 allStates]
+  transitionsToHighestValue <- do
+    pathStates <- Gen.set (Range.linear (length allStates `div` 2) (length allStates)) genState
+    pure (HashMap.fromList [(a, [b]) | [a, b] <- windows 2 (sort (last allStates : Set.toList pathStates))])
 
-  let transitions = HashMap.unionWith (<>) anyTransitions throughAllTransitions
+  let transitions = HashMap.unionWith (<>) anyTransitions transitionsToHighestValue
 
   pure TestStateMachine {initialState, states, transitions}
 
-highestValue :: TestStateMachine -> Trace TestStateMachine -> UtilityValue
+highestValue :: TestStateMachine -> UtilityFunction TestStateMachine
 highestValue sm (Trace t) = maximum [UtilityValue (HashMap.lookupDefault 0 s (states sm)) | s <- t]
+
+sumValue :: TestStateMachine -> UtilityFunction TestStateMachine
+sumValue sm (Trace t) = UtilityValue (sum [HashMap.lookupDefault 0 s (states sm) | s <- t])
+
+longestTrace :: UtilityFunction s
+longestTrace (Trace t) = UtilityValue (length t)
+
+annotateShow' :: (MonadTest m, Show a) => m a -> m a
+annotateShow' ma = withFrozenCallStack $ do
+  a <- ma
+  annotateShow a
+  pure a
 
 approximatesGlobalMaximumWith :: SearchStrategy -> CoverPercentage -> Property
 approximatesGlobalMaximumWith strategy coverage = withTests 100 . property $ do
   sm <- forAll genStateMachine
   let numStates = length (states sm)
-      maxRuns = numStates `div` 4 + 1
-      maxActions = numStates `div` 4
-  result <- search sm (highestValue sm) strategy SearchOptions {maxRuns, maxActions}
-  annotateShow result
+      maxRuns = max 1 (numStates `div` 2)
+      maxActions = max 1 (numStates `div` 2)
+  result <- annotateShow' (search sm (highestValue sm) strategy SearchOptions {maxRuns, maxActions})
   let maxValue = maximum (HashMap.elems (states sm))
 
   cover coverage "approximated highest utility value" $
     highestUtilityValue result > UtilityValue (floor (fromIntegral maxValue * 0.9 :: Double))
 
 prop_breadth_first_simulated_annealing_approximates_global_maximum :: Property
-prop_breadth_first_simulated_annealing_approximates_global_maximum = approximatesGlobalMaximumWith breadthFirstSimulatedAnnealing 65
+prop_breadth_first_simulated_annealing_approximates_global_maximum = approximatesGlobalMaximumWith breadthFirstSimulatedAnnealing 30
 
 prop_depth_first_simulated_annealing_approximates_global_maximum :: Property
-prop_depth_first_simulated_annealing_approximates_global_maximum = approximatesGlobalMaximumWith depthFirstSimulatedAnnealing 50
+prop_depth_first_simulated_annealing_approximates_global_maximum = approximatesGlobalMaximumWith depthFirstSimulatedAnnealing 40
 
 prop_greedy_breadth_first_approximates_global_maximum :: Property
-prop_greedy_breadth_first_approximates_global_maximum = approximatesGlobalMaximumWith greedyBreadthFirst 40
+prop_greedy_breadth_first_approximates_global_maximum = approximatesGlobalMaximumWith greedyBreadthFirst 30
 
+prop_best_strategy :: Property
+prop_best_strategy = withTests 100 . property $ do
+  sm <- forAll genStateMachine
+  let numStates = length (states sm)
+      maxRuns = max 1 (numStates `div` 8)
+      maxActions = max 1 (numStates `div` 8)
+      opts = SearchOptions {maxRuns, maxActions}
+
+  resultBFSA <- annotateShow' (search sm (highestValue sm) breadthFirstSimulatedAnnealing opts)
+  resultDFSA <- annotateShow' (search sm (highestValue sm) depthFirstSimulatedAnnealing opts)
+  resultGreedy <- annotateShow' (search sm (highestValue sm) greedyBreadthFirst opts)
+
+  cover 50 "breadth-first SA beats greedy" $
+    highestUtilityValue resultBFSA >= highestUtilityValue resultGreedy
+
+  cover 50 "depth-first SA beats greedy" $
+    highestUtilityValue resultDFSA >= highestUtilityValue resultGreedy
+
+  cover 50 "depth-first SA beats breadth-first SA" $
+    highestUtilityValue resultDFSA >= highestUtilityValue resultBFSA
 tests :: IO Bool
 tests = checkParallel $$(discover)
