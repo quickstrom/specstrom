@@ -1,6 +1,6 @@
-{ pkgs ? import <nixpkgs> {}, compiler ? "ghc8102" }:
+{ pkgs ? import <nixpkgs> {}, compiler ? "ghc8104" }:
 let
-  project = import ./. { inherit pkgs; };
+  project = import ./. { inherit pkgs compiler; };
 in project.haskellPackages.shellFor {
   withHoogle = true;
   packages = (p: [project.package]);
