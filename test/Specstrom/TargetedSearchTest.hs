@@ -10,26 +10,27 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Specstrom.TargetedSearchTest where
 
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Writer.Strict (runWriterT)
-import Control.Monad.Writer.Strict (tell)
+import Control.Monad.Writer.Strict (tell, when)
+import qualified Data.Graph as Graph
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HashMap
-import Data.List (sortOn, tails)
+import Data.List (sort, sortOn, tails)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
-import Hedgehog (Gen, Property, annotateShow, checkParallel, cover, discover, forAll, property, withTests, MonadTest)
+import qualified Data.Set as Set
+import GHC.Stack (withFrozenCallStack)
+import Hedgehog (Gen, MonadTest, Property, annotateShow, assert, checkParallel, classify, cover, discard, discover, forAll, label, property, withTests, withDiscards)
 import qualified Hedgehog.Gen as Gen
-import Hedgehog.Internal.Property (CoverPercentage)
+import Hedgehog.Internal.Property (CoverPercentage, LabelName (LabelName))
 import qualified Hedgehog.Range as Range
 import System.Random (randomRIO)
-import GHC.Stack (withFrozenCallStack)
-import qualified Data.Set as Set
-import Data.List (sort)
 
 newtype Path = Path {unPath :: [Int]}
   deriving (Eq, Show, Semigroup, Monoid)
@@ -80,7 +81,7 @@ class Monad m => StateSpace s m where
 newtype Trace s = Trace [State s]
   deriving (Semigroup, Monoid)
 
-newtype UtilityValue = UtilityValue Int
+newtype UtilityValue = UtilityValue {unUtilityValue :: Int}
   deriving (Eq, Ord, Show)
 
 type UtilityFunction s = Trace s -> UtilityValue
@@ -133,6 +134,12 @@ commonPrefix (x : xs) (y : ys)
 
 type Temperature = Double
 
+fullyRandom :: SearchStrategy
+fullyRandom = SearchStrategy {neighbour, acceptProbability}
+  where
+    neighbour _ = mempty
+    acceptProbability old new t = 0
+
 greedyBreadthFirst :: SearchStrategy
 greedyBreadthFirst = SearchStrategy {neighbour, acceptProbability}
   where
@@ -160,11 +167,12 @@ depthFirstSimulatedAnnealing :: SearchStrategy
 depthFirstSimulatedAnnealing = SearchStrategy {neighbour, acceptProbability}
   where
     neighbour result =
-      case sortOn (negate <$> proximity) (unknownPaths (exploredTree result)) of
+      case sortOn proximity (unknownPaths (exploredTree result)) of
         p : _ -> Just p
         _ -> Nothing
       where
-        proximity (Path p) = length (commonPrefix (unPath (highestUtilityValuePath result)) p)
+        proximity (Path p) = negate (similarity p * length p)
+        similarity p = length (commonPrefix (unPath (highestUtilityValuePath result)) p)
 
     acceptProbability old new t =
       let UtilityValue uv = highestUtilityValue old
@@ -216,7 +224,7 @@ search s uf SearchStrategy {neighbour, acceptProbability} opts@SearchOptions {ma
 
 ------------------------------------------------------------------
 
-type TestState = Char
+type TestState = Int
 
 data TestStateMachine = TestStateMachine
   { initialState :: TestState,
@@ -242,24 +250,26 @@ windows n = map (take n) . tails
 genStateMachine :: Gen TestStateMachine
 genStateMachine = do
   allStates <- do
-    let allPossibleStates = ['a'..'z']
-    count <- Gen.integral (Range.exponential 3 (length allPossibleStates))
-    pure (take count allPossibleStates)
+    count <- Gen.integral (Range.linear 200 500)
+    pure [1..count]
 
   let initialState = head allStates
+      genStatesAbove x range = case [succ x .. last allStates] of
+        [] -> pure []
+        xs -> Gen.list range (Gen.element xs)
       genState = Gen.element allStates
 
-  let states = HashMap.fromList (zip allStates [0 ..])
+  let states = HashMap.fromList (zip allStates allStates)
 
   anyTransitions <-
     HashMap.fromList
       <$> sequence
-        [ (state,) <$> Gen.list (Range.exponential 1 (length allStates)) genState
+        [ (state,) <$>  genStatesAbove state (Range.linear 2 5)
           | state <- allStates
         ]
 
   transitionsToHighestValue <- do
-    pathStates <- Gen.set (Range.linear (length allStates `div` 2) (length allStates)) genState
+    pathStates <- Gen.set (Range.linear 5 10) genState
     pure (HashMap.fromList [(a, [b]) | [a, b] <- windows 2 (sort (last allStates : Set.toList pathStates))])
 
   let transitions = HashMap.unionWith (<>) anyTransitions transitionsToHighestValue
@@ -281,46 +291,68 @@ annotateShow' ma = withFrozenCallStack $ do
   annotateShow a
   pure a
 
-approximatesGlobalMaximumWith :: SearchStrategy -> CoverPercentage -> Property
-approximatesGlobalMaximumWith strategy coverage = withTests 100 . property $ do
+findsGlobalMaximumWith :: SearchStrategy -> CoverPercentage -> Property
+findsGlobalMaximumWith strategy coverage = withTests 100 . property $ do
   sm <- forAll genStateMachine
-  let numStates = length (states sm)
-      maxRuns = max 1 (numStates `div` 2)
-      maxActions = max 1 (numStates `div` 2)
+  let maxRuns = 5
+      maxActions = 5
   result <- annotateShow' (search sm (highestValue sm) strategy SearchOptions {maxRuns, maxActions})
   let maxValue = maximum (HashMap.elems (states sm))
 
-  cover coverage "approximated highest utility value" $
-    highestUtilityValue result > UtilityValue (floor (fromIntegral maxValue * 0.9 :: Double))
+  cover coverage "found highest utility value" $
+    highestUtilityValue result == UtilityValue maxValue
 
-prop_breadth_first_simulated_annealing_approximates_global_maximum :: Property
-prop_breadth_first_simulated_annealing_approximates_global_maximum = approximatesGlobalMaximumWith breadthFirstSimulatedAnnealing 30
+prop_fully_random_finds_global_maximum :: Property
+prop_fully_random_finds_global_maximum = findsGlobalMaximumWith fullyRandom 20
 
-prop_depth_first_simulated_annealing_approximates_global_maximum :: Property
-prop_depth_first_simulated_annealing_approximates_global_maximum = approximatesGlobalMaximumWith depthFirstSimulatedAnnealing 40
+prop_breadth_first_simulated_annealing_finds_global_maximum :: Property
+prop_breadth_first_simulated_annealing_finds_global_maximum = findsGlobalMaximumWith breadthFirstSimulatedAnnealing 30
 
-prop_greedy_breadth_first_approximates_global_maximum :: Property
-prop_greedy_breadth_first_approximates_global_maximum = approximatesGlobalMaximumWith greedyBreadthFirst 30
+prop_depth_first_simulated_annealing_finds_global_maximum :: Property
+prop_depth_first_simulated_annealing_finds_global_maximum = findsGlobalMaximumWith depthFirstSimulatedAnnealing 40
+
+prop_greedy_breadth_first_finds_global_maximum :: Property
+prop_greedy_breadth_first_finds_global_maximum = findsGlobalMaximumWith greedyBreadthFirst 30
 
 prop_best_strategy :: Property
-prop_best_strategy = withTests 100 . property $ do
+prop_best_strategy = withDiscards 100 . withTests 100 . property $ do
   sm <- forAll genStateMachine
-  let numStates = length (states sm)
-      maxRuns = max 1 (numStates `div` 8)
-      maxActions = max 1 (numStates `div` 8)
+  let maxRuns = 5
+      maxActions = 5
       opts = SearchOptions {maxRuns, maxActions}
+      maxValue = maximum (HashMap.elems (states sm))
 
+      x `beats` y = highestUtilityValue x > highestUtilityValue y
+
+  resultRandom <- annotateShow' (search sm (highestValue sm) fullyRandom opts)
   resultBFSA <- annotateShow' (search sm (highestValue sm) breadthFirstSimulatedAnnealing opts)
   resultDFSA <- annotateShow' (search sm (highestValue sm) depthFirstSimulatedAnnealing opts)
   resultGreedy <- annotateShow' (search sm (highestValue sm) greedyBreadthFirst opts)
 
-  cover 50 "breadth-first SA beats greedy" $
-    highestUtilityValue resultBFSA >= highestUtilityValue resultGreedy
+  when (highestUtilityValue resultRandom == UtilityValue maxValue) discard
 
-  cover 50 "depth-first SA beats greedy" $
-    highestUtilityValue resultDFSA >= highestUtilityValue resultGreedy
+  cover 50 "breadth-first SA beats random" $
+    resultBFSA `beats` resultRandom
+ 
+  cover 50 "depth-first SA beats random" $
+    resultDFSA `beats` resultRandom
 
-  cover 50 "depth-first SA beats breadth-first SA" $
-    highestUtilityValue resultDFSA >= highestUtilityValue resultBFSA
+  cover 30 "breadth-first SA beats breadth-first greedy" $
+    resultBFSA `beats` resultGreedy
+
+prop_max_state_is_reachable :: Property
+prop_max_state_is_reachable = withTests 100 . property $ do
+  sm <- forAll genStateMachine
+  let maxState = maximum (HashMap.elems (states sm))
+      g =
+        Graph.buildG
+          (1, maxState)
+          [ (from, to)
+            | (from, tos) <- HashMap.toList (transitions sm),
+              to <- tos
+          ]
+
+  assert (Graph.path g 1 maxState)
+
 tests :: IO Bool
 tests = checkParallel $$(discover)
