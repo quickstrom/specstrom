@@ -35,34 +35,30 @@ import System.Random (randomRIO)
 newtype Path = Path {unPath :: [Int]}
   deriving (Eq, Show, Semigroup, Monoid)
 
-data RoseTree a = Node (NonEmpty (RoseTree a)) | Leaf a
-  deriving (Eq, Show, Functor, Foldable, Traversable)
-
-data PathTreeState = Terminal | Unknown
-  deriving (Eq, Show)
-
-leafPathsMatching :: (a -> Bool) -> RoseTree a -> [Path]
+leafPathsMatching :: (a -> Bool) -> Graph.Tree a -> [Path]
 leafPathsMatching predicate root = go [(mempty, root)] []
   where
     go [] acc = acc
     go ((path, tree) : rest) acc =
       case tree of
-        Node children ->
-          let newTrees = zipWith (\i child -> (path <> Path (pure i), child)) [0 .. (length children - 1)] (NonEmpty.toList children)
-           in go (newTrees <> rest) acc
-        Leaf a
+        Graph.Node a []
           | predicate a -> go rest (acc <> [path])
           | otherwise -> go rest acc
+        Graph.Node _ children ->
+          let newTrees = zipWith (\i child -> (path <> Path (pure i), child)) [0 .. (length children - 1)] children
+           in go (newTrees <> rest) acc
 
-type PathTree = RoseTree PathTreeState
+data PathTreeState = Branch | Terminal | Unknown
+  deriving (Eq, Show)
+
+type PathTree = Graph.Tree PathTreeState
 
 merge :: PathTree -> PathTree -> PathTree
-merge (Node c1) (Node c2) = Node (NonEmpty.zipWith merge c1 c2)
-merge (Node c) _ = Node c
-merge _ (Node c) = Node c
-merge (Leaf Unknown) n = n
-merge n (Leaf Unknown) = n
-merge (Leaf Terminal) (Leaf Terminal) = Leaf Terminal
+merge (Graph.Node Unknown _) n = n
+merge n (Graph.Node Unknown _) = n
+merge (Graph.Node Terminal _) (Graph.Node Terminal _) = Graph.Node Terminal []
+merge (Graph.Node Branch c1) (Graph.Node Branch c2) = Graph.Node Branch (zipWith merge c1 c2)
+merge (Graph.Node s c) _ = Graph.Node s c
 
 unknownPaths :: PathTree -> [Path]
 unknownPaths = leafPathsMatching (== Unknown)
@@ -110,20 +106,20 @@ traverseOnce s path maxActions = do
     firstState <- reportState =<< lift (initial s)
     go firstState path maxActions
   where
-    unknowns n = replicate n (Leaf Unknown)
+    unknowns n = replicate n (Graph.Node Unknown [])
     reportState state =
       tell (Trace [state]) >> pure state
-    go currentState _ 0 = pure (Leaf Terminal)
+    go currentState _ 0 = pure (Graph.Node Terminal [])
     go currentState (Path currentBasePath) actionsLeft = do
       lift (actions s currentState) >>= \case
-        [] -> pure (Leaf Terminal)
+        [] -> pure (Graph.Node Terminal [])
         actions' -> do
           (actionIndex, remainingPath) <- case currentBasePath of
             [] -> (,[]) <$> randomRIO (0, length actions' - 1)
             (first : rest) -> pure (first, rest)
           newState <- reportState =<< lift (perform s currentState (actions' !! actionIndex))
           result <- go newState (Path remainingPath) (actionsLeft - 1)
-          pure (Node (NonEmpty.fromList (unknowns actionIndex <> [result] <> unknowns (length actions' - actionIndex - 1))))
+          pure (Graph.Node Branch (unknowns actionIndex <> [result] <> unknowns (length actions' - actionIndex - 1)))
 
 commonPrefix :: (Eq e) => [e] -> [e] -> [e]
 commonPrefix _ [] = []
