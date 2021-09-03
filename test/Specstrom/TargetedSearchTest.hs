@@ -94,7 +94,7 @@ data SearchOptions = SearchOptions {maxRuns :: Int, maxActions :: Int}
 
 data SearchStrategy = SearchStrategy
   { -- | Generates a new path to try, based on the current optimization result, if possible.
-    neighbour :: OptimizationResult -> Maybe Path,
+    neighbours :: OptimizationResult -> [Path],
     -- | Returns the probability [0, 1] of accepting a new candidate. This function is
     -- called 'P' in the SA literature.
     acceptProbability :: OptimizationResult -> OptimizationResult -> Temperature -> Double
@@ -131,28 +131,28 @@ commonPrefix (x : xs) (y : ys)
 type Temperature = Double
 
 fullyRandom :: SearchStrategy
-fullyRandom = SearchStrategy {neighbour, acceptProbability}
+fullyRandom = SearchStrategy {neighbours, acceptProbability}
   where
-    neighbour _ = mempty
+    neighbours _ = mempty
     acceptProbability old new t = 0
 
 greedyBreadthFirst :: SearchStrategy
-greedyBreadthFirst = SearchStrategy {neighbour, acceptProbability}
+greedyBreadthFirst = SearchStrategy {neighbours, acceptProbability}
   where
-    neighbour result =
+    neighbours result =
       case sortOn pathLength (unknownPaths (exploredTree result)) of
-        p : _ -> Just p
-        _ -> Nothing
+        p : _ -> pure p
+        _ -> mempty
     pathLength (Path p) = negate (length p)
     acceptProbability old new t = 0
 
 breadthFirstSimulatedAnnealing :: SearchStrategy
-breadthFirstSimulatedAnnealing = SearchStrategy {neighbour, acceptProbability}
+breadthFirstSimulatedAnnealing = SearchStrategy {neighbours, acceptProbability}
   where
-    neighbour result =
+    neighbours result =
       case unknownPaths (exploredTree result) of
-        p : _ -> Just p
-        _ -> Nothing
+        p : _ -> pure p
+        _ -> mempty
 
     acceptProbability old new t =
       let UtilityValue uv = highestUtilityValue old
@@ -160,12 +160,12 @@ breadthFirstSimulatedAnnealing = SearchStrategy {neighbour, acceptProbability}
        in if uv' > uv then 1 else exp (negate (fromIntegral (uv - uv') / t))
 
 depthFirstSimulatedAnnealing :: SearchStrategy
-depthFirstSimulatedAnnealing = SearchStrategy {neighbour, acceptProbability}
+depthFirstSimulatedAnnealing = SearchStrategy {neighbours, acceptProbability}
   where
-    neighbour result =
+    neighbours result =
       case sortOn proximity (unknownPaths (exploredTree result)) of
-        p : _ -> Just p
-        _ -> Nothing
+        p : _ -> pure p
+        _ -> mempty
       where
         proximity (Path p) = negate (similarity p * length p)
         similarity p = length (commonPrefix (unPath (highestUtilityValuePath result)) p)
@@ -183,7 +183,7 @@ search ::
   SearchStrategy ->
   SearchOptions ->
   m OptimizationResult
-search s uf SearchStrategy {neighbour, acceptProbability} opts@SearchOptions {maxRuns, maxActions}
+search s uf SearchStrategy {neighbours, acceptProbability} opts@SearchOptions {maxRuns, maxActions}
   | maxRuns <= 0 = fail "maxRuns must be greater than 0"
   | otherwise = do
     initialResult <- runOne mempty
@@ -198,9 +198,9 @@ search s uf SearchStrategy {neighbour, acceptProbability} opts@SearchOptions {ma
 
     optimize oldResult 0 = pure oldResult
     optimize oldResult i = do
-      case neighbour oldResult of
-        Nothing -> pure oldResult
-        Just candidateBasePath -> do
+      case neighbours oldResult of
+        [] -> pure oldResult
+        candidateBasePath:_ -> do
           candidateResult <- runOne candidateBasePath
           let mergedTree = merge (exploredTree oldResult) (exploredTree candidateResult)
           n <- randomRIO (0, 1)
