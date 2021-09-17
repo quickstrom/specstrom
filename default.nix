@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> { }, compiler ? "ghc8104", enableProfiling ? false }:
+{ pkgs ? import ./nix/nixpkgs.nix { }, compiler ? "ghc8104", enableProfiling ? false }:
 let
   src = pkgs.nix-gitignore.gitignoreSource [ ] ./.;
   haskellPackages = pkgs.haskell.packages.${compiler}.override {
