@@ -47,6 +47,7 @@ data PrimOp
     And
   | Or
   | Always
+  | Eventually
   | Implies
   | WhenAct
   | TimeoutAct
@@ -71,6 +72,8 @@ data PrimOp
     IfThenElse
   | Foldr
   | Foldl
+  | Until
+  | Release
   deriving (Show, Eq, Ord, Enum, Bounded)
 
 primOpVar :: PrimOp -> Name
@@ -81,6 +84,9 @@ primOpVar op = case op of
   NextT -> "nextT_"
   NextD -> "next_"
   Always -> "always{_}_"
+  Eventually -> "eventually{_}_"
+  Until -> "_until{_}_"
+  Release -> "_release{_}_"
   Not -> "not_"
   IsNull -> "isNull"
   ParseInt -> "parseInt"
@@ -132,8 +138,16 @@ isUnary = (<= StringTrim)
 isBinary :: PrimOp -> Bool
 isBinary x = not (isUnary x) && x <= Unfoldr
 
+
+data DerivedFormula 
+  = AlwaysF Int Thunk
+  | EventuallyF Int Thunk 
+  | UntilF Int Thunk Thunk
+  | ReleaseF Int Thunk Thunk
+  | F Thunk
+  deriving (Show)
 data Residual
-  = Next Strength Thunk
+  = Next Strength DerivedFormula
   | Conjunction Residual Residual
   | Disjunction Residual Residual
   | Implication Residual Residual
@@ -265,8 +279,9 @@ appAll s v (x : xs) = force s v >>= \v' -> app s v' x >>= \v'' -> appAll s v'' x
 
 -- if the next argument to this thing should be delayed or not
 isLazy :: Value -> Bool
-isLazy (Op o _ []) | o `elem` [NextT, NextF, NextD, WhenAct] = True
+isLazy (Op o _ []) | o `elem` [NextT, NextF, NextD, WhenAct, Until] = True
 isLazy (Op o _ [_]) | o `elem` [And, Or, Implies, IfThenElse, WhenAct, Always] = True
+isLazy (Op Until _ [_,_]) = True
 isLazy (Op IfThenElse _ [_, _]) = True
 isLazy (Closure _ _ (LazyP {} : pats) _) = True
 isLazy _ = False
@@ -372,6 +387,70 @@ force s (Thunk t) = forceThunk t s
 force s v = pure v
 
 ternaryOp :: PrimOp -> State -> Value -> Value -> Value -> Eval Value
+ternaryOp Release s f1 v f2 = do
+  case (f1, f2) of
+    (Thunk (T g e _), Thunk (T g' e' _)) -> do
+      f2' <- force s f2
+      case v of
+        LitVal (IntLit n) -> do
+          let mkResidual =
+                let recur strength n' = Next strength <$> (ReleaseF n' <$> newThunk g e <*> newThunk g' e')
+                 in if n > 0
+                      then recur Demand (n - 1)
+                      else recur AssumeFalse 0
+          case f2' of
+            Absurd -> pure Absurd
+            Trivial -> do
+              f1' <- force s f1
+              case f1' of 
+                Trivial -> pure Trivial
+                Absurd -> Residual <$> mkResidual
+                Residual r -> do 
+                  residual <- mkResidual
+                  pure (Residual (Disjunction r residual))
+            Residual r -> do
+              f1' <- force s f1
+              case f1' of 
+                Trivial -> pure (Residual r)
+                Absurd -> Residual . Conjunction r <$> mkResidual
+                Residual r' -> do 
+                  residual <- mkResidual
+                  pure (Residual (Conjunction r (Disjunction r' residual)))
+            _ -> evalError ("Release expects formula, got: " <> show f2')
+        _ -> evalError $ "Release count argument was not an integer"
+    v -> evalError "Release argument was already evaluated!"
+ternaryOp Until s f1 v f2 = do
+  case (f1, f2) of
+    (Thunk (T g e _), Thunk (T g' e' _)) -> do
+      f2' <- force s f2
+      case v of
+        LitVal (IntLit n) -> do
+          let mkResidual =
+                let recur strength n' = Next strength <$> (UntilF n' <$> newThunk g e <*> newThunk g' e')
+                 in if n > 0
+                      then recur Demand (n - 1)
+                      else recur AssumeTrue 0
+          case f2' of
+            Absurd -> do
+              f1' <- force s f1
+              case f1' of 
+                Absurd -> pure Absurd
+                Trivial -> Residual <$> mkResidual
+                Residual r -> do 
+                  residual <- mkResidual
+                  pure (Residual (Conjunction r residual))
+            Trivial -> pure Trivial
+            Residual r -> do
+              f1' <- force s f1
+              case f1' of 
+                Absurd -> pure (Residual r)
+                Trivial -> Residual . Disjunction r <$> mkResidual
+                Residual r' -> do 
+                  residual <- mkResidual
+                  pure (Residual (Disjunction r (Conjunction r' residual)))
+            _ -> evalError ("Until expects formula, got: " <> show f2')
+        _ -> evalError $ "Until count argument was not an integer"
+    v -> evalError "Until argument was already evaluated!"
 ternaryOp IfThenElse s v1' v2 v3 = do
   case v1' of
     Trivial -> force s v2
@@ -442,20 +521,49 @@ unaryOp ZipAll s xs = do
           at i _ = evalError "zipAll requires a list of lists as its argument"
       List <$> traverse (\i -> List <$> traverse (at i) lists) [0 .. maxIndex]
     _ -> evalError "zipAll requires a list of lists as its argument"
-unaryOp NextF s (Thunk t) = pure (Residual (Next AssumeFalse t))
-unaryOp NextT s (Thunk t) = pure (Residual (Next AssumeTrue t))
-unaryOp NextD s (Thunk t) = pure (Residual (Next Demand t))
+unaryOp NextF s (Thunk t) = pure (Residual (Next AssumeFalse (F t)))
+unaryOp NextT s (Thunk t) = pure (Residual (Next AssumeTrue (F t)))
+unaryOp NextD s (Thunk t) = pure (Residual (Next Demand (F t)))
 unaryOp op _ arg = evalError ("Impossible unary operation " <> show op <> " on: " <> show arg)
 
 negateResidual :: Residual -> Eval Residual
 negateResidual (Conjunction a b) = Disjunction <$> negateResidual a <*> negateResidual b
 negateResidual (Disjunction a b) = Conjunction <$> negateResidual a <*> negateResidual b
 negateResidual (Implication a b) = Conjunction <$> pure a <*> negateResidual b
-negateResidual (Next st (T g e v)) = do
+negateResidual (Next st f) = do
   let st' = case st of AssumeTrue -> AssumeFalse; AssumeFalse -> AssumeTrue; Demand -> Demand
-  Next st' <$> newThunk g (App (Var dummyPosition "not_") e)
+  Next st' <$> negateDerivedFormula f
+negateDerivedFormula :: DerivedFormula -> Eval DerivedFormula
+negateDerivedFormula (AlwaysF n phi) = EventuallyF n <$> negateThunk phi
+negateDerivedFormula (EventuallyF n phi) = AlwaysF n <$> negateThunk phi
+negateDerivedFormula (UntilF n phi psi) = ReleaseF n <$> negateThunk phi <*> negateThunk psi
+negateDerivedFormula (ReleaseF n phi psi) = UntilF n <$> negateThunk phi <*> negateThunk psi
+negateDerivedFormula (F phi) = F <$> negateThunk phi
+negateThunk :: Thunk -> Eval Thunk
+negateThunk (T g e _) = newThunk g (App (Var dummyPosition "not_") e)
 
 binaryOp :: PrimOp -> State -> Value -> Value -> Eval Value
+binaryOp Eventually s v1' v2 =
+  case v2 of
+    Thunk (T g e _) -> do
+      v2' <- force s v2
+      case v1' of
+        LitVal (IntLit n) -> do
+          let mkResidual =
+                let recur strength n' = Next strength . EventuallyF n' <$> newThunk g e
+                 in if n > 0
+                      then recur Demand (n - 1)
+                      else recur AssumeFalse 0
+          case v2' of
+            Trivial -> pure Trivial
+            Absurd -> do
+              Residual <$> mkResidual
+            Residual r -> do
+              residual <- mkResidual
+              pure (Residual (Disjunction r residual))
+            _ -> evalError ("Eventually expects formula, got: " <> show v2')
+        _ -> evalError $ "Eventually count argument was not an integer"
+    v -> evalError "Eventually argument was already evaluated!"
 binaryOp Always s v1' v2 =
   case v2 of
     Thunk (T g e _) -> do
@@ -463,7 +571,7 @@ binaryOp Always s v1' v2 =
       case v1' of
         LitVal (IntLit n) -> do
           let mkResidual =
-                let recur strength n' = Next strength <$> newThunk g (App (App (Var dummyPosition (primOpVar Always)) (Literal dummyPosition (IntLit n'))) e)
+                let recur strength n' = Next strength . AlwaysF n' <$> newThunk g e
                  in if n > 0
                       then recur Demand (n - 1)
                       else recur AssumeTrue 0
@@ -637,7 +745,7 @@ binaryNumOp s v1' v2' op = do
 -- Or another Residual if still requiring more states.
 -- Any other value is presumably a type error.
 step :: Residual -> State -> Eval Value
-step (Next _ t) s = forceThunk t s
+step (Next _ t) s = stepDerivedFormula t s
 step (Implication r1 r2) s = do
   r1' <- step r1 s
   r2' <- step r2 s
@@ -650,6 +758,13 @@ step (Disjunction r1 r2) s = do
   r1' <- step r1 s
   r2' <- step r2 s
   binaryOp Or s r1' r2'
+
+stepDerivedFormula :: DerivedFormula -> State -> Eval Value
+stepDerivedFormula (UntilF n phi psi) s = ternaryOp Until s (Thunk phi) (LitVal (IntLit n)) (Thunk psi)
+stepDerivedFormula (ReleaseF n phi psi) s = ternaryOp Release s  (Thunk phi) (LitVal (IntLit n)) (Thunk psi)
+stepDerivedFormula (AlwaysF n phi) s = binaryOp Always s (LitVal (IntLit n)) (Thunk phi)
+stepDerivedFormula (EventuallyF n phi) s = binaryOp Eventually s (LitVal (IntLit n)) (Thunk phi)
+stepDerivedFormula (F phi) s = forceThunk phi s
 
 stop :: Residual -> Maybe Bool
 stop (Next s t) = case s of

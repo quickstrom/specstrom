@@ -41,6 +41,7 @@ builtIns =
   M.fromList $
     zip values (repeat Constant)
       ++ zip binOps (repeat $ toAnnotation (\a b -> Indirect (Indirect Constant a) b))
+      ++ zip ternOps (repeat $ toAnnotation (\a b c -> Indirect (Indirect (Indirect Constant a) b) c))
       ++ zip unOps (repeat $ toAnnotation (Indirect Constant))
       ++ [ ("if_{_}else{_}", toAnnotation (\a t e -> Indirect (Branch t e) a)),
            ("nth", toAnnotation (\a b -> Indirect (projectAnnotation ListElement a) b)),
@@ -51,8 +52,9 @@ builtIns =
            ("foldr", toAnnotation (\f v x -> applyAnnotation (applyAnnotation f (projectAnnotation ListElement x)) v))
          ]
   where
-    binOps = ["_==_", "_&&_", "_||_", "_until_", "_!=_", "_==>_", "_+_", "_-_", "_/_", "_*_", "_%_", "_>_", "_<_", "_>=_", "_<=_", "split", "zip"]
-    unOps = ["not_", "parseInt", "parseFloat", "trim", "always{_}_", "next_", "nextT_", "nextF_", "isNull", "zipAll"]
+    binOps = ["_==_", "_&&_", "_||_", "_until_", "_!=_", "_==>_", "_+_", "_-_", "_/_", "_*_", "_%_", "_>_", "_<_", "_>=_", "_<=_", "split", "zip", "always{_}_","eventually{_}_"]
+    unOps = ["not_", "parseInt", "parseFloat", "trim", "next_", "nextT_", "nextF_", "isNull", "zipAll"]
+    ternOps = ["_until{_}_","_release{_}_"]
     values = ["true", "false", "null", "happened"]
     hofs = ["map", "unfoldr"]
     hofAnn = toAnnotation (\f v -> List (applyAnnotation f (projectAnnotation ListElement v)))

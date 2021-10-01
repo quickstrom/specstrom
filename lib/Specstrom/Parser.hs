@@ -54,7 +54,10 @@ builtIns =
   (\x -> Table x [] [] mempty) $
     (map . map)
       (first (concatMap holey . Text.words))
-      [ [ ("always {_} _", NonAssoc)
+      [ [ ("always {_} _", NonAssoc),
+          ("eventually {_} _", NonAssoc),
+          ("_ until {_} _", RightAssoc),
+          ("_ release {_} _", RightAssoc)
         ],
         [("_timeout_", NonAssoc)],
         [ ("_==>_", RightAssoc)

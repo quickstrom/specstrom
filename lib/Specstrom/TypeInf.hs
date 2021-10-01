@@ -72,6 +72,9 @@ builtInTypes =
       ("next_", val2),
       ("zipAll", val2),
       ("always{_}_", val3),
+      ("eventually{_}_", val3),
+      ("_until{_}_", val4),
+      ("_release{_}_", val4),
       ("nth", val3),
       ("zip", val3),
       ("not_", val2),
@@ -87,6 +90,7 @@ builtInTypes =
       ("if_{_}else{_}", Forall "a" (Ty (Arrow Value (Arrow (TyVar "a") (Arrow (TyVar "a") (TyVar "a"))))))
     ]
   where
+    val4 = Ty (Arrow Value (Arrow Value (Arrow Value Value)))
     val3 = Ty (Arrow Value (Arrow Value Value))
     val2 = Ty (Arrow Value Value)
     hof = Ty (Arrow (Arrow Value Value) (Arrow Value Value))
