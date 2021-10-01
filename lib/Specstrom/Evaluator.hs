@@ -138,14 +138,14 @@ isUnary = (<= StringTrim)
 isBinary :: PrimOp -> Bool
 isBinary x = not (isUnary x) && x <= Unfoldr
 
-
-data DerivedFormula 
+data DerivedFormula
   = AlwaysF Int Thunk
-  | EventuallyF Int Thunk 
+  | EventuallyF Int Thunk
   | UntilF Int Thunk Thunk
   | ReleaseF Int Thunk Thunk
   | F Thunk
   deriving (Show)
+
 data Residual
   = Next Strength DerivedFormula
   | Conjunction Residual Residual
@@ -281,7 +281,7 @@ appAll s v (x : xs) = force s v >>= \v' -> app s v' x >>= \v'' -> appAll s v'' x
 isLazy :: Value -> Bool
 isLazy (Op o _ []) | o `elem` [NextT, NextF, NextD, WhenAct, Until] = True
 isLazy (Op o _ [_]) | o `elem` [And, Or, Implies, IfThenElse, WhenAct, Always] = True
-isLazy (Op Until _ [_,_]) = True
+isLazy (Op Until _ [_, _]) = True
 isLazy (Op IfThenElse _ [_, _]) = True
 isLazy (Closure _ _ (LazyP {} : pats) _) = True
 isLazy _ = False
@@ -402,18 +402,18 @@ ternaryOp Release s f1 v f2 = do
             Absurd -> pure Absurd
             Trivial -> do
               f1' <- force s f1
-              case f1' of 
+              case f1' of
                 Trivial -> pure Trivial
                 Absurd -> Residual <$> mkResidual
-                Residual r -> do 
+                Residual r -> do
                   residual <- mkResidual
                   pure (Residual (Disjunction r residual))
             Residual r -> do
               f1' <- force s f1
-              case f1' of 
+              case f1' of
                 Trivial -> pure (Residual r)
                 Absurd -> Residual . Conjunction r <$> mkResidual
-                Residual r' -> do 
+                Residual r' -> do
                   residual <- mkResidual
                   pure (Residual (Conjunction r (Disjunction r' residual)))
             _ -> evalError ("Release expects formula, got: " <> show f2')
@@ -433,19 +433,19 @@ ternaryOp Until s f1 v f2 = do
           case f2' of
             Absurd -> do
               f1' <- force s f1
-              case f1' of 
+              case f1' of
                 Absurd -> pure Absurd
                 Trivial -> Residual <$> mkResidual
-                Residual r -> do 
+                Residual r -> do
                   residual <- mkResidual
                   pure (Residual (Conjunction r residual))
             Trivial -> pure Trivial
             Residual r -> do
               f1' <- force s f1
-              case f1' of 
+              case f1' of
                 Absurd -> pure (Residual r)
                 Trivial -> Residual . Disjunction r <$> mkResidual
-                Residual r' -> do 
+                Residual r' -> do
                   residual <- mkResidual
                   pure (Residual (Disjunction r (Conjunction r' residual)))
             _ -> evalError ("Until expects formula, got: " <> show f2')
@@ -533,12 +533,14 @@ negateResidual (Implication a b) = Conjunction <$> pure a <*> negateResidual b
 negateResidual (Next st f) = do
   let st' = case st of AssumeTrue -> AssumeFalse; AssumeFalse -> AssumeTrue; Demand -> Demand
   Next st' <$> negateDerivedFormula f
+
 negateDerivedFormula :: DerivedFormula -> Eval DerivedFormula
 negateDerivedFormula (AlwaysF n phi) = EventuallyF n <$> negateThunk phi
 negateDerivedFormula (EventuallyF n phi) = AlwaysF n <$> negateThunk phi
 negateDerivedFormula (UntilF n phi psi) = ReleaseF n <$> negateThunk phi <*> negateThunk psi
 negateDerivedFormula (ReleaseF n phi psi) = UntilF n <$> negateThunk phi <*> negateThunk psi
 negateDerivedFormula (F phi) = F <$> negateThunk phi
+
 negateThunk :: Thunk -> Eval Thunk
 negateThunk (T g e _) = newThunk g (App (Var dummyPosition "not_") e)
 
@@ -761,7 +763,7 @@ step (Disjunction r1 r2) s = do
 
 stepDerivedFormula :: DerivedFormula -> State -> Eval Value
 stepDerivedFormula (UntilF n phi psi) s = ternaryOp Until s (Thunk phi) (LitVal (IntLit n)) (Thunk psi)
-stepDerivedFormula (ReleaseF n phi psi) s = ternaryOp Release s  (Thunk phi) (LitVal (IntLit n)) (Thunk psi)
+stepDerivedFormula (ReleaseF n phi psi) s = ternaryOp Release s (Thunk phi) (LitVal (IntLit n)) (Thunk psi)
 stepDerivedFormula (AlwaysF n phi) s = binaryOp Always s (LitVal (IntLit n)) (Thunk phi)
 stepDerivedFormula (EventuallyF n phi) s = binaryOp Eventually s (LitVal (IntLit n)) (Thunk phi)
 stepDerivedFormula (F phi) s = forceThunk phi s
