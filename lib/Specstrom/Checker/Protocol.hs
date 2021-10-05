@@ -7,9 +7,9 @@ import qualified Data.Aeson as JSON
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (catMaybes)
 import GHC.Generics (Generic)
+import Numeric.Natural (Natural)
 import Specstrom.Dependency (Dep)
 import qualified Specstrom.Syntax as Syntax
-import Numeric.Natural (Natural)
 
 type Trace = [TraceElement]
 
