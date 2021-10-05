@@ -249,7 +249,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
                   let len = length acts
                   idx <- liftIO (randomRIO (0, len - 1))
                   let (primaction, action) = acts !! idx
-                  send output (RequestAction primaction)
+                  send output (RequestAction primaction stateVersion)
                   run ReadingQueue {formula = r, stateVersion, lastState = lastState, sentAction = Sent (primaction, action)}
 
 toEvaluatorState :: Int -> Maybe [(Name, [Evaluator.Value])] -> State -> Evaluator.State

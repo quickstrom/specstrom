@@ -9,6 +9,7 @@ import Data.Maybe (catMaybes)
 import GHC.Generics (Generic)
 import Specstrom.Dependency (Dep)
 import qualified Specstrom.Syntax as Syntax
+import Numeric.Natural (Natural)
 
 type Trace = [TraceElement]
 
@@ -37,7 +38,7 @@ data Result = Result {valid :: Validity, trace :: Trace}
 data InterpreterMessage
   = Start {dependencies :: Dep}
   | End
-  | RequestAction {action :: PrimAction}
+  | RequestAction {action :: PrimAction, version :: Natural}
   | Done {results :: [Result]}
   deriving (Show, Generic, JSON.ToJSON, JSON.FromJSON)
 
