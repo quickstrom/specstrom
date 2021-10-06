@@ -5,6 +5,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TupleSections #-}
 
 module Specstrom.Checker where
 
@@ -86,7 +87,7 @@ checkTopLevel input output currentModule evalEnv actionEnv analysisEnv results =
   Properties _ propGlob actsGlob initial -> do
     let props = Syntax.expand (fst currentModule) propGlob
     let actNames = Syntax.expand (snd currentModule) actsGlob
-    acts <- mapM (\nm -> maybe (fail $ "Action/event not found " <> T.unpack nm) pure (M.lookup nm actionEnv)) actNames
+    acts <- mapM (\nm -> (nm,) <$> maybe (fail $ "Action/event not found " <> T.unpack nm) pure (M.lookup nm actionEnv)) actNames
     actDeps <- mapM (\nm -> maybe (fail "Action/event dependencies not found") (pure . Analysis.depOf) (M.lookup nm analysisEnv)) actNames
     rs <- for props $ \name -> do
       val <- maybe (fail "Property not found") pure (M.lookup name evalEnv)
@@ -94,7 +95,7 @@ checkTopLevel input output currentModule evalEnv actionEnv analysisEnv results =
       initial' <- case initial of
         Just e -> liftIO $ Just . Evaluator.Thunk <$> Evaluator.newThunk evalEnv e
         Nothing -> pure Nothing
-      checkProp input output actionEnv (mconcat (dep : actDeps)) val acts initial'
+      checkProp input output actionEnv (mconcat (dep : actDeps)) val acts (("__initial__",) <$> initial')
     pure (currentModule, evalEnv, actionEnv, analysisEnv, results <> rs)
 
 data InterpreterState
@@ -131,8 +132,8 @@ writeStdoutFrom output = do
 
 data SentAction = None | Sent (PrimAction, (Name, [Evaluator.Value])) | WaitingTimeout Int
 
-extractActions :: Maybe (Name, [Evaluator.Value]) -> Evaluator.Env -> Evaluator.State -> Evaluator.Value -> IO [(PrimAction, (Name, [Evaluator.Value]))]
-extractActions act actionEnv s v = do
+extractActions :: Maybe (Name, [Evaluator.Value]) -> Evaluator.Env -> Evaluator.State -> (Name, Evaluator.Value) -> IO [(PrimAction, (Name, [Evaluator.Value]))]
+extractActions act actionEnv s (nm,v) = do
   v' <- Evaluator.force s v
   let asBoolean Evaluator.Trivial = Just True
       asBoolean Evaluator.Absurd = Just False
@@ -145,7 +146,7 @@ extractActions act actionEnv s v = do
         Just v1 -> do
           args <- mapM (Evaluator.force s) args'
           r <- Evaluator.appAll s v1 args
-          map (first (applyTimeout t) . second (const $ (n, args))) <$> extractActions (Just (n, args)) actionEnv s r
+          map (first (applyTimeout t) . second (const $ (n, args))) <$> extractActions (Just (n, args)) actionEnv s (nm,r)
         Nothing -> error $ "action not found"
     Evaluator.Object _ mp -> case act of
       Just (n, args) ->
@@ -155,14 +156,19 @@ extractActions act actionEnv s v = do
             ls' <- mapM (toJSONValue s) ls
             pure [(A aId b ls' timeout, (n, args))]
           _ -> pure []
-      Nothing -> pure []
-    Evaluator.List ls -> concat <$> mapM (extractActions act actionEnv s) ls
+      Nothing -> 
+        case (M.lookup "id" mp, M.lookup "event" mp, M.lookup "args" mp, M.lookup "timeout" mp) of
+          (Just (Evaluator.LitVal (Syntax.StringLit aId)), Just aEvent, Just (Evaluator.List ls), t) | Just b <- asBoolean aEvent -> do
+            let timeout = t >>= asInteger
+            ls' <- mapM (toJSONValue s) ls
+            pure [(A aId b ls' timeout, (nm, []))]
+    Evaluator.List ls -> concat <$> mapM (extractActions act actionEnv s) (map (nm,) ls)
     _ -> pure []
   where
     applyTimeout Nothing = Prelude.id
     applyTimeout (Just t) = \x -> x {timeout = Just t}
 
-checkProp :: Receive ExecutorMessage -> Send InterpreterMessage -> Evaluator.Env -> Dep -> Evaluator.Value -> [Evaluator.Value] -> Maybe (Evaluator.Value) -> IO Result
+checkProp :: Receive ExecutorMessage -> Send InterpreterMessage -> Evaluator.Env -> Dep -> Evaluator.Value -> [(Name,Evaluator.Value)] -> Maybe (Name,Evaluator.Value) -> IO Result
 checkProp input output actionEnv dep initialFormula actions expectedEvent = do
   send output (Start dep)
   (valid, trace) <- runWriterT (run $ AwaitingInitialEvent 0)
@@ -184,7 +190,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
                   Nothing -> liftIO $ concat <$> mapM f actions
           case filter (actionMatches event . fst) expectedPrims of
             [] -> do
-              logErr (show event <> " does not match any of the expected primitive events: " <> show expectedPrims)
+              logErr(show event <> " does not match any of the expected primitive events: " <> show expectedPrims <> show actions)
               run (AwaitingInitialEvent {stateVersion = succ version})
             as -> do
               logInfo ("Got initial event: " <> show event)
