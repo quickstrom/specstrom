@@ -133,7 +133,7 @@ writeStdoutFrom output = do
 data SentAction = None | Sent (PrimAction, (Name, [Evaluator.Value])) | WaitingTimeout Int
 
 extractActions :: Maybe (Name, [Evaluator.Value]) -> Evaluator.Env -> Evaluator.State -> (Name, Evaluator.Value) -> IO [(PrimAction, (Name, [Evaluator.Value]))]
-extractActions act actionEnv s (nm,v) = do
+extractActions act actionEnv s (nm, v) = do
   v' <- Evaluator.force s v
   let asBoolean Evaluator.Trivial = Just True
       asBoolean Evaluator.Absurd = Just False
@@ -146,7 +146,7 @@ extractActions act actionEnv s (nm,v) = do
         Just v1 -> do
           args <- mapM (Evaluator.force s) args'
           r <- Evaluator.appAll s v1 args
-          map (first (applyTimeout t) . second (const $ (n, args))) <$> extractActions (Just (n, args)) actionEnv s (nm,r)
+          map (first (applyTimeout t) . second (const $ (n, args))) <$> extractActions (Just (n, args)) actionEnv s (nm, r)
         Nothing -> error $ "action not found"
     Evaluator.Object _ mp -> case act of
       Just (n, args) ->
@@ -156,7 +156,7 @@ extractActions act actionEnv s (nm,v) = do
             ls' <- mapM (toJSONValue s) ls
             pure [(A aId b ls' timeout, (n, args))]
           _ -> pure []
-      Nothing -> 
+      Nothing ->
         case (M.lookup "id" mp, M.lookup "event" mp, M.lookup "args" mp, M.lookup "timeout" mp) of
           (Just (Evaluator.LitVal (Syntax.StringLit aId)), Just aEvent, Just (Evaluator.List ls), t) | Just b <- asBoolean aEvent -> do
             let timeout = t >>= asInteger
@@ -168,7 +168,7 @@ extractActions act actionEnv s (nm,v) = do
     applyTimeout Nothing = Prelude.id
     applyTimeout (Just t) = \x -> x {timeout = Just t}
 
-checkProp :: Receive ExecutorMessage -> Send InterpreterMessage -> Evaluator.Env -> Dep -> Evaluator.Value -> [(Name,Evaluator.Value)] -> Maybe (Name,Evaluator.Value) -> IO Result
+checkProp :: Receive ExecutorMessage -> Send InterpreterMessage -> Evaluator.Env -> Dep -> Evaluator.Value -> [(Name, Evaluator.Value)] -> Maybe (Name, Evaluator.Value) -> IO Result
 checkProp input output actionEnv dep initialFormula actions expectedEvent = do
   send output (Start dep)
   (valid, trace) <- runWriterT (run $ AwaitingInitialEvent 0)
@@ -190,7 +190,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
                   Nothing -> liftIO $ concat <$> mapM f actions
           case filter (actionMatches event . fst) expectedPrims of
             [] -> do
-              logErr(show event <> " does not match any of the expected primitive events: " <> show expectedPrims <> show actions)
+              logErr (show event <> " does not match any of the expected primitive events: " <> show expectedPrims <> show actions)
               run (AwaitingInitialEvent {stateVersion = succ version})
             as -> do
               logInfo ("Got initial event: " <> show event)
