@@ -201,7 +201,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
                 run
                   ReadingQueue
                     { formula = r,
-                      stateVersion = 0,
+                      stateVersion = succ version,
                       lastState = firstState,
                       sentAction = case timeout of Nothing -> None; Just i -> WaitingTimeout i
                     }
