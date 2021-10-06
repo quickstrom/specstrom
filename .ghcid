@@ -1,0 +1,5 @@
+--restart specstrom.cabal
+--reload lib
+--reload cli
+--reload test
+--color=always
