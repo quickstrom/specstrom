@@ -1,5 +1,14 @@
 import control;
 import ltl;
+import list;
+
+// Web stuff (normally defined in Quickstrom)
+
+action click!(x) = for element in x. { id: "click", event: false, args: [element.ref] } when element.enabled && element.visible;
+
+// Testing testing
+
+action ~foo! = click!(`foo`) timeout 500;
 
 let ~prop = not (eventually `blah`) && next `blah`;
 
