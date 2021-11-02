@@ -83,6 +83,7 @@ executable specstrom
                      , exceptions >= 0.10
                      , optparse-applicative
   other-modules:       REPL
+  ghc-options:         -threaded
 
 test-suite specstrom-test
   import:              shared
