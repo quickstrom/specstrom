@@ -29,7 +29,7 @@ tryReceiveTimeout (Receive input) t = liftIO (readTQueueTimeout t input)
 -- Read the next value from a TQueue or timeout
 readTQueueTimeout :: Int -> TQueue a -> IO (Maybe a)
 readTQueueTimeout timeout q = do
-  delay <- registerDelay timeout
+  delay <- registerDelay (timeout * 1000)
   atomically $
     Just <$> readTQueue q
       <|> Nothing <$ fini delay
