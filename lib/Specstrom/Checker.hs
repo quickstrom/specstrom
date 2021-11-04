@@ -11,7 +11,7 @@ module Specstrom.Checker where
 
 import qualified Control.Concurrent.Async as Async
 import Control.Exception (BlockedIndefinitelyOnSTM (..))
-import Control.Monad (unless, void)
+import Control.Monad (unless, void, when)
 import Control.Monad.Catch (MonadCatch, MonadThrow, catch)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Writer (WriterT, runWriterT, tell)
@@ -227,21 +227,21 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
           _ -> error "Not expecting a performed"
         Just (Event event nextState) -> do
           expectedPrims <- liftIO $ concat <$> mapM (extractActions Nothing actionEnv (toEvaluatorState (fromIntegral (succ stateVersion)) Nothing nextState)) actions
-          case filter (actionMatches event . fst) expectedPrims of
-            [] -> run ReadingQueue {formula = r, stateVersion, lastState, sentAction}
-            as -> do
-              tell [TraceAction (map fst as), TraceState nextState]
-              let timeout = maximumTimeout (map fst as)
-              -- the `happened` variable should be map snd as a list of action values..
-              nextFormula <- liftIO (Evaluator.step r (toEvaluatorState (fromIntegral (succ stateVersion)) (Just (map snd as)) nextState))
-              ifResidual (fromIntegral (succ stateVersion)) (map snd as) nextState nextFormula $ \r' ->
-                run
-                  ReadingQueue
-                    { formula = r',
-                      stateVersion = succ stateVersion,
-                      lastState = nextState,
-                      sentAction = case timeout of Nothing -> None; Just i -> WaitingTimeout i
-                    }
+          let matchingActions = filter (actionMatches event . fst) expectedPrims
+          when (null matchingActions) $
+            logInfo ("None of the expected events (" <> show (map fst expectedPrims) <>") matched " <> show event)
+          tell [TraceAction (map fst matchingActions), TraceState nextState]
+          let timeout = maximumTimeout (map fst matchingActions)
+          -- the `happened` variable should be map snd as a list of action values..
+          nextFormula <- liftIO (Evaluator.step r (toEvaluatorState (fromIntegral (succ stateVersion)) (Just (map snd matchingActions)) nextState))
+          ifResidual (fromIntegral (succ stateVersion)) (map snd matchingActions) nextState nextFormula $ \r' ->
+            run
+              ReadingQueue
+                { formula = r',
+                  stateVersion = succ stateVersion,
+                  lastState = nextState,
+                  sentAction = case timeout of Nothing -> None; Just i -> WaitingTimeout i
+                }
         Just Stale -> logErr "Got stale" >> run ReadingQueue {formula = r, stateVersion, lastState, sentAction}
         Nothing ->
           case Evaluator.stop r of
