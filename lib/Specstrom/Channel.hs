@@ -1,8 +1,6 @@
-module Specstrom.Channel (Receive, Send, newChannel, send, receive, tryReceive, tryReceiveTimeout, unreceive) where
+module Specstrom.Channel (Receive, Send, newChannel, send, receive, tryReceive, unreceive) where
 
-import Control.Applicative ((<|>))
-import Control.Concurrent.STM (STM, TQueue, TVar, atomically, check, newTQueueIO, readTQueue, readTVar, registerDelay, tryReadTQueue, unGetTQueue, writeTQueue)
-import Control.Monad ((<=<))
+import Control.Concurrent.STM (TQueue, atomically, newTQueueIO, readTQueue, tryReadTQueue, unGetTQueue, writeTQueue)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
 newtype Receive a = Receive (TQueue a)
@@ -22,20 +20,6 @@ receive (Receive input) = liftIO (atomically (readTQueue input))
 
 tryReceive :: MonadIO m => Receive a -> m (Maybe a)
 tryReceive (Receive input) = liftIO (atomically (tryReadTQueue input))
-
-tryReceiveTimeout :: MonadIO m => Receive a -> Int -> m (Maybe a)
-tryReceiveTimeout (Receive input) t = liftIO (readTQueueTimeout t input)
-
--- Read the next value from a TQueue or timeout
-readTQueueTimeout :: Int -> TQueue a -> IO (Maybe a)
-readTQueueTimeout timeout q = do
-  delay <- registerDelay (timeout * 1000)
-  atomically $
-    Just <$> readTQueue q
-      <|> Nothing <$ fini delay
-  where
-    fini :: TVar Bool -> STM ()
-    fini = check <=< readTVar
 
 unreceive :: MonadIO m => Receive a -> a -> m ()
 unreceive (Receive input) a = liftIO (atomically (unGetTQueue input a))

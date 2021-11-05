@@ -62,13 +62,14 @@ runSessions input output = go
         (Protocol.Start {}, s : ss) -> do
           Channel.send
             output
-            ( Protocol.Event
-                Protocol.A
-                  { Protocol.id = "loaded",
-                    Protocol.isEvent = True,
-                    Protocol.args = [],
-                    Protocol.timeout = Nothing
-                  }
+            ( Protocol.Events
+                [ Protocol.A
+                    { Protocol.id = "loaded",
+                      Protocol.isEvent = True,
+                      Protocol.args = [],
+                      Protocol.timeout = Nothing
+                    }
+                ]
                 s
             )
           go ss
