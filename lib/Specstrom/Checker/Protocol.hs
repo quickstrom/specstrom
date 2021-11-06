@@ -43,7 +43,7 @@ data InterpreterMessage
   = Start {dependencies :: Dep}
   | End
   | RequestAction {action :: PrimAction, version :: Natural}
-  | AwaitEvents { awaitTimeout :: Int }
+  | AwaitEvents { awaitTimeout :: Int, version :: Natural }
   | Done {results :: [Result]}
   deriving (Show, Generic, JSON.ToJSON, JSON.FromJSON)
 

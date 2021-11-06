@@ -200,7 +200,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
               tell [TraceAction (map fst as), TraceState firstState]
               let timeout = maximumTimeout (map fst as)
               ifResidual 0 (map snd as) firstState initialFormula $ \r -> do
-                case timeout of; Just t -> send output (AwaitEvents t); Nothing -> pure ()
+                case timeout of; Just t -> send output (AwaitEvents t 0); Nothing -> pure ()
                 run
                   ReadingQueue
                     { formula = r,
@@ -238,7 +238,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
           -- the `happened` variable should be map snd as a list of action values..
           nextFormula <- liftIO (Evaluator.step r (toEvaluatorState (fromIntegral (succ stateVersion)) (Just (map snd matchingActions)) nextState))
           ifResidual (fromIntegral (succ stateVersion)) (map snd matchingActions) nextState nextFormula $ \r' -> do
-            case timeout of; Just t -> send output (AwaitEvents t); Nothing -> pure ()
+            case timeout of; Just t -> send output (AwaitEvents t (succ stateVersion)); Nothing -> pure ()
             run
               ReadingQueue
                 { formula = r',
