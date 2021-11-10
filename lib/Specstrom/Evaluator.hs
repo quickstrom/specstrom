@@ -336,7 +336,7 @@ evaluate s g (Projection e t) = do
   case v' of
     List (Object _ m : _) -> lookupIn m
     Object _ m -> lookupIn m
-    _ -> evalError "Cannot take projection of a non-object (or list of objects)"
+    _ -> evalError ("Cannot take projection of non-object (or list of objects): " <> show v')
 evaluate s g (Symbol _ t) = pure $ Constructor t []
 evaluate s g (Var p "happened") = case fst (snd s) of
   Just v -> pure (List v)
