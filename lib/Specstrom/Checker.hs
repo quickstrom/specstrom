@@ -16,11 +16,12 @@ import Control.Monad.Catch (MonadCatch, MonadThrow, catch)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Writer (WriterT, runWriterT, tell)
 import qualified Data.Aeson as JSON
-import Data.Bifunctor (first, second, bimap)
+import Data.Bifunctor (bimap, first, second)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
+import Data.Maybe (fromMaybe)
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
 import Data.Traversable (for)
@@ -186,21 +187,22 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
           run (AwaitingInitialEvent {stateVersion = succ version})
         Events events firstState -> do
           logInfo ("Got initial events: " <> show events)
-          expectedPrims <-
+          expectedPrims <- do
             let f = extractActions Nothing actionEnv (toEvaluatorState (- (fromIntegral (succ version))) Nothing firstState)
-             in case expectedEvent of
-                  Just ev -> liftIO $ f ev
-                  Nothing -> liftIO $ concat <$> mapM f actions
+            case expectedEvent of
+              Just ev -> liftIO (f ev)
+              Nothing -> liftIO $ concat <$> mapM f actions
           case filter (actionMatchesAnyOf events . fst) expectedPrims of
             [] -> do
-              logErr (show events <> " do not match any of the expected primitive events: " <> show expectedPrims <> show actions)
+              logErr (show events <> " do not match any of the expected initial primitive events: " <> show (map fst expectedPrims))
+              -- TODO: Optional timeout
+              send output (AwaitEvents 1000 (succ version))
               run (AwaitingInitialEvent {stateVersion = succ version})
             as -> do
-              -- the `happened` variable should be map snd as a list of action values..
               tell [TraceAction (map fst as), TraceState firstState]
               let timeout = maximumTimeout (map fst as)
-              ifResidual 0 (map snd as) firstState initialFormula $ \r -> do
-                case timeout of; Just t -> send output (AwaitEvents t 0); Nothing -> pure ()
+              ifResidual (fromIntegral (succ version)) (map snd as) firstState initialFormula $ \r -> do
+                case timeout of Just t -> send output (AwaitEvents t (succ version)); Nothing -> pure ()
                 run
                   ReadingQueue
                     { formula = r,
@@ -230,23 +232,32 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
           _ -> error "Not expecting a performed"
         Just (Events events nextState) -> do
           expectedPrims <- liftIO $ concat <$> mapM (extractActions Nothing actionEnv (toEvaluatorState (fromIntegral (succ stateVersion)) Nothing nextState)) actions
-          let matchingActions = filter (actionMatchesAnyOf events . fst) expectedPrims
-          when (null matchingActions) $
-            logInfo ("None of the expected events (" <> show (map fst expectedPrims) <>") matched the received events (" <> show events <> ")")
-          tell [TraceAction (map fst matchingActions), TraceState nextState]
-          let timeout = maximumTimeout (map fst matchingActions)
-          -- the `happened` variable should be map snd as a list of action values..
-          nextFormula <- liftIO (Evaluator.step r (toEvaluatorState (fromIntegral (succ stateVersion)) (Just (map snd matchingActions)) nextState))
-          ifResidual (fromIntegral (succ stateVersion)) (map snd matchingActions) nextState nextFormula $ \r' -> do
-            case timeout of; Just t -> send output (AwaitEvents t (succ stateVersion)); Nothing -> pure ()
-            run
-              ReadingQueue
-                { formula = r',
-                  stateVersion = succ stateVersion,
-                  lastState = nextState,
-                  sentAction = case timeout of Nothing -> None; Just _ -> WaitingTimeout
-                }
-        Just (Timeout nextState) -> 
+          case filter (actionMatchesAnyOf events . fst) expectedPrims of
+            [] -> do
+              logInfo ("None of the expected events (" <> show (map fst expectedPrims) <> ") matched the received events (" <> show events <> ")")
+              send output (AwaitEvents 1000 (succ stateVersion))
+              run
+                ReadingQueue
+                  { formula = r,
+                    stateVersion = succ stateVersion,
+                    lastState = lastState,
+                    sentAction = sentAction
+                  }
+            matchingActions -> do
+              tell [TraceAction (map fst matchingActions), TraceState nextState]
+              let timeout = maximumTimeout (map fst matchingActions)
+              -- the `happened` variable should be map snd as a list of action values..
+              nextFormula <- liftIO (Evaluator.step r (toEvaluatorState (fromIntegral (succ stateVersion)) (Just (map snd matchingActions)) nextState))
+              ifResidual (fromIntegral (succ stateVersion)) (map snd matchingActions) nextState nextFormula $ \r' -> do
+                case timeout of Just t -> send output (AwaitEvents t (succ stateVersion)); Nothing -> pure ()
+                run
+                  ReadingQueue
+                    { formula = r',
+                      stateVersion = succ stateVersion,
+                      lastState = nextState,
+                      sentAction = case timeout of Nothing -> None; Just _ -> WaitingTimeout
+                    }
+        Just (Timeout nextState) ->
           case sentAction of
             Sent (primAct, _) -> case timeout primAct of
               Just t -> do
@@ -263,16 +274,16 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
                       }
               Nothing -> error "Got unexpected timeout after having sent an action without a timeout."
             WaitingTimeout -> do
-                tell [TraceAction [], TraceState nextState]
-                nextFormula <- liftIO (Evaluator.step r (toEvaluatorState (fromIntegral (succ stateVersion)) Nothing nextState))
-                ifResidual (fromIntegral (succ stateVersion)) [] nextState nextFormula $ \r' ->
-                  run
-                    ReadingQueue
-                      { formula = r',
-                        stateVersion = succ stateVersion,
-                        lastState = nextState,
-                        sentAction = None
-                      }
+              tell [TraceAction [], TraceState nextState]
+              nextFormula <- liftIO (Evaluator.step r (toEvaluatorState (fromIntegral (succ stateVersion)) Nothing nextState))
+              ifResidual (fromIntegral (succ stateVersion)) [] nextState nextFormula $ \r' ->
+                run
+                  ReadingQueue
+                    { formula = r',
+                      stateVersion = succ stateVersion,
+                      lastState = nextState,
+                      sentAction = None
+                    }
             None -> error "Got unexpected timeout after not having sent an action."
         Just Stale -> logErr "Got stale" >> run ReadingQueue {formula = r, stateVersion, lastState, sentAction}
         Nothing ->
