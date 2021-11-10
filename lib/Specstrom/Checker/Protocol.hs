@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module Specstrom.Checker.Protocol where
 
@@ -43,7 +42,7 @@ data InterpreterMessage
   = Start {dependencies :: Dep}
   | End
   | RequestAction {action :: PrimAction, version :: Natural}
-  | AwaitEvents { awaitTimeout :: Int, version :: Natural }
+  | AwaitEvents {awaitTimeout :: Int, version :: Natural}
   | Done {results :: [Result]}
   deriving (Show, Generic, JSON.ToJSON, JSON.FromJSON)
 
