@@ -8,7 +8,7 @@ in project.haskellPackages.shellFor {
     cabal-install
     nixfmt
     project.haskellPackages.haskell-language-server
-    project.haskellPackages.ormolu
+    ormolu
     ghcid
   ]);
 }
