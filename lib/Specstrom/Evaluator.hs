@@ -340,7 +340,7 @@ evaluate s g (Projection e t) = backtrace (exprPos e) ("." <> t) $ do
 evaluate s g (Symbol _ t) = pure $ Constructor t []
 evaluate s g (Var p "happened") = case fst (snd s) of
   Just v -> pure (List v)
-  Nothing -> evalError "Set 'happened' of actions is not available when computing actions"
+  Nothing -> pure (List [])
 evaluate s g (Var p t) = case M.lookup t g of
   Just (Op o _ []) -> pure (Op o p [])
   Just v -> pure v
