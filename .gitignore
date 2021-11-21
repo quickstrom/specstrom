@@ -11,3 +11,4 @@ docs/*.tex
 .direnv
 /result*
 /docs-test
+/rust/target
