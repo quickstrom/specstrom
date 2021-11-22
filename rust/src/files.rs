@@ -11,6 +11,7 @@ pub struct Position<'a> {
   pub line: usize,
   pub column: usize,
 }
+
 impl<'a> Position<'a> {
   pub fn display_short(&self) {
     if let Some(p) = self.file {

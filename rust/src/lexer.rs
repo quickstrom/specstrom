@@ -46,6 +46,8 @@ impl Error for LexerError {
   }
 }
 
+type LexItem<'a> = Result<Token<'a>, SourceError<'a, LexerError>>;
+
 impl<'a, 'b> Lexer<'a, 'b> {
   pub fn source_file(file: &'b SourceFile<'a>) -> Lexer<'a, 'b> {
     Lexer {
@@ -61,42 +63,62 @@ impl<'a, 'b> Lexer<'a, 'b> {
   fn is_symbol_ident(ch: char) -> bool {
     !(ch.is_whitespace() || ch.is_alphanumeric() || "[]{};,".contains(ch) || "()\"\'`".contains(ch))
   }
-}
-impl<'a, 'b> Iterator for Lexer<'a, 'b> {
-  type Item = Result<Token<'a>, SourceError<'a, LexerError>>;
 
-  fn next(&mut self) -> Option<Self::Item> {
-    let mut ch;
-    let mut position;
-    loop {
-      ch = self.iterator.next()?;
-      position = self.iterator.position.previous_column();
-      if ch.is_whitespace() {
-        // do nothing
-      } else if ch == '/' {
-        if self.iterator.peek() == Some('/') {
+  fn next_equals(&mut self, other: char) -> Option<bool> {
+    return self.iterator.peek().map(|x| x == other);
+  }
+
+  fn lex_doc_string(&mut self) -> Option<LexItem<'a>> {
+    if self.next_equals('/')? {
+      let position = self.iterator.position;
+      self.iterator.next();
+      if self.next_equals('/')? {
+        self.iterator.next();
+        // we are in a comment, or a doc-string
+        if self.next_equals('/')? {
           self.iterator.next();
-          // we are in a comment, or a doc-string
-          if self.iterator.peek() == Some('/') {
-            self.iterator.next();
-            // it's a doc-string
-            let doc = self.iterator.until_eol();
-            let tok = Token {
-              position,
-              symbol: Symbol::Doc(doc),
-            };
-            return Some(Ok(tok));
-          } else {
-            // it's a comment
-            self.iterator.until_eol();
-          }
+          // it's a doc-string
+          let doc = self.iterator.until_eol();
+          let tok = Token {
+            position,
+            symbol: Symbol::Doc(doc),
+          };
+          return Some(Ok(tok));
         } else {
-          break;
+          // it's a comment
+          self.iterator.until_eol();
+          None
         }
       } else {
-        break;
+        None
+      }
+    } else {
+      None
+    }
+  }
+}
+
+impl<'a, 'b> Iterator for Lexer<'a, 'b> {
+  type Item = LexItem<'a>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    loop {
+      if self.iterator.peek()?.is_whitespace() {
+        // ignore whitespace
+        self.iterator.next();
+        continue;
+      } else {
+        match self.lex_doc_string() {
+          Some(r) => {
+            return Some(r);
+          }
+          None => break,
+        }
       }
     }
+
+    let mut position = self.iterator.position;
+    let mut ch = self.iterator.next()?;
     let mut negate = false;
     if ch == '-' && self.iterator.peek().map_or(false, |x| x.is_ascii_digit()) {
       negate = true;
