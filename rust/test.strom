@@ -1,5 +1,8 @@
-  ( )
+  ( ) `selectorLiteral \` foo bar`
+'3' '\n' 'abc' '\'' '"' '\u00b0'  
  ( 72) // a comment
-(342.23 -14.1)
+(342.23 -14.1) "foo\"\\q bar" "blah \u00b0C"
   -321 /// a doc string 
 39000000000000000000000000000000000000000000000000000000000000000000000 (())
+here are some^32 identifiers- _abc§
+this.foo(bar)

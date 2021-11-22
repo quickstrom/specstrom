@@ -7,3 +7,4 @@ edition = "2018"
 
 [dependencies]
 peeking_take_while = "1.0.0"
+serde_json = "1.0.*"
