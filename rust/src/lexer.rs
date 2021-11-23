@@ -1,12 +1,13 @@
-use crate::error::{Error,SourceError};
+use crate::error::{Error, SourceError};
 use crate::files::*;
-#[derive(Clone, Debug)]
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Token<'a> {
   pub position: Position<'a>,
   pub symbol: Symbol,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Symbol {
   Ident(String),
   Projection(String),
@@ -24,7 +25,7 @@ pub struct Lexer<'a, 'b> {
   iterator: SourceFileChars<'a, 'b>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum LexerError {
   InvalidIntLit(String),
   InvalidCharLit(String),
@@ -36,15 +37,14 @@ pub enum LexerError {
 impl Error for LexerError {
   fn display(&self) -> String {
     match self {
-      LexerError::InvalidCharLit(s) => format!("Invalid char literal {}",s),
-      LexerError::InvalidIntLit(s) => format!("Invalid int literal {}",s),
-      LexerError::InvalidStringLit(s) => format!("Invalid string literal {}",s),
-      LexerError::InvalidSelectorLit(s) => format!("Invalid selector literal {}",s),
-      LexerError::InvalidFloatLit(s) => format!("Invalid float literal {}",s),
+      LexerError::InvalidCharLit(s) => format!("Invalid char literal {}", s),
+      LexerError::InvalidIntLit(s) => format!("Invalid int literal {}", s),
+      LexerError::InvalidStringLit(s) => format!("Invalid string literal {}", s),
+      LexerError::InvalidSelectorLit(s) => format!("Invalid selector literal {}", s),
+      LexerError::InvalidFloatLit(s) => format!("Invalid float literal {}", s),
     }
   }
 }
-
 
 impl<'a, 'b> Lexer<'a, 'b> {
   pub fn source_file(file: &'b SourceFile<'a>) -> Lexer<'a, 'b> {
@@ -124,7 +124,7 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
         Some(symbol.map_err(|_| SourceError {
           position,
           content: LexerError::InvalidFloatLit(input),
-          length
+          length,
         }))
       } else {
         let symbol = format!("{}{}{}", sign, ch, rest_digits)
@@ -135,8 +135,8 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
           });
         Some(symbol.map_err(|_| SourceError {
           position,
-          content: LexerError::InvalidIntLit(format!("{}{}",ch,rest_digits)),
-          length: rest_digits.len() + 1
+          content: LexerError::InvalidIntLit(format!("{}{}", ch, rest_digits)),
+          length: rest_digits.len() + 1,
         }))
       }
     } else {
@@ -149,7 +149,7 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
             Some(Err(SourceError {
               position,
               content: LexerError::InvalidStringLit(rest),
-              length
+              length,
             }))
           } else {
             self.iterator.next();
@@ -159,12 +159,12 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
               serde_json::from_str(&rest)
                 .map(|s| Token {
                   position: position.clone(),
-                  symbol: Symbol::StringLit(s),                  
+                  symbol: Symbol::StringLit(s),
                 })
                 .map_err(|_| SourceError {
                   position,
                   content: LexerError::InvalidStringLit(rest),
-                  length
+                  length,
                 }),
             )
           }
@@ -204,7 +204,7 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
                   .ok_or_else(|| SourceError {
                     position: position.clone(),
                     content: LexerError::InvalidCharLit(format!("'{}'", &rest)),
-                    length: rest.len()+2
+                    length: rest.len() + 2,
                   })
                   .map(|c| Token {
                     position: position,
@@ -222,7 +222,7 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
             Some(Err(SourceError {
               position,
               content: LexerError::InvalidSelectorLit(rest),
-              length
+              length,
             }))
           } else {
             self.iterator.next();
@@ -276,5 +276,43 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
         _ => None,
       }
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use crate::lexer::{Lexer, SourceFile, Symbol};
+
+  type TestToken = (usize, usize, Symbol);
+
+  fn expect_lex(lines: Vec<&'static str>, expected: Vec<TestToken>) {
+    let file = SourceFile::dummy_file(lines);
+    let lexer = Lexer::source_file(&file);
+    let actual: Vec<TestToken> = lexer
+      .map(|r| {
+        let token = r.unwrap();
+        (token.position.line, token.position.column, token.symbol)
+      })
+      .collect();
+    assert_eq!(actual, expected);
+  }
+
+  #[test]
+  fn lex_selector() {
+    expect_lex(
+      vec!["`test`"],
+      vec![(0, 1, Symbol::SelectorLit(String::from("test")))],
+    )
+  }
+
+  #[test]
+  fn lex_idents_multiline() {
+    expect_lex(
+      vec!["foo", "bar"],
+      vec![
+        (0, 1, Symbol::Ident(String::from("foo"))),
+        (1, 1, Symbol::Ident(String::from("bar"))),
+      ],
+    )
   }
 }

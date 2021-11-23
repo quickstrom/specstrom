@@ -1,30 +1,38 @@
 use peeking_take_while::PeekableExt;
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::iter::Peekable;
 use std::path::Path;
 use std::str::Chars;
-use std::collections::HashMap;
-#[derive(Clone, Debug)]
+
+#[derive(Clone, Debug, Copy, PartialEq)]
 pub struct Position<'a> {
   pub file: Option<&'a Path>,
   pub line: usize,
   pub column: usize,
 }
 impl<'a> Position<'a> {
-
   pub fn display_short(&self) {
     if let Some(p) = self.file {
-      print!("{}:{}:{}",p.display(),self.line+1,self.column+1)
+      print!("{}:{}:{}", p.display(), self.line + 1, self.column + 1)
     } else {
-      print!(":{}:{}",self.line+1,self.column+1)
+      print!(":{}:{}", self.line + 1, self.column + 1)
     }
   }
-  pub fn display_context(&self,files: &Files<'a>,length:usize) {
-    if let Some(sf) = self.file.and_then(|p|files.get(p)) {      
-      let lineno = format!("{}",self.line + 1);
-      println!("{:1$} |","",lineno.len());
-      println!("{} | {}",lineno,sf.lines[self.line]);
-      println!("{:l$} | {:r$}{:^<u$}","","","",r=self.column,l=lineno.len(), u=length);
+  pub fn display_context(&self, files: &Files<'a>, length: usize) {
+    if let Some(sf) = self.file.and_then(|p| files.get(p)) {
+      let lineno = format!("{}", self.line + 1);
+      println!("{:1$} |", "", lineno.len());
+      println!("{} | {}", lineno, sf.lines[self.line]);
+      println!(
+        "{:l$} | {:r$}{:^<u$}",
+        "",
+        "",
+        "",
+        r = self.column,
+        l = lineno.len(),
+        u = length
+      );
     }
   }
 
@@ -36,7 +44,7 @@ impl<'a> Position<'a> {
     }
   }
   pub fn in_file(file: &'a Path) -> Position<'a> {
-    Self::new(file,0,0)
+    Self::new(file, 0, 0)
   }
   pub fn dummy() -> Position<'a> {
     Position {
@@ -75,15 +83,17 @@ pub struct SourceFile<'a> {
   pub lines: Vec<String>,
 }
 pub struct Files<'a> {
-  table:  HashMap<&'a Path, SourceFile<'a>>
+  table: HashMap<&'a Path, SourceFile<'a>>,
 }
 impl<'a> Files<'a> {
   pub fn new() -> Files<'a> {
-    Files { table: HashMap::new() }
+    Files {
+      table: HashMap::new(),
+    }
   }
   pub fn load(&mut self, path: &'a Path) -> std::io::Result<()> {
     let file = SourceFile::load(path)?;
-    self.table.insert(path,file);
+    self.table.insert(path, file);
     Ok(())
   }
   pub fn get(&self, path: &'a Path) -> Option<&SourceFile<'a>> {
@@ -99,6 +109,12 @@ impl<'a> SourceFile<'a> {
       path,
       lines: lines?,
     })
+  }
+  pub fn dummy_file(lines: Vec<&'a str>) -> SourceFile<'a> {
+    SourceFile {
+      path: Path::new("dummy.strom"),
+      lines: lines.into_iter().map(|x| String::from(x)).collect(),
+    }
   }
   pub fn chars<'b>(&'b self) -> SourceFileChars<'a, 'b> {
     let pos = Position::in_file(self.path);
@@ -152,7 +168,11 @@ impl<'a, 'b> SourceFileChars<'a, 'b> {
     str
   }
   pub fn next_while_escaped<P: FnMut(&char) -> bool>(&mut self, mut pred: P) -> String {
-    let mut str: String = self.iterator.by_ref().peeking_take_while(|&x| pred(&x) && x != '\\' ).collect();
+    let mut str: String = self
+      .iterator
+      .by_ref()
+      .peeking_take_while(|&x| pred(&x) && x != '\\')
+      .collect();
     if self.iterator.peek() == Some(&'\\') {
       str.push('\\');
       self.iterator.next();
