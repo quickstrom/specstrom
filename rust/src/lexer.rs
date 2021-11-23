@@ -301,7 +301,7 @@ mod tests {
   fn lex_selector() {
     expect_lex(
       vec!["`test`"],
-      vec![(0, 1, Symbol::SelectorLit(String::from("test")))],
+      vec![(0, 0, Symbol::SelectorLit(String::from("test")))],
     )
   }
 
@@ -310,8 +310,8 @@ mod tests {
     expect_lex(
       vec!["foo", "bar"],
       vec![
-        (0, 1, Symbol::Ident(String::from("foo"))),
-        (1, 1, Symbol::Ident(String::from("bar"))),
+        (0, 0, Symbol::Ident(String::from("foo"))),
+        (1, 0, Symbol::Ident(String::from("bar"))),
       ],
     )
   }
