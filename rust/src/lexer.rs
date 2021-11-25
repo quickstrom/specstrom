@@ -74,10 +74,10 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
       if ch.is_whitespace() {
         // do nothing
       } else if ch == '/' {
-        if self.iterator.peek() == Some(&'/') {
+        if self.iterator.peek() == Some('/') {
           self.iterator.next();
           // we are in a comment, or a doc-string
-          if self.iterator.peek() == Some(&'/') {
+          if self.iterator.peek() == Some('/') {
             self.iterator.next();
             // it's a doc-string
             let doc = self.iterator.until_eol();
@@ -98,7 +98,7 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
       }
     }
     let mut negate = false;
-    if ch == '-' && self.iterator.peek().map_or(false, |&x| x.is_ascii_digit()) {
+    if ch == '-' && self.iterator.peek().map_or(false, |x| x.is_ascii_digit()) {
       negate = true;
       ch = self.iterator.next()?;
       position = self.iterator.position.previous_column();
@@ -106,10 +106,10 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
     if ch.is_ascii_digit() {
       let rest_digits = self.iterator.next_while(|&x| x.is_ascii_digit());
       let sign = if negate { '-' } else { '+' };
-      if self.iterator.peek() == Some(&'.') {
+      if self.iterator.peek() == Some('.') {
         self.iterator.next();
         let rest = self.iterator.next_while(|&x| x.is_ascii_digit());
-        let input = if self.iterator.peek() == Some(&'e') || self.iterator.peek() == Some(&'E') {
+        let input = if self.iterator.peek() == Some('e') || self.iterator.peek() == Some('E') {
           self.iterator.next();
           let exponent = self.iterator.next_while(|&x| x.is_ascii_digit());
           format!("{}{}{}.{}e{}", sign, ch, rest_digits, rest, exponent)
@@ -145,7 +145,7 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
           let mut rest = self.iterator.next_while_escaped(|&x| x != '"');
           rest.insert(0, ch);
           let length = rest.len();
-          if self.iterator.peek() != Some(&'"') {
+          if self.iterator.peek() != Some('"') {
             Some(Err(SourceError {
               position,
               content: LexerError::InvalidStringLit(rest),
@@ -171,7 +171,7 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
         }
         '\'' => {
           let mut rest = self.iterator.next_while_escaped(|&x| x != '\'');
-          if self.iterator.peek() != Some(&'\'') {
+          if self.iterator.peek() != Some('\'') {
             rest.insert(0, ch);
             let length = rest.len();
             Some(Err(SourceError {
@@ -216,7 +216,7 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
         }
         '`' => {
           let mut rest = self.iterator.next_while_escaped(|&x| x != '`');
-          if self.iterator.peek() != Some(&'`') {
+          if self.iterator.peek() != Some('`') {
             rest.insert(0, ch);
             let length = rest.len();
             Some(Err(SourceError {

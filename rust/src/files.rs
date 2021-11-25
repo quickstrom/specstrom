@@ -151,8 +151,21 @@ impl<'a, 'b> Iterator for SourceFileChars<'a, 'b> {
   }
 }
 impl<'a, 'b> SourceFileChars<'a, 'b> {
-  pub fn peek(&mut self) -> Option<&char> {
-    self.iterator.peek()
+  pub fn peek(&mut self) -> Option<char> {
+    match self.iterator.peek() {
+      Some(ch) => { Some(ch.clone()) }
+      None => {
+        let mut position = self.position.next_line();
+        while position.line < self.file.lines.len() {
+          if let Some(ch) = self.file.lines[position.line].chars().next() {
+            return Some(ch)
+          } else {
+            position = position.next_line()
+          }
+        }
+        return None
+      }
+    }
   }
   pub fn until_eol(&mut self) -> String {
     let str: String = self.iterator.clone().collect();
@@ -213,7 +226,7 @@ mod tests {
       loop {
         match iterator.peek() {
           Some(v) =>        {
-            peeks.push(*v);
+            peeks.push(v);
             iterator.next();
           }
           None => break
