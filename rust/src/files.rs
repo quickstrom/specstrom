@@ -185,3 +185,42 @@ impl<'a, 'b> SourceFileChars<'a, 'b> {
     str
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use proptest::prelude::*;
+  use crate::files::SourceFile;
+
+  proptest! {
+
+    // Checks that repeatedly calling `.next()` gives you back the full source file.
+    #[test]
+    fn returns_all_with_next(input in "(\\PC{0,8}\\n)*") {
+      let file = SourceFile::dummy_file(input.split("\n").collect());
+      let iterator = file.chars();
+      let output: String = iterator.collect();
+      assert_eq!(output, input);
+    }
+
+    // Checks that calling `.peek()` at each position, stepping forward using `.next()`,
+    // gives you back the full source file.
+    #[test]
+    fn returns_all_with_peek(input in "(\\PC{0,8}\\n)*") {
+      let file = SourceFile::dummy_file(input.split("\n").collect());
+      let mut iterator = file.chars();
+      let mut peeks: Vec<char> = vec![];
+      loop {
+        match iterator.peek() {
+          Some(v) =>        {
+            peeks.push(*v);
+            iterator.next();
+          }
+          None => break
+        }
+      }
+      let output: String = peeks.into_iter().collect();
+      assert_eq!(output, input);
+    }
+  }
+
+}
