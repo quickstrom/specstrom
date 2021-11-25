@@ -194,16 +194,17 @@ mod tests {
   proptest! {
 
     // Checks that repeatedly calling `.next()` gives you back the full source file.
+    // Ignores newline characters.
     #[test]
     fn returns_all_with_next(input in "(\\PC{0,8}\\n)*") {
       let file = SourceFile::dummy_file(input.split("\n").collect());
       let iterator = file.chars();
       let output: String = iterator.collect();
-      assert_eq!(output, input);
+      assert_eq!(output, input.replace("\n", ""));
     }
 
     // Checks that calling `.peek()` at each position, stepping forward using `.next()`,
-    // gives you back the full source file.
+    // gives you back the full source file. Ignores newline characters.
     #[test]
     fn returns_all_with_peek(input in "(\\PC{0,8}\\n)*") {
       let file = SourceFile::dummy_file(input.split("\n").collect());
@@ -219,7 +220,7 @@ mod tests {
         }
       }
       let output: String = peeks.into_iter().collect();
-      assert_eq!(output, input);
+      assert_eq!(output, input.replace("\n", ""));
     }
   }
 
