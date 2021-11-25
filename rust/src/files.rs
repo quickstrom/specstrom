@@ -153,17 +153,17 @@ impl<'a, 'b> Iterator for SourceFileChars<'a, 'b> {
 impl<'a, 'b> SourceFileChars<'a, 'b> {
   pub fn peek(&mut self) -> Option<char> {
     match self.iterator.peek() {
-      Some(ch) => { Some(ch.clone()) }
+      Some(ch) => Some(ch.clone()),
       None => {
         let mut position = self.position.next_line();
         while position.line < self.file.lines.len() {
           if let Some(ch) = self.file.lines[position.line].chars().next() {
-            return Some(ch)
+            return Some(ch);
           } else {
             position = position.next_line()
           }
         }
-        return None
+        return None;
       }
     }
   }
@@ -201,8 +201,8 @@ impl<'a, 'b> SourceFileChars<'a, 'b> {
 
 #[cfg(test)]
 mod tests {
-  use proptest::prelude::*;
   use crate::files::SourceFile;
+  use proptest::prelude::*;
 
   proptest! {
 
@@ -235,6 +235,30 @@ mod tests {
       let output: String = peeks.into_iter().collect();
       assert_eq!(output, input.replace("\n", ""));
     }
-  }
 
+    #[test]
+    fn returns_all_correct_positions(input in "(\\PC{0,8}\\n)*") {
+      let lines: Vec<&str> = input.split("\n").collect();
+      let file = SourceFile::dummy_file(lines.clone());
+      let mut iterator = file.chars();
+      let mut positions: Vec<(usize, usize)> = vec![];
+      loop {
+        positions.push((iterator.position.line, iterator.position.column));
+        match iterator.next() {
+          Some(_) => continue,
+          None => break,
+        }
+      }
+      let mut found: Vec<char> = vec![];
+      for (l, c) in positions {
+        if !(l == 0 && c == 0) {
+          let line = lines[l];
+          let ch = line.chars().nth(c-1).unwrap();
+          found.push(ch);
+        }
+      }
+      let found_str: String = found.into_iter().collect();
+      assert_eq!(found_str, input.replace("\n", ""));
+    }
+  }
 }
