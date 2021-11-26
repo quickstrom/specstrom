@@ -68,15 +68,15 @@ impl<'a, 'b> Lexer<'a, 'b> {
     return self.iterator.peek().map(|x| x == other);
   }
 
-  fn lex_doc_string(&mut self) -> Option<LexItem<'a>> {
+  fn lex_doc(&mut self) -> Option<LexItem<'a>> {
     if self.next_equals('/')? {
-      let position = self.iterator.position;
       self.iterator.next();
       if self.next_equals('/')? {
         self.iterator.next();
         // we are in a comment, or a doc-string
         if self.next_equals('/')? {
           self.iterator.next();
+          let position = self.iterator.position;
           // it's a doc-string
           let doc = self.iterator.until_eol();
           let tok = Token {
@@ -163,7 +163,7 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
         self.iterator.next();
         continue;
       } else {
-        match self.lex_doc_string() {
+        match self.lex_doc() {
           Some(r) => {
             return Some(r);
           }
@@ -357,7 +357,7 @@ mod tests {
   fn lex_doc() {
     expect_lex(
       vec!["/// hello"],
-      vec![(0, 0, Symbol::Doc(String::from(" hello")))],
+      vec![(0, 3, Symbol::Doc(String::from(" hello")))],
     )
   }
 

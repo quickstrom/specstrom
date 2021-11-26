@@ -169,8 +169,8 @@ impl<'a, 'b> SourceFileChars<'a, 'b> {
     }
   }
   pub fn until_eol(&mut self) -> String {
-    let str: String = self.iterator.clone().collect();
     self.position = self.position.next_line();
+    let str = self.next_while(|_| true);
     if self.position.line < self.file.lines.len() {
       self.iterator = self.file.lines[self.position.line].chars().peekable();
     }
