@@ -108,7 +108,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
       let first_digit = self.iterator.next()?;
       let (position, sign) = match negation {
         Some(pos) => (pos, '-'),
-        None => (self.iterator.position, '+'),
+        None => (self.iterator.position.previous_column(), '+'),
       };
       let rest_digits = self.iterator.next_while(|&x| x.is_ascii_digit());
       if self.iterator.peek() == Some('.') {
@@ -117,7 +117,10 @@ impl<'a, 'b> Lexer<'a, 'b> {
         let input = if self.iterator.peek() == Some('e') || self.iterator.peek() == Some('E') {
           self.iterator.next();
           let exponent = self.iterator.next_while(|&x| x.is_ascii_digit());
-          format!("{}{}{}.{}e{}", sign, first_digit, rest_digits, rest, exponent)
+          format!(
+            "{}{}{}.{}e{}",
+            sign, first_digit, rest_digits, rest, exponent
+          )
         } else {
           format!("{}{}{}.{}", sign, first_digit, rest_digits, rest)
         };
@@ -169,142 +172,144 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
       }
     }
 
-    let ch = self.iterator.next()?;
-    let position = self.iterator.position.previous_column();
-    self.lex_int_lit().or_else(|| match ch {
-      '"' => {
-        let mut rest = self.iterator.next_while_escaped(|&x| x != '"');
-        rest.insert(0, ch);
-        let length = rest.len();
-        if self.iterator.peek() != Some('"') {
-          Some(Err(SourceError {
-            position,
-            content: LexerError::InvalidStringLit(rest),
-            length,
-          }))
-        } else {
-          self.iterator.next();
-          rest.push('"');
-          let length = rest.len();
-          Some(
-            serde_json::from_str(&rest)
-              .map(|s| Token {
-                position: position.clone(),
-                symbol: Symbol::StringLit(s),
-              })
-              .map_err(|_| SourceError {
-                position,
-                content: LexerError::InvalidStringLit(rest),
-                length,
-              }),
-          )
-        }
-      }
-      '\'' => {
-        let mut rest = self.iterator.next_while_escaped(|&x| x != '\'');
-        if self.iterator.peek() != Some('\'') {
+    self.lex_int_lit().or_else(|| {
+      let ch = self.iterator.next()?;
+      let position = self.iterator.position.previous_column();
+      match ch {
+        '"' => {
+          let mut rest = self.iterator.next_while_escaped(|&x| x != '"');
           rest.insert(0, ch);
           let length = rest.len();
-          Some(Err(SourceError {
-            position,
-            content: LexerError::InvalidCharLit(rest),
-            length,
-          }))
-        } else {
-          self.iterator.next();
-          if rest == "\"" {
-            Some(Ok(Token {
+          if self.iterator.peek() != Some('"') {
+            Some(Err(SourceError {
               position,
-              symbol: Symbol::CharLit('"'),
-            }))
-          } else if rest == "\\'" {
-            Some(Ok(Token {
-              position,
-              symbol: Symbol::CharLit('\''),
+              content: LexerError::InvalidStringLit(rest),
+              length,
             }))
           } else {
-            let parse: Result<String, _> = serde_json::from_str(&format!("\"{}\"", &rest));
+            self.iterator.next();
+            rest.push('"');
+            let length = rest.len();
             Some(
-              parse
-                .ok()
-                .and_then(|s| {
-                  let mut i = s.chars();
-                  let c = i.next();
-                  c.filter(|_| i.next().is_none())
-                })
-                .ok_or_else(|| SourceError {
+              serde_json::from_str(&rest)
+                .map(|s| Token {
                   position: position.clone(),
-                  content: LexerError::InvalidCharLit(format!("'{}'", &rest)),
-                  length: rest.len() + 2,
+                  symbol: Symbol::StringLit(s),
                 })
-                .map(|c| Token {
-                  position: position,
-                  symbol: Symbol::CharLit(c),
+                .map_err(|_| SourceError {
+                  position,
+                  content: LexerError::InvalidStringLit(rest),
+                  length,
                 }),
             )
           }
         }
-      }
-      '`' => {
-        let mut rest = self.iterator.next_while_escaped(|&x| x != '`');
-        if self.iterator.peek() != Some('`') {
-          rest.insert(0, ch);
-          let length = rest.len();
-          Some(Err(SourceError {
-            position,
-            content: LexerError::InvalidSelectorLit(rest),
-            length,
-          }))
-        } else {
-          self.iterator.next();
+        '\'' => {
+          let mut rest = self.iterator.next_while_escaped(|&x| x != '\'');
+          if self.iterator.peek() != Some('\'') {
+            rest.insert(0, ch);
+            let length = rest.len();
+            Some(Err(SourceError {
+              position,
+              content: LexerError::InvalidCharLit(rest),
+              length,
+            }))
+          } else {
+            self.iterator.next();
+            if rest == "\"" {
+              Some(Ok(Token {
+                position,
+                symbol: Symbol::CharLit('"'),
+              }))
+            } else if rest == "\\'" {
+              Some(Ok(Token {
+                position,
+                symbol: Symbol::CharLit('\''),
+              }))
+            } else {
+              let parse: Result<String, _> = serde_json::from_str(&format!("\"{}\"", &rest));
+              Some(
+                parse
+                  .ok()
+                  .and_then(|s| {
+                    let mut i = s.chars();
+                    let c = i.next();
+                    c.filter(|_| i.next().is_none())
+                  })
+                  .ok_or_else(|| SourceError {
+                    position: position.clone(),
+                    content: LexerError::InvalidCharLit(format!("'{}'", &rest)),
+                    length: rest.len() + 2,
+                  })
+                  .map(|c| Token {
+                    position: position,
+                    symbol: Symbol::CharLit(c),
+                  }),
+              )
+            }
+          }
+        }
+        '`' => {
+          let mut rest = self.iterator.next_while_escaped(|&x| x != '`');
+          if self.iterator.peek() != Some('`') {
+            rest.insert(0, ch);
+            let length = rest.len();
+            Some(Err(SourceError {
+              position,
+              content: LexerError::InvalidSelectorLit(rest),
+              length,
+            }))
+          } else {
+            self.iterator.next();
+            Some(Ok(Token {
+              position,
+              symbol: Symbol::SelectorLit(rest),
+            }))
+          }
+        }
+        '.'
+          if self
+            .iterator
+            .peek()
+            .filter(|&c| c.is_alphanumeric())
+            .is_some() =>
+        {
+          let rest = self.iterator.next_while(|&x| x.is_alphanumeric());
           Some(Ok(Token {
             position,
-            symbol: Symbol::SelectorLit(rest),
+            symbol: Symbol::Projection(rest),
           }))
         }
-      }
-      '.'
-        if self
-          .iterator
-          .peek()
-          .filter(|&c| c.is_alphanumeric())
-          .is_some() =>
-      {
-        let rest = self.iterator.next_while(|&x| x.is_alphanumeric());
-        Some(Ok(Token {
+        '(' => Some(Ok(Token {
           position,
-          symbol: Symbol::Projection(rest),
-        }))
-      }
-      '(' => Some(Ok(Token {
-        position,
-        symbol: Symbol::LParen,
-      })),
-      ')' => Some(Ok(Token {
-        position,
-        symbol: Symbol::RParen,
-      })),
-      c if Self::is_single_ident(c) => Some(Ok(Token {
-        position,
-        symbol: Symbol::Ident(format!("{}", c)),
-      })),
-      c if Self::is_alpha_ident(c) => {
-        let mut rest = self.iterator.next_while(|&x| Self::is_alpha_ident(x));
-        rest.insert(0, c);
-        Some(Ok(Token {
+          symbol: Symbol::LParen,
+        })),
+        ')' => Some(Ok(Token {
           position,
-          symbol: Symbol::Ident(rest),
-        }))
-      }
-      c if Self::is_symbol_ident(c) => {
-        let mut rest = self.iterator.next_while(|&x| Self::is_symbol_ident(x));
-        rest.insert(0, c);
-        Some(Ok(Token {
+          symbol: Symbol::RParen,
+        })),
+        c if Self::is_single_ident(c) => Some(Ok(Token {
           position,
-          symbol: Symbol::Ident(rest),
-        }))
+          symbol: Symbol::Ident(format!("{}", c)),
+        })),
+        c if Self::is_alpha_ident(c) => {
+          let mut rest = self.iterator.next_while(|&x| Self::is_alpha_ident(x));
+          rest.insert(0, c);
+          Some(Ok(Token {
+            position,
+            symbol: Symbol::Ident(rest),
+          }))
+        }
+        c if Self::is_symbol_ident(c) => {
+          let mut rest = self.iterator.next_while(|&x| Self::is_symbol_ident(x));
+          rest.insert(0, c);
+          Some(Ok(Token {
+            position,
+            symbol: Symbol::Ident(rest),
+          }))
+        }
+        _ => None,
       }
-      _ => None,
     })
   }
 }
@@ -329,10 +334,7 @@ mod tests {
 
   #[test]
   fn lex_char() {
-    expect_lex(
-      vec!["'a'"],
-      vec![(0, 0, Symbol::CharLit('a'))],
-    )
+    expect_lex(vec!["'a'"], vec![(0, 0, Symbol::CharLit('a'))])
   }
 
   #[test]
@@ -383,33 +385,19 @@ mod tests {
 
   #[test]
   fn lex_int_lit_valid() {
-    expect_lex(
-      vec!["123456"],
-      vec![
-        (0, 0, Symbol::IntLit(123456)),
-      ],
-    )
+    expect_lex(vec!["123456"], vec![(0, 0, Symbol::IntLit(123456))])
   }
 
   #[test]
   fn lex_float_lit_valid() {
-    expect_lex(
-      vec!["123.456"],
-      vec![
-        (0, 0, Symbol::FloatLit(123.456)),
-      ],
-    )
+    expect_lex(vec!["123.456"], vec![(0, 0, Symbol::FloatLit(123.456))])
   }
 
   #[test]
   fn lex_parens() {
     expect_lex(
       vec!["()"],
-      vec![
-        (0, 0, Symbol::LParen),
-        (0, 1, Symbol::RParen),
-      ],
+      vec![(0, 0, Symbol::LParen), (0, 1, Symbol::RParen)],
     )
   }
-
 }
