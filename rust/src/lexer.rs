@@ -96,6 +96,58 @@ impl<'a, 'b> Lexer<'a, 'b> {
       None
     }
   }
+  fn lex_int_lit(&mut self) -> Option<LexItem<'a>> {
+    let negation = if self.next_equals('-')? {
+      // Skip the peeked dash.
+      self.iterator.next()?;
+      Some(self.iterator.position.previous_column())
+    } else {
+      None
+    };
+    if self.iterator.peek()?.is_ascii_digit() {
+      let first_digit = self.iterator.next()?;
+      let (position, sign) = match negation {
+        Some(pos) => (pos, '-'),
+        None => (self.iterator.position, '+'),
+      };
+      let rest_digits = self.iterator.next_while(|&x| x.is_ascii_digit());
+      if self.iterator.peek() == Some('.') {
+        self.iterator.next();
+        let rest = self.iterator.next_while(|&x| x.is_ascii_digit());
+        let input = if self.iterator.peek() == Some('e') || self.iterator.peek() == Some('E') {
+          self.iterator.next();
+          let exponent = self.iterator.next_while(|&x| x.is_ascii_digit());
+          format!("{}{}{}.{}e{}", sign, first_digit, rest_digits, rest, exponent)
+        } else {
+          format!("{}{}{}.{}", sign, first_digit, rest_digits, rest)
+        };
+        let symbol = input.parse::<f64>().map(|f| Token {
+          position: position.clone(),
+          symbol: Symbol::FloatLit(f),
+        });
+        let length = input.len();
+        Some(symbol.map_err(|_| SourceError {
+          position,
+          content: LexerError::InvalidFloatLit(input),
+          length,
+        }))
+      } else {
+        let symbol = format!("{}{}{}", sign, first_digit, rest_digits)
+          .parse::<i64>()
+          .map(|f| Token {
+            position: position.clone(),
+            symbol: Symbol::IntLit(f),
+          });
+        Some(symbol.map_err(|_| SourceError {
+          position,
+          content: LexerError::InvalidIntLit(format!("{}{}", first_digit, rest_digits)),
+          length: rest_digits.len() + 1,
+        }))
+      }
+    } else {
+      None
+    }
+  }
 }
 
 impl<'a, 'b> Iterator for Lexer<'a, 'b> {
@@ -117,187 +169,143 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
       }
     }
 
-    let mut ch = self.iterator.next()?;
-    let mut position = self.iterator.position.previous_column();
-    let mut negate = false;
-    if ch == '-' && self.iterator.peek().map_or(false, |x| x.is_ascii_digit()) {
-      negate = true;
-      ch = self.iterator.next()?;
-      position = self.iterator.position.previous_column();
-    }
-    if ch.is_ascii_digit() {
-      let rest_digits = self.iterator.next_while(|&x| x.is_ascii_digit());
-      let sign = if negate { '-' } else { '+' };
-      if self.iterator.peek() == Some('.') {
-        self.iterator.next();
-        let rest = self.iterator.next_while(|&x| x.is_ascii_digit());
-        let input = if self.iterator.peek() == Some('e') || self.iterator.peek() == Some('E') {
-          self.iterator.next();
-          let exponent = self.iterator.next_while(|&x| x.is_ascii_digit());
-          format!("{}{}{}.{}e{}", sign, ch, rest_digits, rest, exponent)
+    let ch = self.iterator.next()?;
+    let position = self.iterator.position.previous_column();
+    self.lex_int_lit().or_else(|| match ch {
+      '"' => {
+        let mut rest = self.iterator.next_while_escaped(|&x| x != '"');
+        rest.insert(0, ch);
+        let length = rest.len();
+        if self.iterator.peek() != Some('"') {
+          Some(Err(SourceError {
+            position,
+            content: LexerError::InvalidStringLit(rest),
+            length,
+          }))
         } else {
-          format!("{}{}{}.{}", sign, ch, rest_digits, rest)
-        };
-        let symbol = input.parse::<f64>().map(|f| Token {
-          position: position.clone(),
-          symbol: Symbol::FloatLit(f),
-        });
-        let length = input.len();
-        Some(symbol.map_err(|_| SourceError {
-          position,
-          content: LexerError::InvalidFloatLit(input),
-          length,
-        }))
-      } else {
-        let symbol = format!("{}{}{}", sign, ch, rest_digits)
-          .parse::<i64>()
-          .map(|f| Token {
-            position: position.clone(),
-            symbol: Symbol::IntLit(f),
-          });
-        Some(symbol.map_err(|_| SourceError {
-          position,
-          content: LexerError::InvalidIntLit(format!("{}{}", ch, rest_digits)),
-          length: rest_digits.len() + 1,
-        }))
+          self.iterator.next();
+          rest.push('"');
+          let length = rest.len();
+          Some(
+            serde_json::from_str(&rest)
+              .map(|s| Token {
+                position: position.clone(),
+                symbol: Symbol::StringLit(s),
+              })
+              .map_err(|_| SourceError {
+                position,
+                content: LexerError::InvalidStringLit(rest),
+                length,
+              }),
+          )
+        }
       }
-    } else {
-      match ch {
-        '"' => {
-          let mut rest = self.iterator.next_while_escaped(|&x| x != '"');
+      '\'' => {
+        let mut rest = self.iterator.next_while_escaped(|&x| x != '\'');
+        if self.iterator.peek() != Some('\'') {
           rest.insert(0, ch);
           let length = rest.len();
-          if self.iterator.peek() != Some('"') {
-            Some(Err(SourceError {
+          Some(Err(SourceError {
+            position,
+            content: LexerError::InvalidCharLit(rest),
+            length,
+          }))
+        } else {
+          self.iterator.next();
+          if rest == "\"" {
+            Some(Ok(Token {
               position,
-              content: LexerError::InvalidStringLit(rest),
-              length,
+              symbol: Symbol::CharLit('"'),
+            }))
+          } else if rest == "\\'" {
+            Some(Ok(Token {
+              position,
+              symbol: Symbol::CharLit('\''),
             }))
           } else {
-            self.iterator.next();
-            rest.push('"');
-            let length = rest.len();
+            let parse: Result<String, _> = serde_json::from_str(&format!("\"{}\"", &rest));
             Some(
-              serde_json::from_str(&rest)
-                .map(|s| Token {
-                  position: position.clone(),
-                  symbol: Symbol::StringLit(s),
+              parse
+                .ok()
+                .and_then(|s| {
+                  let mut i = s.chars();
+                  let c = i.next();
+                  c.filter(|_| i.next().is_none())
                 })
-                .map_err(|_| SourceError {
-                  position,
-                  content: LexerError::InvalidStringLit(rest),
-                  length,
+                .ok_or_else(|| SourceError {
+                  position: position.clone(),
+                  content: LexerError::InvalidCharLit(format!("'{}'", &rest)),
+                  length: rest.len() + 2,
+                })
+                .map(|c| Token {
+                  position: position,
+                  symbol: Symbol::CharLit(c),
                 }),
             )
           }
         }
-        '\'' => {
-          let mut rest = self.iterator.next_while_escaped(|&x| x != '\'');
-          if self.iterator.peek() != Some('\'') {
-            rest.insert(0, ch);
-            let length = rest.len();
-            Some(Err(SourceError {
-              position,
-              content: LexerError::InvalidCharLit(rest),
-              length,
-            }))
-          } else {
-            self.iterator.next();
-            if rest == "\"" {
-              Some(Ok(Token {
-                position,
-                symbol: Symbol::CharLit('"'),
-              }))
-            } else if rest == "\\'" {
-              Some(Ok(Token {
-                position,
-                symbol: Symbol::CharLit('\''),
-              }))
-            } else {
-              let parse: Result<String, _> = serde_json::from_str(&format!("\"{}\"", &rest));
-              Some(
-                parse
-                  .ok()
-                  .and_then(|s| {
-                    let mut i = s.chars();
-                    let c = i.next();
-                    c.filter(|_| i.next().is_none())
-                  })
-                  .ok_or_else(|| SourceError {
-                    position: position.clone(),
-                    content: LexerError::InvalidCharLit(format!("'{}'", &rest)),
-                    length: rest.len() + 2,
-                  })
-                  .map(|c| Token {
-                    position: position,
-                    symbol: Symbol::CharLit(c),
-                  }),
-              )
-            }
-          }
-        }
-        '`' => {
-          let mut rest = self.iterator.next_while_escaped(|&x| x != '`');
-          if self.iterator.peek() != Some('`') {
-            rest.insert(0, ch);
-            let length = rest.len();
-            Some(Err(SourceError {
-              position,
-              content: LexerError::InvalidSelectorLit(rest),
-              length,
-            }))
-          } else {
-            self.iterator.next();
-            Some(Ok(Token {
-              position,
-              symbol: Symbol::SelectorLit(rest),
-            }))
-          }
-        }
-        '.'
-          if self
-            .iterator
-            .peek()
-            .filter(|&c| c.is_alphanumeric())
-            .is_some() =>
-        {
-          let rest = self.iterator.next_while(|&x| x.is_alphanumeric());
-          Some(Ok(Token {
-            position,
-            symbol: Symbol::Projection(rest),
-          }))
-        }
-        '(' => Some(Ok(Token {
-          position,
-          symbol: Symbol::LParen,
-        })),
-        ')' => Some(Ok(Token {
-          position,
-          symbol: Symbol::RParen,
-        })),
-        c if Self::is_single_ident(c) => Some(Ok(Token {
-          position,
-          symbol: Symbol::Ident(format!("{}", c)),
-        })),
-        c if Self::is_alpha_ident(c) => {
-          let mut rest = self.iterator.next_while(|&x| Self::is_alpha_ident(x));
-          rest.insert(0, c);
-          Some(Ok(Token {
-            position,
-            symbol: Symbol::Ident(rest),
-          }))
-        }
-        c if Self::is_symbol_ident(c) => {
-          let mut rest = self.iterator.next_while(|&x| Self::is_symbol_ident(x));
-          rest.insert(0, c);
-          Some(Ok(Token {
-            position,
-            symbol: Symbol::Ident(rest),
-          }))
-        }
-        _ => None,
       }
-    }
+      '`' => {
+        let mut rest = self.iterator.next_while_escaped(|&x| x != '`');
+        if self.iterator.peek() != Some('`') {
+          rest.insert(0, ch);
+          let length = rest.len();
+          Some(Err(SourceError {
+            position,
+            content: LexerError::InvalidSelectorLit(rest),
+            length,
+          }))
+        } else {
+          self.iterator.next();
+          Some(Ok(Token {
+            position,
+            symbol: Symbol::SelectorLit(rest),
+          }))
+        }
+      }
+      '.'
+        if self
+          .iterator
+          .peek()
+          .filter(|&c| c.is_alphanumeric())
+          .is_some() =>
+      {
+        let rest = self.iterator.next_while(|&x| x.is_alphanumeric());
+        Some(Ok(Token {
+          position,
+          symbol: Symbol::Projection(rest),
+        }))
+      }
+      '(' => Some(Ok(Token {
+        position,
+        symbol: Symbol::LParen,
+      })),
+      ')' => Some(Ok(Token {
+        position,
+        symbol: Symbol::RParen,
+      })),
+      c if Self::is_single_ident(c) => Some(Ok(Token {
+        position,
+        symbol: Symbol::Ident(format!("{}", c)),
+      })),
+      c if Self::is_alpha_ident(c) => {
+        let mut rest = self.iterator.next_while(|&x| Self::is_alpha_ident(x));
+        rest.insert(0, c);
+        Some(Ok(Token {
+          position,
+          symbol: Symbol::Ident(rest),
+        }))
+      }
+      c if Self::is_symbol_ident(c) => {
+        let mut rest = self.iterator.next_while(|&x| Self::is_symbol_ident(x));
+        rest.insert(0, c);
+        Some(Ok(Token {
+          position,
+          symbol: Symbol::Ident(rest),
+        }))
+      }
+      _ => None,
+    })
   }
 }
 
