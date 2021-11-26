@@ -117,8 +117,8 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
       }
     }
 
-    let mut position = self.iterator.position;
     let mut ch = self.iterator.next()?;
+    let mut position = self.iterator.position.previous_column();
     let mut negate = false;
     if ch == '-' && self.iterator.peek().map_or(false, |x| x.is_ascii_digit()) {
       negate = true;
