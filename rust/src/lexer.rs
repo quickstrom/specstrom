@@ -298,10 +298,34 @@ mod tests {
   }
 
   #[test]
+  fn lex_char() {
+    expect_lex(
+      vec!["'a'"],
+      vec![(0, 0, Symbol::CharLit('a'))],
+    )
+  }
+
+  #[test]
+  fn lex_string() {
+    expect_lex(
+      vec!["\"test\""],
+      vec![(0, 0, Symbol::StringLit(String::from("test")))],
+    )
+  }
+
+  #[test]
   fn lex_selector() {
     expect_lex(
       vec!["`test`"],
       vec![(0, 0, Symbol::SelectorLit(String::from("test")))],
+    )
+  }
+
+  #[test]
+  fn lex_doc() {
+    expect_lex(
+      vec!["/// hello"],
+      vec![(0, 0, Symbol::Doc(String::from(" hello")))],
     )
   }
 
@@ -315,4 +339,47 @@ mod tests {
       ],
     )
   }
+
+  #[test]
+  fn lex_projection() {
+    expect_lex(
+      vec!["foo.bar"],
+      vec![
+        (0, 0, Symbol::Ident(String::from("foo"))),
+        (0, 3, Symbol::Projection(String::from("bar"))),
+      ],
+    )
+  }
+
+  #[test]
+  fn lex_int_lit_valid() {
+    expect_lex(
+      vec!["123456"],
+      vec![
+        (0, 0, Symbol::IntLit(123456)),
+      ],
+    )
+  }
+
+  #[test]
+  fn lex_float_lit_valid() {
+    expect_lex(
+      vec!["123.456"],
+      vec![
+        (0, 0, Symbol::FloatLit(123.456)),
+      ],
+    )
+  }
+
+  #[test]
+  fn lex_parens() {
+    expect_lex(
+      vec!["()"],
+      vec![
+        (0, 0, Symbol::LParen),
+        (0, 1, Symbol::RParen),
+      ],
+    )
+  }
+
 }
