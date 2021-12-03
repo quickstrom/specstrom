@@ -1,15 +1,18 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Specstrom.Checker.Protocol where
 
 import qualified Data.Aeson as JSON
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (mapMaybe)
+import Data.Text (Text)
 import GHC.Generics (Generic)
 import Numeric.Natural (Natural)
 import Specstrom.Dependency (Dep)
 import qualified Specstrom.Syntax as Syntax
+import Prelude hiding (id)
 
 type Trace = [TraceElement]
 
@@ -17,6 +20,9 @@ type State = M.HashMap Syntax.Selector JSON.Value
 
 data PrimAction = A {id :: Syntax.Name, isEvent :: Bool, args :: [JSON.Value], timeout :: Maybe Int}
   deriving (Show, Eq, Generic, JSON.ToJSON, JSON.FromJSON)
+
+timeoutOf :: Int -> PrimAction
+timeoutOf ms = A {id = "timeout", isEvent = True, args = [], timeout = Just ms}
 
 actionMatches :: PrimAction -> PrimAction -> Bool
 actionMatches p q = p {timeout = Nothing} == q {timeout = Nothing}
@@ -29,13 +35,15 @@ maximumTimeout as = case mapMaybe timeout as of
   [] -> Nothing
   ls -> Just (maximum ls)
 
-data TraceElement = TraceAction [PrimAction] | TraceState State
+data TraceElement = TraceAction [PrimAction] | TraceState State | TraceError Text
   deriving (Show, Generic, JSON.ToJSON, JSON.FromJSON)
 
 data Validity = Definitely Bool | Probably Bool
   deriving (Eq, Show, Generic, JSON.ToJSON, JSON.FromJSON)
 
-data Result = Result {valid :: Validity, trace :: Trace}
+data Result
+  = RunResult {valid :: Validity, trace :: Trace}
+  | ErrorResult {trace :: Trace}
   deriving (Show, Generic, JSON.ToJSON, JSON.FromJSON)
 
 data InterpreterMessage
@@ -51,4 +59,5 @@ data ExecutorMessage
   | Events [PrimAction] State
   | Timeout State
   | Stale
+  | Error {errorMessage :: Text}
   deriving (Show, Generic, JSON.ToJSON, JSON.FromJSON)
