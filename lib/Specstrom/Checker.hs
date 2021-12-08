@@ -11,17 +11,19 @@ module Specstrom.Checker where
 
 import qualified Control.Concurrent.Async as Async
 import Control.Exception (BlockedIndefinitelyOnSTM (..))
-import Control.Monad (unless, void, when)
+import Control.Monad (unless, void)
 import Control.Monad.Catch (MonadCatch, MonadThrow, catch)
+import Control.Monad.Error.Class (MonadError (throwError))
+import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Trans.Writer (WriterT, runWriterT, tell)
+import Control.Monad.Trans.Writer (runWriterT)
+import Control.Monad.Writer.Class (MonadWriter (tell))
 import qualified Data.Aeson as JSON
 import Data.Bifunctor (bimap, first, second)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
-import Data.Maybe (fromMaybe)
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
 import Data.Traversable (for)
@@ -103,7 +105,7 @@ data InterpreterState
   = AwaitingInitialEvent {stateVersion :: Natural}
   | ReadingQueue {formula :: Evaluator.Residual, stateVersion :: Natural, lastState :: State, sentAction :: SentAction}
 
-type Interpret m a = (MonadIO m, MonadCatch m, MonadThrow m) => WriterT Trace m a
+type Interpret m a = (Monad m, MonadIO m, MonadCatch m, MonadThrow m, MonadError T.Text m, MonadWriter Trace m) => m a
 
 logInfo :: MonadIO m => String -> m ()
 logInfo = liftIO . hPutStrLn stderr . ("INFO " <>)
@@ -172,16 +174,18 @@ extractActions act actionEnv s (nm, v) = do
 checkProp :: Receive ExecutorMessage -> Send InterpreterMessage -> Evaluator.Env -> Dep -> Evaluator.Value -> [(Name, Evaluator.Value)] -> Maybe (Name, Evaluator.Value) -> IO Result
 checkProp input output actionEnv dep initialFormula actions expectedEvent = do
   send output (Start dep)
-  (valid, trace) <- runWriterT (run $ AwaitingInitialEvent 0)
+  (valid, trace) <- runWriterT (runExceptT (run $ AwaitingInitialEvent 0))
   send output End
-  pure (Result valid trace)
+  case valid of
+    Left errMsg -> pure (ErrorResult (trace <> [TraceError errMsg]))
+    Right valid' -> pure (RunResult valid' trace)
   where
-    run :: MonadFail m => InterpreterState -> Interpret m Validity
+    run :: InterpreterState -> Interpret m Validity
     run s@AwaitingInitialEvent {stateVersion = version} = do
       logInfo "Awaiting initial event"
       msg <- receive input
       case msg of
-        Performed _state -> error "Was not expecting an action to be performed. Trace must begin with an initial event."
+        Performed _state -> throwError "Was not expecting an action to be performed. Trace must begin with an initial event."
         Timeout _state -> do
           logInfo "Got a timeout while awaiting the initial event. Continuing to wait."
           run (AwaitingInitialEvent {stateVersion = succ version})
@@ -213,6 +217,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
         Stale -> do
           logErr "Was not expecting a stale when awaiting initial event."
           run s
+        Error errMsg -> throwError errMsg
     run ReadingQueue {formula = r, stateVersion, lastState, sentAction} = do
       logInfo "Reading queue"
       msg <- case sentAction of None -> tryReceive input; _ -> Just <$> receive input
@@ -261,8 +266,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
           case sentAction of
             Sent (primAct, _) -> case timeout primAct of
               Just t -> do
-                -- TODO: special timeout trace entry, or timeout primaction?
-                tell [TraceAction [], TraceState nextState]
+                tell [TraceAction [timeoutOf t], TraceState nextState]
                 nextFormula <- liftIO (Evaluator.step r (toEvaluatorState (fromIntegral (succ stateVersion)) Nothing nextState))
                 ifResidual (fromIntegral (succ stateVersion)) [] nextState nextFormula $ \r' ->
                   run
@@ -286,6 +290,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
                     }
             None -> error "Got unexpected timeout after not having sent an action."
         Just Stale -> logErr "Got stale" >> run ReadingQueue {formula = r, stateVersion, lastState, sentAction}
+        Just (Error errMsg) -> throwError errMsg
         Nothing ->
           case Evaluator.stop r of
             Just v -> pure (Probably v)
@@ -293,7 +298,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
               possiblePrims <- liftIO $ concat <$> mapM (extractActions Nothing actionEnv (toEvaluatorState (fromIntegral stateVersion) Nothing lastState)) actions
               let acts = filter (not . isEvent . fst) possiblePrims
               case acts of
-                [] -> error "Ran out of actions to do!"
+                [] -> throwError "Ran out of actions to do!"
                 _ -> do
                   let len = length acts
                   idx <- liftIO (randomRIO (0, len - 1))
@@ -330,11 +335,11 @@ toEvaluatorValue = \case
   JSON.Bool False -> Evaluator.Absurd
   JSON.Null -> Evaluator.Null
 
-ifResidual :: (MonadFail m) => Int -> [(Name, [Evaluator.Value])] -> State -> Evaluator.Value -> (Evaluator.Residual -> Interpret m Validity) -> Interpret m Validity
+ifResidual :: Int -> [(Name, [Evaluator.Value])] -> State -> Evaluator.Value -> (Evaluator.Residual -> Interpret m Validity) -> Interpret m Validity
 ifResidual v as state formula f = do
   formula' <- liftIO (Evaluator.force (toEvaluatorState v (Just as) state) formula)
   case formula' of
     Evaluator.Trivial -> pure (Definitely True)
     Evaluator.Absurd -> pure (Definitely False)
     Evaluator.Residual r -> f r
-    v' -> fail ("Unexpected value: " <> show v')
+    v' -> throwError (T.pack ("Unexpected value: " <> show v'))
