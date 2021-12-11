@@ -291,8 +291,48 @@ impl<'a, 'b> Lexer<'a, 'b> {
         position,
         symbol: Symbol::RParen,
       })),
-      _ => None
+      _ => None,
     }
+  }
+
+  fn lex_single_ident(&mut self, ch: char) -> Option<LexItem<'a>> {
+    let position = self.iterator.position.previous_column();
+    return if Self::is_single_ident(ch) {
+      Some(Ok(Token {
+        position,
+        symbol: Symbol::Ident(format!("{}", ch)),
+      }))
+    } else {
+      None
+    };
+  }
+
+  fn lex_alpha_ident(&mut self, ch: char) -> Option<LexItem<'a>> {
+    let position = self.iterator.position.previous_column();
+    return if Self::is_alpha_ident(ch) {
+      let mut rest = self.iterator.next_while(|&x| Self::is_alpha_ident(x));
+      rest.insert(0, ch);
+      Some(Ok(Token {
+        position,
+        symbol: Symbol::Ident(rest),
+      }))
+    } else {
+      None
+    };
+  }
+
+  fn lex_symbol_ident(&mut self, ch: char) -> Option<LexItem<'a>> {
+    let position = self.iterator.position.previous_column();
+    return if Self::is_symbol_ident(ch) {
+      let mut rest = self.iterator.next_while(|&x| Self::is_symbol_ident(x));
+      rest.insert(0, ch);
+      Some(Ok(Token {
+        position,
+        symbol: Symbol::Ident(rest),
+      }))
+    } else {
+      None
+    };
   }
 }
 
@@ -312,46 +352,15 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
 
     self
       .lex_doc(ch)
-      .or(self.lex_int_lit(ch))
-      .or(self.lex_string_lit(ch))
-      .or(self.lex_char_lit(ch))
-      .or(self.lex_selector_lit(ch))
-      .or(self.lex_projection(ch))
-      .or(self.lex_parens(ch))
-      .or_else(|| {
-        let position = self.iterator.position.previous_column();
-        match ch {
-          '(' => Some(Ok(Token {
-            position,
-            symbol: Symbol::LParen,
-          })),
-          ')' => Some(Ok(Token {
-            position,
-            symbol: Symbol::RParen,
-          })),
-          c if Self::is_single_ident(c) => Some(Ok(Token {
-            position,
-            symbol: Symbol::Ident(format!("{}", c)),
-          })),
-          c if Self::is_alpha_ident(c) => {
-            let mut rest = self.iterator.next_while(|&x| Self::is_alpha_ident(x));
-            rest.insert(0, c);
-            Some(Ok(Token {
-              position,
-              symbol: Symbol::Ident(rest),
-            }))
-          }
-          c if Self::is_symbol_ident(c) => {
-            let mut rest = self.iterator.next_while(|&x| Self::is_symbol_ident(x));
-            rest.insert(0, c);
-            Some(Ok(Token {
-              position,
-              symbol: Symbol::Ident(rest),
-            }))
-          }
-          _ => None,
-        }
-      })
+      .or_else(|| self.lex_int_lit(ch))
+      .or_else(|| self.lex_string_lit(ch))
+      .or_else(|| self.lex_char_lit(ch))
+      .or_else(|| self.lex_selector_lit(ch))
+      .or_else(|| self.lex_projection(ch))
+      .or_else(|| self.lex_parens(ch))
+      .or_else(|| self.lex_single_ident(ch))
+      .or_else(|| self.lex_alpha_ident(ch))
+      .or_else(|| self.lex_symbol_ident(ch))
   }
 }
 
