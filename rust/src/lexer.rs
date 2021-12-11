@@ -25,6 +25,11 @@ pub struct Lexer<'a, 'b> {
   iterator: SourceFileChars<'a, 'b>,
 }
 
+enum LexComment<'a> {
+  Doc(Token<'a>),
+  Comment,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum LexerError {
   InvalidIntLit(String),
@@ -68,7 +73,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
     return self.iterator.peek().map(|x| x == other);
   }
 
-  fn lex_doc(&mut self, ch: char) -> Option<LexItem<'a>> {
+  fn lex_doc(&mut self, ch: char) -> Option<LexComment<'a>> {
     let position = self.iterator.position.previous_column();
     if ch == '/' {
       if self.next_equals('/')? {
@@ -82,11 +87,11 @@ impl<'a, 'b> Lexer<'a, 'b> {
             position,
             symbol: Symbol::Doc(doc),
           };
-          return Some(Ok(tok));
+          return Some(LexComment::Doc(tok));
         } else {
           // it's a comment
           self.iterator.until_eol();
-          None
+          Some(LexComment::Comment)
         }
       } else {
         None
@@ -342,17 +347,21 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
   fn next(&mut self) -> Option<Self::Item> {
     let mut ch;
 
-    // Ignore whitespace.
     loop {
       ch = self.iterator.next()?;
-      if !ch.is_whitespace() {
-        break;
+      if ch.is_whitespace() {
+        // Ignore whitespace.
+        continue;
+      } else {
+        match self.lex_doc(ch) {
+          Some(LexComment::Doc(t)) => return Some(Ok(t)),
+          Some(LexComment::Comment) => continue,
+          None => break,
+        }
       }
     }
 
-    self
-      .lex_doc(ch)
-      .or_else(|| self.lex_int_lit(ch))
+    self.lex_int_lit(ch)
       .or_else(|| self.lex_string_lit(ch))
       .or_else(|| self.lex_char_lit(ch))
       .or_else(|| self.lex_selector_lit(ch))
@@ -470,6 +479,14 @@ mod tests {
     expect_lex(
       vec!["()"],
       vec![(0, 0, Symbol::LParen), (0, 1, Symbol::RParen)],
+    )
+  }
+
+  #[test]
+  fn lex_multiple_comments() {
+    expect_lex(
+      vec!["// foo", "// bar", "baz"],
+      vec![(2, 0, Symbol::Ident(String::from("baz")))],
     )
   }
 }
