@@ -68,15 +68,14 @@ impl<'a, 'b> Lexer<'a, 'b> {
     return self.iterator.peek().map(|x| x == other);
   }
 
-  fn lex_doc(&mut self) -> Option<LexItem<'a>> {
-    if self.next_equals('/')? {
-      self.iterator.next();
+  fn lex_doc(&mut self, ch: char) -> Option<LexItem<'a>> {
+    let position = self.iterator.position.previous_column();
+    if ch == '/' {
       if self.next_equals('/')? {
         self.iterator.next();
         // we are in a comment, or a doc-string
         if self.next_equals('/')? {
           self.iterator.next();
-          let position = self.iterator.position;
           // it's a doc-string
           let doc = self.iterator.until_eol();
           let tok = Token {
@@ -96,16 +95,16 @@ impl<'a, 'b> Lexer<'a, 'b> {
       None
     }
   }
-  fn lex_int_lit(&mut self) -> Option<LexItem<'a>> {
-    let negation = if self.next_equals('-')? {
-      // Skip the peeked dash.
-      self.iterator.next()?;
-      Some(self.iterator.position.previous_column())
+  fn lex_int_lit(&mut self, ch: char) -> Option<LexItem<'a>> {
+    let mut first_digit = ch;
+    let negation = if ch == '-' && self.iterator.peek().map_or(false, |x| x.is_ascii_digit()) {
+      let pos = self.iterator.position.previous_column();
+      first_digit = self.iterator.next()?;
+      Some(pos)
     } else {
       None
     };
-    if self.iterator.peek()?.is_ascii_digit() {
-      let first_digit = self.iterator.next()?;
+    if first_digit.is_ascii_digit() {
       let (position, sign) = match negation {
         Some(pos) => (pos, '-'),
         None => (self.iterator.position.previous_column(), '+'),
@@ -157,23 +156,17 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
   type Item = LexItem<'a>;
 
   fn next(&mut self) -> Option<Self::Item> {
+    let mut ch;
+
+    // Ignore whitespace.
     loop {
-      if self.iterator.peek()?.is_whitespace() {
-        // ignore whitespace
-        self.iterator.next();
-        continue;
-      } else {
-        match self.lex_doc() {
-          Some(r) => {
-            return Some(r);
-          }
-          None => break,
-        }
+      ch = self.iterator.next()?;
+      if !ch.is_whitespace() {
+        break;
       }
     }
 
-    self.lex_int_lit().or_else(|| {
-      let ch = self.iterator.next()?;
+    self.lex_doc(ch).or(self.lex_int_lit(ch)).or_else(|| {
       let position = self.iterator.position.previous_column();
       match ch {
         '"' => {
@@ -357,7 +350,7 @@ mod tests {
   fn lex_doc() {
     expect_lex(
       vec!["/// hello"],
-      vec![(0, 3, Symbol::Doc(String::from(" hello")))],
+      vec![(0, 0, Symbol::Doc(String::from(" hello")))],
     )
   }
 
@@ -384,6 +377,18 @@ mod tests {
   }
 
   #[test]
+  fn lex_subtraction() {
+    expect_lex(
+      vec!["foo - bar"],
+      vec![
+        (0, 0, Symbol::Ident(String::from("foo"))),
+        (0, 4, Symbol::Ident(String::from("-"))),
+        (0, 6, Symbol::Ident(String::from("bar"))),
+      ],
+    )
+  }
+
+  #[test]
   fn lex_int_lit_valid() {
     expect_lex(vec!["123456"], vec![(0, 0, Symbol::IntLit(123456))])
   }
@@ -391,6 +396,16 @@ mod tests {
   #[test]
   fn lex_float_lit_valid() {
     expect_lex(vec!["123.456"], vec![(0, 0, Symbol::FloatLit(123.456))])
+  }
+
+  #[test]
+  fn lex_int_neg_lit_valid() {
+    expect_lex(vec!["-123456"], vec![(0, 0, Symbol::IntLit(-123456))])
+  }
+
+  #[test]
+  fn lex_float_neg_lit_valid() {
+    expect_lex(vec!["-123.456"], vec![(0, 0, Symbol::FloatLit(-123.456))])
   }
 
   #[test]
