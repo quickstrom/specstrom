@@ -70,7 +70,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
   }
 
   fn next_equals(&mut self, other: char) -> Option<bool> {
-    return self.iterator.peek().map(|x| x == other);
+    return self.iterator.peek_same_line().map(|x| x == other);
   }
 
   fn lex_doc(&mut self, ch: char) -> Option<LexComment<'a>> {
@@ -101,7 +101,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
     }
   }
 
-  fn lex_int_lit(&mut self, ch: char) -> Option<LexItem<'a>> {
+  fn lex_num_lit(&mut self, ch: char) -> Option<LexItem<'a>> {
     let mut first_digit = ch;
     let negation = if ch == '-' && self.iterator.peek().map_or(false, |x| x.is_ascii_digit()) {
       let pos = self.iterator.position.previous_column();
@@ -116,10 +116,10 @@ impl<'a, 'b> Lexer<'a, 'b> {
         None => (self.iterator.position.previous_column(), '+'),
       };
       let rest_digits = self.iterator.next_while(|&x| x.is_ascii_digit());
-      if self.iterator.peek() == Some('.') {
+      if self.iterator.peek_same_line() == Some('.') {
         self.iterator.next();
         let rest = self.iterator.next_while(|&x| x.is_ascii_digit());
-        let input = if self.iterator.peek() == Some('e') || self.iterator.peek() == Some('E') {
+        let input = if self.iterator.peek_same_line() == Some('e') || self.iterator.peek_same_line() == Some('E') {
           self.iterator.next();
           let exponent = self.iterator.next_while(|&x| x.is_ascii_digit());
           format!(
@@ -163,7 +163,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
       let mut rest = self.iterator.next_while_escaped(|&x| x != '"');
       rest.insert(0, ch);
       let length = rest.len();
-      if self.iterator.peek() != Some('"') {
+      if self.iterator.peek_same_line() != Some('"') {
         Some(Err(SourceError {
           position,
           content: LexerError::InvalidStringLit(rest),
@@ -271,7 +271,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
     if ch == '.'
       && self
         .iterator
-        .peek()
+        .peek_same_line()
         .filter(|&c| c.is_alphanumeric())
         .is_some()
     {
@@ -361,7 +361,8 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
       }
     }
 
-    self.lex_int_lit(ch)
+    self
+      .lex_num_lit(ch)
       .or_else(|| self.lex_string_lit(ch))
       .or_else(|| self.lex_char_lit(ch))
       .or_else(|| self.lex_selector_lit(ch))
@@ -375,7 +376,7 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
 
 #[cfg(test)]
 mod tests {
-  use crate::lexer::{Lexer, SourceFile, Symbol};
+  use crate::lexer::{Lexer, SourceFile, Symbol, Token};
 
   type TestToken = (usize, usize, Symbol);
 
@@ -488,5 +489,94 @@ mod tests {
       vec!["// foo", "// bar", "baz"],
       vec![(2, 0, Symbol::Ident(String::from("baz")))],
     )
+  }
+
+  use proptest::prelude::*;
+
+  prop_compose! {
+    fn valid_selector_strings()(i in "[[:ascii]]") -> String { i }
+  }
+
+  prop_compose! {
+    fn valid_identifiers()(i in "[a-zA-Z][0-9a-zA-Z]{0,20}") -> String { i }
+  }
+
+  fn symbols() -> impl Strategy<Value = Symbol> {
+    prop_oneof![
+      Just(Symbol::LParen),
+      Just(Symbol::RParen),
+      valid_identifiers().prop_map(Symbol::Ident),
+      valid_identifiers().prop_map(Symbol::Projection),
+      any::<String>().prop_map(Symbol::StringLit),
+      valid_selector_strings().prop_map(Symbol::SelectorLit),
+      any::<char>().prop_map(Symbol::CharLit),
+      any::<i64>().prop_map(Symbol::IntLit),
+      any::<f64>().prop_map(Symbol::FloatLit),
+    ]
+  }
+  fn lines() -> impl Strategy<Value = Vec<Symbol>> {
+    prop_oneof![
+      any::<String>().prop_map(|s| vec![Symbol::Doc(s)]),
+      prop::collection::vec(symbols(), 1..10),
+    ]
+  }
+
+  fn pp_symbol(symbol: Symbol) -> String {
+    match symbol {
+      Symbol::LParen => String::from("("),
+      Symbol::RParen => String::from(")"),
+      Symbol::Ident(n) => format!("{}", n),
+      Symbol::Projection(n) => format!(".{}", n),
+      Symbol::Doc(d) => format!("///{}", d),
+      Symbol::StringLit(s) => serde_json::to_string(&s).unwrap(),
+      Symbol::SelectorLit(s) => {
+        let s = serde_json::to_string(&s.replace("`", "\\`")).unwrap();
+        format!("`{}`", s[1..s.len() - 1].to_string())
+      }
+      Symbol::CharLit(c) => match c {
+        '\'' => String::from("'\\''"),
+        '"' => String::from("'\"'"),
+        _ => {
+          let s = serde_json::to_string(&c).unwrap();
+          format!("'{}'", s[1..s.len() - 1].to_string())
+        }
+      },
+      Symbol::IntLit(n) => format!("{} ", n),
+      Symbol::FloatLit(n) => {
+        // Enforce decimal part to get it parsed as float.
+        let s = format!("{}", n);
+        if s.contains(".") {
+          return s;
+        } else {
+          return format!("{}.0", s);
+        }
+      }
+    }
+  }
+  fn pp_line(line: Vec<Symbol>) -> String {
+    line
+      .into_iter()
+      .map(pp_symbol)
+      .collect::<Vec<String>>()
+      .join(" ") // just to make sure lexemes aren't joined together (i.e. 1 and 0 shouldn't become 10)
+  }
+
+  proptest! {
+
+      #[test]
+      fn lexer_roundtrip(input in prop::collection::vec(lines(), 1..10)) {
+        let lines: Vec<String> = input.clone().into_iter().map(pp_line).collect();
+        let lines_as_strs: Vec<&str> = lines.iter().map(|s| &**s).collect();
+        let file = SourceFile::dummy_file(lines_as_strs);
+        let lexer = Lexer::source_file(&file);
+        let actual: Vec<Symbol> = lexer
+          .map(|r| {
+            let token = r.unwrap();
+            token.symbol
+          })
+          .collect();
+      let expected: Vec<Symbol> = input.concat();
+      assert_eq!(actual, expected);
+    }
   }
 }

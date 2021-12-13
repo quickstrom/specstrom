@@ -152,6 +152,9 @@ impl<'a, 'b> Iterator for SourceFileChars<'a, 'b> {
   }
 }
 impl<'a, 'b> SourceFileChars<'a, 'b> {
+  pub fn peek_same_line(&mut self) -> Option<char> {
+    self.iterator.peek().map(|c| c.clone())
+  }
   pub fn peek(&mut self) -> Option<char> {
     match self.iterator.peek() {
       Some(ch) => Some(ch.clone()),
