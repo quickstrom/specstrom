@@ -18,8 +18,10 @@ jobs:
       with:
         name: quickstrom
         signingKey: '${{ secrets.CACHIX_SIGNING_KEY }}'
-    - name: Format code
+    - name: Format Haskell code
       run: nix-shell -p '(import ./nix/nixpkgs.nix {}).ormolu' --run tools/format-code.sh
+    - name: Format Rust code
+      run: cd rust; nix-shell -p '(import ../nix/nixpkgs.nix {}).rustfmt' --run tools/format-code.sh
     - name: Commit changes
       uses: stefanzweifel/git-auto-commit-action@v4.1.2
       with:
