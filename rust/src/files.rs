@@ -152,24 +152,8 @@ impl<'a, 'b> Iterator for SourceFileChars<'a, 'b> {
   }
 }
 impl<'a, 'b> SourceFileChars<'a, 'b> {
-  pub fn peek_same_line(&mut self) -> Option<char> {
-    self.iterator.peek().map(|c| c.clone())
-  }
   pub fn peek(&mut self) -> Option<char> {
-    match self.iterator.peek() {
-      Some(ch) => Some(ch.clone()),
-      None => {
-        let mut position = self.position.next_line();
-        while position.line < self.file.lines.len() {
-          if let Some(ch) = self.file.lines[position.line].chars().next() {
-            return Some(ch);
-          } else {
-            position = position.next_line()
-          }
-        }
-        return None;
-      }
-    }
+    self.iterator.peek().map(|c| c.clone())
   }
   pub fn until_eol(&mut self) -> String {
     let str = self.next_while(|_| true);
@@ -221,10 +205,10 @@ mod tests {
     }
 
     // Checks that calling `.peek()` at each position, stepping forward using `.next()`,
-    // gives you back the full source file. Ignores newline characters.
+    // gives you back a full line.
     #[test]
-    fn returns_all_with_peek(input in "(\\PC{0,8}\\n)*") {
-      let file = SourceFile::dummy_file(input.split("\n").collect());
+    fn returns_all_with_peek(input in "\\PC{0,8}*") {
+      let file = SourceFile::dummy_file(vec![&input]);
       let mut iterator = file.chars();
       let mut peeks: Vec<char> = vec![];
       loop {
@@ -237,7 +221,7 @@ mod tests {
         }
       }
       let output: String = peeks.into_iter().collect();
-      assert_eq!(output, input.replace("\n", ""));
+      assert_eq!(output, input);
     }
 
     #[test]

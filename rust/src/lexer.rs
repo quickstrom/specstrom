@@ -70,7 +70,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
   }
 
   fn next_equals(&mut self, other: char) -> Option<bool> {
-    return self.iterator.peek_same_line().map(|x| x == other);
+    return self.iterator.peek().map(|x| x == other);
   }
 
   fn lex_doc(&mut self, ch: char) -> Option<LexComment<'a>> {
@@ -116,10 +116,10 @@ impl<'a, 'b> Lexer<'a, 'b> {
         None => (self.iterator.position.previous_column(), '+'),
       };
       let rest_digits = self.iterator.next_while(|&x| x.is_ascii_digit());
-      if self.iterator.peek_same_line() == Some('.') {
+      if self.iterator.peek() == Some('.') {
         self.iterator.next();
         let rest = self.iterator.next_while(|&x| x.is_ascii_digit());
-        let input = if self.iterator.peek_same_line() == Some('e') || self.iterator.peek_same_line() == Some('E') {
+        let input = if self.iterator.peek() == Some('e') || self.iterator.peek() == Some('E') {
           self.iterator.next();
           let exponent = self.iterator.next_while(|&x| x.is_ascii_digit());
           format!(
@@ -163,7 +163,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
       let mut rest = self.iterator.next_while_escaped(|&x| x != '"');
       rest.insert(0, ch);
       let length = rest.len();
-      if self.iterator.peek_same_line() != Some('"') {
+      if self.iterator.peek() != Some('"') {
         Some(Err(SourceError {
           position,
           content: LexerError::InvalidStringLit(rest),
@@ -271,7 +271,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
     if ch == '.'
       && self
         .iterator
-        .peek_same_line()
+        .peek()
         .filter(|&c| c.is_alphanumeric())
         .is_some()
     {
