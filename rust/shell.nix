@@ -8,6 +8,7 @@ in pkgs.mkShell {
     pkgs.cargo-watch
     pkgs.rustc
     pkgs.rls
+    pkgs.rustfmt
     pkgs.libiconv
   ];
 }
