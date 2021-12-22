@@ -429,7 +429,7 @@ ternaryOp Until s f1 v f2 = do
                 let recur strength n' = Next strength <$> (UntilF n' <$> newThunk g e <*> newThunk g' e')
                  in if n > 0
                       then recur Demand (n - 1)
-                      else recur AssumeTrue 0
+                      else recur AssumeFalse 0
           case f2' of
             Absurd -> do
               f1' <- force s f1
