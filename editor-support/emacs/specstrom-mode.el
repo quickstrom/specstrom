@@ -3,7 +3,7 @@
 (setq specstrom-font-lock-keywords
       (let* (
              ;; define several category of keywords
-             (x-keyword '("fun" "syntax" "action" "let" "macro" "check" "with" "when" "import" "left" "right"))
+             (x-keyword '("fun" "syntax" "action" "timeout" "let" "macro" "check" "with" "when" "import" "left" "right"))
              (x-builtin '(;; builtins and control flow operators
                           "if"
                           "else"
