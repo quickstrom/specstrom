@@ -73,7 +73,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.specstrom",
-					"match": "\\b(import|let|syntax|macro|if|else|when|action|check|with|for|forall|exists|in|match|case)\\b"
+					"match": "\\b(import|let|syntax|macro|if|else|when|timeout|action|check|with|for|forall|exists|in|match|case)\\b"
 				},
 				{
 					"name": "keyword.operator.temporal.specstrom",
