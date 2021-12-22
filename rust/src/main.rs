@@ -8,13 +8,12 @@ fn main() {
   let mut files = files::Files::new();
   let path = Path::new("test.strom");
   files.load(path).unwrap();
-  let lex = lexer::Lexer::source_file(&files.get(path).unwrap()); 
+  let lex = lexer::Lexer::source_file(&files.get(path).unwrap());
   for x in lex {
     if let Err(e) = x {
       e.display(&files);
     } else {
-      println!("{:?}",&x); 
+      println!("{:?}",&x);
     }
   }
-  println!("Hello, world!");
 }
