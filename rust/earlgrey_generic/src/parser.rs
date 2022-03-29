@@ -62,7 +62,7 @@ impl <T:PartialEq+Debug+std::hash::Hash+Eq+Clone> EarleyParser<T> {
         }).map(move |item| Rc::new(Item::scan_new(item, end, lexeme)))
     }
 
-    pub fn parse<Tok>(&self, mut tokenizer: Tok) -> Result<ParseTrees<T>, (String, Option<T>)>
+    pub fn parse<Tok>(&self, mut tokenizer: Tok) -> Result<ParseTrees<T>, (String, Option<T>, Option<String>)>
             where Tok: Iterator, Tok::Item: Debug + Into<T>  {
 
         // Populate S0, add items for each rule matching the start symbol
@@ -146,7 +146,8 @@ impl <T:PartialEq+Debug+std::hash::Hash+Eq+Clone> EarleyParser<T> {
             .cloned()
             .collect();
         if parse_trees.is_empty() {
-            return Err(("Parse Error: No Rule completes".to_string(),token));
+            let thing = statesets.pop().and_then(|ss| ss.iter().max_by_key(|item| item.end - item.start).and_then(|item| item.next_symbol().and_then(|symb| Some(symb.name().to_string()))));
+            return Err(("Parse Error: No Rule completes".to_string(),token,thing));
         }
         Ok(ParseTrees(parse_trees))
     }
