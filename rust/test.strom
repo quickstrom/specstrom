@@ -7,4 +7,4 @@
 //here are some^32 identifiers- _abc§
 //this.foo(bar)
 //test(a',b!,c?,123 345)
-1 + 44 + foo(34,12,baz())
+(1 + 44 + foo(34,12,baz()) +)

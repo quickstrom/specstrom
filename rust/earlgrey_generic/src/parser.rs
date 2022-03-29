@@ -62,8 +62,8 @@ impl <T:PartialEq+Debug+std::hash::Hash+Eq+Clone> EarleyParser<T> {
         }).map(move |item| Rc::new(Item::scan_new(item, end, lexeme)))
     }
 
-    pub fn parse<Tok>(&self, mut tokenizer: Tok) -> Result<ParseTrees<T>, String>
-            where Tok: Iterator, Tok::Item: Debug + Into<T> {
+    pub fn parse<Tok>(&self, mut tokenizer: Tok) -> Result<ParseTrees<T>, (String, Option<T>)>
+            where Tok: Iterator, Tok::Item: Debug + Into<T>  {
 
         // Populate S0, add items for each rule matching the start symbol
         let s0: HashSet<_> = self.grammar.rules.iter()
@@ -72,7 +72,7 @@ impl <T:PartialEq+Debug+std::hash::Hash+Eq+Clone> EarleyParser<T> {
             .collect();
 
         let mut statesets = vec![s0];
-
+        let mut token : Option<T> = None;
         // New statesets are generated from input stream (Scans)
         for idx in 0.. {
             // Predict/Complete until no new Items are added to the StateSet
@@ -106,17 +106,24 @@ impl <T:PartialEq+Debug+std::hash::Hash+Eq+Clone> EarleyParser<T> {
                     break;
                 }
             }
+            if statesets[idx].iter().any(|item| item.complete() && item.start == 0 && item.rule.head == self.grammar.start) {
+                break;
+            } else if statesets[idx].is_empty() {
+                break;
+            }
             // Build Si+1 with items in the current state that accept the next token
             if let Some(lexeme) = tokenizer.next() {
-                statesets.push(EarleyParser::scans(
-                    statesets[idx].iter(), &lexeme.into(), idx + 1).collect());
+                let t : T = lexeme.into();
+                token = Some(t.clone());
+                let new_ss : HashSet<_>  = EarleyParser::scans(statesets[idx].iter(), &t, idx + 1).collect();
+                statesets.push(new_ss);
             } else {
                 break;
             }
         }
 
         // debug StateSets
-        if cfg!(feature="debug") {
+       // if cfg!(feature="debug") {
             for (idx, stateset) in statesets.iter().enumerate() {
                 eprintln!("=== StateSet {} ===", idx);
                 stateset.iter().inspect(|item| {
@@ -126,7 +133,7 @@ impl <T:PartialEq+Debug+std::hash::Hash+Eq+Clone> EarleyParser<T> {
                     eprintln!("{:?} -- SRC: {}", item, src);
                 }).count();
             }
-        }
+       // }
 
         // Check that at least one item is a. complete, b. starts at the idx 0,
         // and c. the name of the rule matches the starting symbol.
@@ -139,7 +146,7 @@ impl <T:PartialEq+Debug+std::hash::Hash+Eq+Clone> EarleyParser<T> {
             .cloned()
             .collect();
         if parse_trees.is_empty() {
-            return Err("Parse Error: No Rule completes".to_string());
+            return Err(("Parse Error: No Rule completes".to_string(),token));
         }
         Ok(ParseTrees(parse_trees))
     }
