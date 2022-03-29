@@ -5,7 +5,7 @@ use std::iter::Peekable;
 use std::path::Path;
 use std::str::Chars;
 
-#[derive(Clone, Debug, Copy, PartialEq)]
+#[derive(Clone, Debug, Copy, PartialEq,Hash,Eq)]
 pub struct Position<'a> {
   pub file: Option<&'a Path>,
   pub line: usize,

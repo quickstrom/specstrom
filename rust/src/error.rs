@@ -4,7 +4,7 @@ pub trait Error {
   fn display(&self) -> String;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash, Eq,PartialEq)]
 pub struct SourceError<'a, E : Error> {
   pub position: Position<'a>,
   pub length: usize,

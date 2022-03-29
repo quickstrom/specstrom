@@ -1,25 +1,26 @@
 use crate::error::{Error, SourceError};
 use crate::files::*;
-
-#[derive(Clone, Debug, PartialEq)]
+use ordered_float::{OrderedFloat};
+#[derive(Clone, Debug, PartialEq,Hash, Eq)]
 pub struct Token<'a> {
   pub position: Position<'a>,
   pub symbol: Symbol,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq,Hash, Eq)]
 pub enum Symbol {
   Ident(String),
   Projection(String),
-  StringLit(String),
   Doc(String),
+  StringLit(String),
   CharLit(char),
   IntLit(i64),
-  FloatLit(f64),
+  FloatLit(OrderedFloat<f64>),
   SelectorLit(String),
   LParen,
   RParen,
 }
+
 
 pub struct Lexer<'a, 'b> {
   iterator: SourceFileChars<'a, 'b>,
@@ -131,7 +132,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
         };
         let symbol = input.parse::<f64>().map(|f| Token {
           position: position.clone(),
-          symbol: Symbol::FloatLit(f),
+          symbol: Symbol::FloatLit(OrderedFloat(f)),
         });
         let length = input.len();
         Some(symbol.map_err(|_| SourceError {
@@ -377,7 +378,7 @@ impl<'a, 'b> Iterator for Lexer<'a, 'b> {
 #[cfg(test)]
 mod tests {
   use crate::lexer::{Lexer, SourceFile, Symbol, Token};
-
+  use ordered_float::OrderedFloat;
   type TestToken = (usize, usize, Symbol);
 
   fn expect_lex(lines: Vec<&'static str>, expected: Vec<TestToken>) {
@@ -462,7 +463,7 @@ mod tests {
 
   #[test]
   fn lex_float_lit_valid() {
-    expect_lex(vec!["123.456"], vec![(0, 0, Symbol::FloatLit(123.456))])
+    expect_lex(vec!["123.456"], vec![(0, 0, Symbol::FloatLit(OrderedFloat(123.456)))])
   }
 
   #[test]
@@ -472,7 +473,7 @@ mod tests {
 
   #[test]
   fn lex_float_neg_lit_valid() {
-    expect_lex(vec!["-123.456"], vec![(0, 0, Symbol::FloatLit(-123.456))])
+    expect_lex(vec!["-123.456"], vec![(0, 0, Symbol::FloatLit(OrderedFloat(-123.456)))])
   }
 
   #[test]
@@ -511,7 +512,7 @@ mod tests {
       valid_selector_strings().prop_map(Symbol::SelectorLit),
       any::<char>().prop_map(Symbol::CharLit),
       any::<i64>().prop_map(Symbol::IntLit),
-      any::<f64>().prop_map(Symbol::FloatLit),
+      any::<f64>().prop_map(|f| Symbol::FloatLit(OrderedFloat(f))),
     ]
   }
   fn lines() -> impl Strategy<Value = Vec<Symbol>> {

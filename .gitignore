@@ -12,3 +12,5 @@ docs/*.tex
 /result*
 /docs-test
 /rust/target
+/rust/earlgrey_generic/target
+.DS_Store

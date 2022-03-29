@@ -1,0 +1,22 @@
+[package]
+name = "earlgrey_generic"
+version = "0.3.0"
+edition = "2018"
+license = "MIT"
+authors = ["Rodolfo Granata <warlock.cc@gmail.com>"]
+description = "A library for parsing context-free grammars using Earley algorithm"
+repository = "https://github.com/rodolf0/tox/tree/master/earlgrey"
+readme = "README.md"
+keywords = ["parser", "earley", "cfg", "grammar", "ast"]
+categories = ["parsing", "text-processing"]
+
+[features]
+debug = []
+
+[[example]]
+name = "arith"
+path = "examples/arith.rs"
+
+[dev-dependencies]
+lexers = { version = "0.1.3", path = "../lexers" }
+rustyline = "5.0.0"
