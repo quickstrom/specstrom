@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use crate::error::{Error, SourceError};
 use crate::files::*;
 use crate::lexer::*;
@@ -42,8 +43,8 @@ pub enum ParseTree<'a> {
   IntLit(i64,Position<'a>),
   FloatLit(OrderedFloat<f64>,Position<'a>),
   SelectorLit(String,Position<'a>),
-  App(Box<ParseTree<'a>>,Vec<ParseTree<'a>>),
-  TempList(Vec<ParseTree<'a>>),
+  App(Rc<ParseTree<'a>>,Vec<Rc<ParseTree<'a>>>),
+  TempList(Vec<Rc<ParseTree<'a>>>),
   Irrelevant,
 }
 impl <'a> ParseTree<'a> {
@@ -60,16 +61,16 @@ impl <'a> ParseTree<'a> {
         }
     }
 }
-pub fn basic_forest<'a,'b>() -> EarleyForest<'b,ParseTree<'a>,Token<'a>> {
+pub fn basic_forest<'a,'b>() -> EarleyForest<'b,Rc<ParseTree<'a>>,Token<'a>> {
     let mut forest = EarleyForest::new(
         |symbol,token : &Token<'a>| match (symbol,&token.symbol) {
-            ("IntLit",Symbol::IntLit(i)) => ParseTree::IntLit(*i,token.position),
-            ("StringLit",Symbol::StringLit(i)) => ParseTree::StringLit(i.clone(),token.position),
-            ("CharLit",Symbol::CharLit(i)) => ParseTree::CharLit(*i,token.position),
-            ("SelectorLit",Symbol::SelectorLit(i)) => ParseTree::SelectorLit(i.clone(),token.position),
-            ("FloatLit",Symbol::FloatLit(i)) => ParseTree::FloatLit(*i,token.position),
-            ("Ident",Symbol::Ident(i)) => ParseTree::Ident(i.clone(),token.position),
-            _ => ParseTree::Irrelevant
+            ("IntLit",Symbol::IntLit(i)) => Rc::new(ParseTree::IntLit(*i,token.position)),
+            ("StringLit",Symbol::StringLit(i)) => Rc::new(ParseTree::StringLit(i.clone(),token.position)),
+            ("CharLit",Symbol::CharLit(i)) => Rc::new(ParseTree::CharLit(*i,token.position)),
+            ("SelectorLit",Symbol::SelectorLit(i)) => Rc::new(ParseTree::SelectorLit(i.clone(),token.position)),
+            ("FloatLit",Symbol::FloatLit(i)) => Rc::new(ParseTree::FloatLit(*i,token.position)),
+            ("Ident",Symbol::Ident(i)) => Rc::new(ParseTree::Ident(i.clone(),token.position)),
+            _ => Rc::new(ParseTree::Irrelevant)
         }
     );
     forest.action("Atom -> IntLit", |n| n[0].clone());
@@ -79,20 +80,20 @@ pub fn basic_forest<'a,'b>() -> EarleyForest<'b,ParseTree<'a>,Token<'a>> {
     forest.action("Atom -> CharLit", |n| n[0].clone());
     forest.action("Atom -> Ident", |n| n[0].clone());
     forest.action("Atom -> LParen Expr RParen", |n| n[1].clone());
-    forest.action("ExprList -> ", |_| ParseTree::TempList(Vec::new()));
-    forest.action("ExprList -> Expr", |n| ParseTree::TempList(n.clone()));
-    forest.action("ExprList -> Expr Comma ExprList", |n| match n[2].clone() {
+    forest.action("ExprList -> ", |_| Rc::new(ParseTree::TempList(Vec::new())));
+    forest.action("ExprList -> Expr", |n| Rc::new(ParseTree::TempList(n)));
+    forest.action("ExprList -> Expr Comma ExprList", |n| match &*n[2] {
         ParseTree::TempList(vec) => {
-            let mut ret = vec.clone();
+            let mut ret = (*vec).clone();
             ret.insert(0,n[0].clone());
-            ParseTree::TempList(ret)
+            Rc::new(ParseTree::TempList(ret))
         }
-        _ => ParseTree::Irrelevant
+        _ => Rc::new(ParseTree::Irrelevant)
     });
     forest.action("BaseExpr -> Atom", |n| n[0].clone());
-    forest.action("BaseExpr -> BaseExpr LParen ExprList RParen", |n| match n[2].clone() {
-        ParseTree::TempList(vec) => ParseTree::App(Box::new(n[0].clone()),vec),
-        _ => ParseTree::Irrelevant
+    forest.action("BaseExpr -> BaseExpr LParen ExprList RParen", |n| match &*n[2] {
+        ParseTree::TempList(vec) => Rc::new(ParseTree::App(n[0].clone(),(*vec).clone())),
+        _ => Rc::new(ParseTree::Irrelevant)
     });
     forest
 }
@@ -126,7 +127,7 @@ pub fn basic_grammar<'a>() -> GrammarBuilder<Token<'a>> {
     builder.quiet_rule("BaseExpr",&["Atom"]);
     builder
 }
-pub fn generate_grammar<'a,'b>(table: Vec<Vec<Vec<MixfixPiece>>>) -> (Grammar<Token<'a>>,EarleyForest<'b,ParseTree<'a>,Token<'a>>)  {
+pub fn generate_grammar<'a,'b>(table: Vec<Vec<Vec<MixfixPiece>>>) -> (Grammar<Token<'a>>,EarleyForest<'b,Rc<ParseTree<'a>>,Token<'a>>)  {
     let mut builder = basic_grammar();
     let mut env = basic_forest();
     let mut name = String::from("BaseExpr");
@@ -165,7 +166,7 @@ pub fn generate_grammar<'a,'b>(table: Vec<Vec<Vec<MixfixPiece>>>) -> (Grammar<To
             builder.quiet_rule(&name,&rule_spec);
             env.action(&rule_name,move |n| {
                 let args = indices.iter().map(|i| n[*i].clone()).collect();
-                ParseTree::App(Box::new(ParseTree::Ident(app_root.clone(),n[position.unwrap()].get_position())),args)
+                Rc::new(ParseTree::App(Rc::new(ParseTree::Ident(app_root.clone(),n[position.unwrap()].get_position())),args))
             });
 
         }

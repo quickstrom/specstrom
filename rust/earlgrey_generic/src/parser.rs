@@ -62,7 +62,7 @@ impl <T:PartialEq+Debug+std::hash::Hash+Eq+Clone> EarleyParser<T> {
         }).map(move |item| Rc::new(Item::scan_new(item, end, lexeme)))
     }
 
-    pub fn parse<Tok>(&self, mut tokenizer: Tok) -> Result<ParseTrees<T>, (String, Option<T>, Option<String>)>
+    pub fn parse<Tok>(&self, greedy : bool, mut tokenizer: Tok) -> Result<ParseTrees<T>, (String, Option<T>, Vec<String>)>
             where Tok: Iterator, Tok::Item: Debug + Into<T>  {
 
         // Populate S0, add items for each rule matching the start symbol
@@ -106,7 +106,7 @@ impl <T:PartialEq+Debug+std::hash::Hash+Eq+Clone> EarleyParser<T> {
                     break;
                 }
             }
-            if statesets[idx].iter().any(|item| item.complete() && item.start == 0 && item.rule.head == self.grammar.start) {
+            if !greedy && statesets[idx].iter().any(|item| item.complete() && item.start == 0 && item.rule.head == self.grammar.start) {
                 break;
             } else if statesets[idx].is_empty() {
                 break;
@@ -146,7 +146,10 @@ impl <T:PartialEq+Debug+std::hash::Hash+Eq+Clone> EarleyParser<T> {
             .cloned()
             .collect();
         if parse_trees.is_empty() {
-            let thing = statesets.pop().and_then(|ss| ss.iter().max_by_key(|item| item.end - item.start).and_then(|item| item.next_symbol().and_then(|symb| Some(symb.name().to_string()))));
+            let thing : Vec<String> = statesets.pop().map(|ss| {
+                let mut possibilities =  ss.iter().cloned().collect::<Vec<_>>();
+                possibilities.sort_by_key(|item| item.end - item.start);
+                possibilities}).unwrap_or(Vec::new()).into_iter().flat_map(|item| item.next_symbol().and_then(|symb| Some(symb.name().to_string()))).collect();
             return Err(("Parse Error: No Rule completes".to_string(),token,thing));
         }
         Ok(ParseTrees(parse_trees))
