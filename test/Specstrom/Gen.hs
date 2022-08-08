@@ -4,6 +4,7 @@
 module Specstrom.Gen where
 
 import qualified Data.Aeson as JSON
+import qualified Data.Aeson.KeyMap as KM
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Text as Text
 import qualified Data.Vector as Vector
@@ -82,7 +83,7 @@ expr =
 elementState :: Dependency.DepSchema -> Gen JSON.Value
 elementState (Dependency.DepSchema fields)
   | HashMap.null fields = JSON.Bool <$> Gen.bool
-  | otherwise = JSON.Object <$> traverse elementState fields
+  | otherwise = JSON.Object . KM.fromHashMapText <$> traverse elementState fields
 
 state :: Dependency.Dep -> Gen Protocol.State
 state (Dependency.Dep bySelector) =
@@ -91,7 +92,7 @@ state (Dependency.Dep bySelector) =
     pure
       ( JSON.Array
           ( Vector.fromList
-              [ JSON.Object (element <> HashMap.singleton "ref" (JSON.String (s <> "-" <> Text.pack (show i))))
+              [ JSON.Object (element <> KM.singleton "ref" (JSON.String (s <> "-" <> Text.pack (show i))))
                 | (i, JSON.Object element) <- zip [0 :: Int ..] elements
               ]
           )
