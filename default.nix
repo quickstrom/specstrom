@@ -1,10 +1,10 @@
-{ pkgs ? import ./nix/nixpkgs.nix { }, compiler ? "ghc8104", enableProfiling ? false }:
+{ pkgs ? import ./nix/nixpkgs.nix { }, compiler ? "ghc902", enableProfiling ? false }:
 let
   src = pkgs.nix-gitignore.gitignoreSource [ "default.nix" ] ./.;
   haskellPackages = pkgs.haskell.packages.${compiler}.override {
     overrides = self: super: {
       haskeline =
-        pkgs.haskell.lib.dontCheck (self.callHackage "haskeline" "0.8.0.0" { });
+        pkgs.haskell.lib.dontCheck (self.callHackage "haskeline" "0.8.2" { });
     };
   };
   pkg = (haskellPackages.callCabal2nix "specstrom" "${src}" { });

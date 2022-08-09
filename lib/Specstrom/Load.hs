@@ -3,7 +3,7 @@ module Specstrom.Load where
 import Control.Monad.Except (runExceptT)
 import Data.Bifunctor (first)
 import Data.Text (Text)
-import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty, line)
+import Prettyprinter (defaultLayoutOptions, layoutPretty, line)
 import Prettyprinter.Render.Terminal (renderIO)
 import Specstrom.Parser
 import Specstrom.PrettyPrinter

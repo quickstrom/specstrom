@@ -11,7 +11,7 @@ import qualified Data.HashMap.Strict as M
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Text.Prettyprint.Doc
+import Prettyprinter
 import Prettyprinter.Render.Terminal
 import qualified Specstrom.Evaluator as Evaluator
 import Specstrom.Lexer

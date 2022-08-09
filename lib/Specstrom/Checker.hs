@@ -24,6 +24,7 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
+import qualified Data.Aeson.KeyMap as KM
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
 import Data.Traversable (for)
@@ -38,6 +39,7 @@ import Specstrom.Syntax (Name, TopLevel, TopLevel' (..))
 import qualified Specstrom.Syntax as Syntax
 import System.IO (hPutStrLn, isEOF, stderr)
 import System.Random (randomRIO)
+import qualified Data.Aeson.KeyMap as KM
 
 checkAllStdio :: [TopLevel] -> IO ()
 checkAllStdio ts = do
@@ -117,8 +119,8 @@ readStdinTo :: (MonadFail m, MonadIO m) => Send ExecutorMessage -> m ()
 readStdinTo output = do
   eof <- liftIO isEOF
   unless eof $ do
-    line <- liftIO getLine
-    case JSON.eitherDecodeStrict (BS.pack line) of
+    line <- liftIO BS.getLine
+    case JSON.eitherDecodeStrict line of
       Left err -> do
         logErr ("Input message parsing failed: " <> err)
         fail "Input message parsing failed."
@@ -316,7 +318,7 @@ toJSONValue st v = do
     Evaluator.LitVal (Syntax.StringLit s) -> pure $ JSON.String s
     Evaluator.LitVal (Syntax.IntLit i) -> pure $ JSON.Number (fromIntegral i)
     Evaluator.LitVal (Syntax.FloatLit i) -> pure $ JSON.Number (Scientific.fromFloatDigits i)
-    Evaluator.Object _ o -> JSON.Object <$> traverse (toJSONValue st) o
+    Evaluator.Object _ o -> JSON.Object <$> traverse (toJSONValue st) (KM.fromHashMapText o)
     Evaluator.List o -> JSON.Array . Vector.fromList <$> traverse (toJSONValue st) o
     Evaluator.Trivial -> pure $ JSON.Bool True
     Evaluator.Absurd -> pure $ JSON.Bool False
@@ -326,7 +328,7 @@ toJSONValue st v = do
 toEvaluatorValue :: JSON.Value -> Evaluator.Value
 toEvaluatorValue = \case
   JSON.String s -> Evaluator.LitVal (Syntax.StringLit s)
-  JSON.Object o -> Evaluator.Object False (fmap toEvaluatorValue o)
+  JSON.Object o -> Evaluator.Object False (fmap toEvaluatorValue (KM.toHashMapText o))
   JSON.Array a -> Evaluator.List (Vector.toList (fmap toEvaluatorValue a))
   JSON.Number n -> case Scientific.floatingOrInteger n of
     Left n' -> Evaluator.LitVal (Syntax.FloatLit n')
