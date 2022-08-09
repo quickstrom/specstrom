@@ -116,23 +116,24 @@ insertSyntax p n i a t
   | otherwise = Right $ go i t
   where
     go 0 (r : rs) = ((concatMap holey n, a) : r) : rs
-    go n' (r : rs) = r : (go (n' -1) rs)
+    go n' (r : rs) = r : (go (n' - 1) rs)
     go n' [] = go n' [[]]
 
 bindPatFromExpr :: [Name] -> Expr TempExpr -> Either ParseError BindPattern
 bindPatFromExpr acts (MacroExpansion e' e) = (flip MacroExpansionBP e) <$> bindPatFromExpr acts e'
 bindPatFromExpr acts e = do
   case peelAps e [] of
-    (Var p n, es) | not (null es),
-                    n /= "~_",
-                    n `notElem` acts -> do
-      es' <- mapM (patFromExpr acts) es
-      let ns = concatMap topPatternVars es'
-          uniques = nub ns
-          dupes = ns \\ uniques
-      if uniques /= ns
-        then Left (DuplicatePatternBinding p dupes)
-        else pure (FunP n p es')
+    (Var p n, es)
+      | not (null es),
+        n /= "~_",
+        n `notElem` acts -> do
+        es' <- mapM (patFromExpr acts) es
+        let ns = concatMap topPatternVars es'
+            uniques = nub ns
+            dupes = ns \\ uniques
+        if uniques /= ns
+          then Left (DuplicatePatternBinding p dupes)
+          else pure (FunP n p es')
     _ -> do
       p <- patFromExpr acts e
       pure (Direct p)
@@ -199,7 +200,7 @@ parseTL repl search t ts = do
           t' <-
             wrap $
               if i < 0
-                then insertSyntax p toks (- i) assoc (reverse $ negativeHoles t) >>= \t' -> pure $ t {negativeHoles = reverse t'}
+                then insertSyntax p toks (-i) assoc (reverse $ negativeHoles t) >>= \t' -> pure $ t {negativeHoles = reverse t'}
                 else insertSyntax p toks i assoc (positiveHoles t) >>= \t' -> pure $ t {positiveHoles = t'}
           fmap (SyntaxDecl ds p toks i assoc :) <$> parseTopLevel search t' ts'
         Binding ds bind@(Bind pat bod) -> do
@@ -214,10 +215,11 @@ parseTL repl search t ts = do
         MacroDecl ds e1 as e2 -> do
           let fromVar x = case x of Var _ n -> Just n; _ -> Nothing
           case peelAps e1 [] of
-            (Var _ macroName, args) | Just args' <- mapM fromVar args,
-                                      args' == nub args' -> do
-              let t' = t {macros = M.insert macroName (args', e2) (macros t)}
-              fmap (MacroDecl ds e1 args' e2 :) <$> parseTopLevel search t' ts'
+            (Var _ macroName, args)
+              | Just args' <- mapM fromVar args,
+                args' == nub args' -> do
+                let t' = t {macros = M.insert macroName (args', e2) (macros t)}
+                fmap (MacroDecl ds e1 args' e2 :) <$> parseTopLevel search t' ts'
             _ -> throwError $ InvalidMacroLHS (exprPos e1)
         Properties p g1 g2 e -> do
           e' <- wrap (traverse (macroEx >=> traverse interpretP) e)

@@ -19,12 +19,12 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Writer (runWriterT)
 import Control.Monad.Writer.Class (MonadWriter (tell))
 import qualified Data.Aeson as JSON
+import qualified Data.Aeson.KeyMap as KM
 import Data.Bifunctor (bimap, first, second)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
-import qualified Data.Aeson.KeyMap as KM
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
 import Data.Traversable (for)
@@ -39,7 +39,6 @@ import Specstrom.Syntax (Name, TopLevel, TopLevel' (..))
 import qualified Specstrom.Syntax as Syntax
 import System.IO (hPutStrLn, isEOF, stderr)
 import System.Random (randomRIO)
-import qualified Data.Aeson.KeyMap as KM
 
 checkAllStdio :: [TopLevel] -> IO ()
 checkAllStdio ts = do
@@ -194,7 +193,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
         Events events firstState -> do
           logInfo ("Got initial events: " <> show events)
           expectedPrims <- do
-            let f = extractActions Nothing actionEnv (toEvaluatorState (- (fromIntegral (succ version))) Nothing firstState)
+            let f = extractActions Nothing actionEnv (toEvaluatorState (-(fromIntegral (succ version))) Nothing firstState)
             case expectedEvent of
               Just ev -> liftIO (f ev)
               Nothing -> liftIO $ concat <$> mapM f actions

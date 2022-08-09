@@ -92,12 +92,12 @@ lexer p t
       | Just (i, _) <- Text.uncons cs,
         isDigit i,
         Right ((p', FloatLitTok v) : rest) <- lexer (nextCol p) cs ->
-        pure $ (p', FloatLitTok (- v)) : rest
+        pure $ (p', FloatLitTok (-v)) : rest
     Just ('-', cs)
       | Just (i, _) <- Text.uncons cs,
         isDigit i,
         Right ((p', IntLitTok v) : rest) <- lexer (nextCol p) cs ->
-        pure $ (p', IntLitTok (- v)) : rest
+        pure $ (p', IntLitTok (-v)) : rest
     Just (i, _cs) | isDigit i -> case Text.span isDigit t of
       (digits, Text.uncons -> Just ('.', rest))
         | Just (i', _) <- Text.uncons rest,
