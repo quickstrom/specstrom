@@ -255,14 +255,17 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
               -- the `happened` variable should be map snd as a list of action values..
               nextFormula <- liftIO (Evaluator.step r (toEvaluatorState (fromIntegral (succ stateVersion)) (Just (map snd matchingActions)) nextState))
               ifResidual (fromIntegral (succ stateVersion)) (map snd matchingActions) nextState nextFormula $ \r' -> do
-                case timeout of Just t -> send output (AwaitEvents t (succ stateVersion)); Nothing -> pure ()
-                run
-                  ReadingQueue
-                    { formula = r',
-                      stateVersion = succ stateVersion,
-                      lastState = nextState,
-                      sentAction = case timeout of Nothing -> None; Just _ -> WaitingTimeout
-                    }
+                case Evaluator.stop r' of
+                  Just v -> pure (Probably v)
+                  Nothing -> do
+                    case timeout of Just t -> send output (AwaitEvents t (succ stateVersion)); Nothing -> pure ()
+                    run
+                      ReadingQueue
+                        { formula = r',
+                          stateVersion = succ stateVersion,
+                          lastState = nextState,
+                          sentAction = case timeout of Nothing -> None; Just _ -> WaitingTimeout
+                        }
         Just (Timeout nextState) ->
           case sentAction of
             Sent (primAct, _) -> case timeout primAct of
