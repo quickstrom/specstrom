@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -13,7 +14,7 @@ import Control.Monad.IO.Class (MonadIO)
 import qualified Data.Aeson as JSON
 import Data.Aeson.Lens as JSON
 import Data.Text (Text)
-import Hedgehog (Property, annotateShow, checkParallel, discover, evalIO, forAll, property, withTests)
+import Hedgehog (MonadTest, Property, annotateShow, checkParallel, discover, evalIO, forAll, property, withTests, (===))
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import qualified Prettyprinter as Doc
@@ -35,11 +36,7 @@ prop_check_produces_result = property $ do
   states <- forAll (Gen.list (Range.linear 2 10) (enableButtons <$> Gen.state dep))
   (interpreterRecv, interpreterSend) <- Channel.newChannel
   (executorRecv, executorSend) <- Channel.newChannel
-  results <- evalIO $
-    Async.withAsync (Checker.checkAll executorRecv interpreterSend ts) $ \interpreter ->
-      Async.withAsync (runSessions interpreterRecv executorSend states) $ \executor -> do
-        Async.wait interpreter
-        Async.wait executor
+  results <- run ts states
   annotateShow results
 
 prop_terminates_after_only_timeouts :: Property
@@ -49,17 +46,21 @@ prop_terminates_after_only_timeouts = withTests 1 . property $ do
   annotateShow dep
   let states :: [Protocol.State]
       states = mempty : states -- Infinite empty states
-  (interpreterRecv, interpreterSend) <- Channel.newChannel
-  (executorRecv, executorSend) <- Channel.newChannel
-  results <- evalIO $
-    Async.withAsync (Checker.checkAll executorRecv interpreterSend ts) $ \interpreter ->
-      Async.withAsync (runSessions interpreterRecv executorSend states) $ \executor -> do
-        (_, _) <- Async.waitBoth interpreter executor
-        pure ()
-  annotateShow results
+  results <- run ts states
+  map Protocol.valid results === [Protocol.Probably False]
 
 enableButtons :: Protocol.State -> Protocol.State
 enableButtons = traverse . JSON._Array . traverse . JSON._Object . at "disabled" .~ pure (JSON.Bool True)
+
+run :: (MonadIO m, MonadTest m) => [Syntax.TopLevel] -> [Protocol.State] -> m [Protocol.Result]
+run ts states = do
+  (interpreterRecv, interpreterSend) <- Channel.newChannel
+  (executorRecv, executorSend) <- Channel.newChannel
+  evalIO $
+    Async.withAsync (Checker.checkAll executorRecv interpreterSend ts) $ \interpreter ->
+      Async.withAsync (runSessions interpreterRecv executorSend states) $ \executor -> do
+        Async.wait interpreter
+        Async.wait executor
 
 runSessions ::
   MonadIO m =>
@@ -74,28 +75,13 @@ runSessions input output = go
       case (msg, states) of
         (Protocol.RequestAction {Protocol.action = a@Protocol.A {Protocol.id = "noop"}}, s1 : s2 : ss) -> do
           Channel.send output (Protocol.Performed s1)
-          Channel.send output (Protocol.Events
-                [ Protocol.A
-                    { Protocol.id = "foobar",
-                      Protocol.isEvent = True,
-                      Protocol.args = [],
-                      Protocol.timeout = Nothing
-                    }
-                ]
-                s2
+          Channel.send
+            output
+            ( Protocol.Events [unknownEvent] s2
             )
           go ss
         (Protocol.AwaitEvents {}, s : ss) -> do
-          Channel.send output (Protocol.Events
-                [ Protocol.A
-                    { Protocol.id = "foobar",
-                      Protocol.isEvent = True,
-                      Protocol.args = [],
-                      Protocol.timeout = Nothing
-                    }
-                ]
-                s
-            )
+          Channel.send output (Protocol.Events [unknownEvent] s)
           go ss
         (Protocol.RequestAction {}, s : ss) -> do
           Channel.send output (Protocol.Performed s)
@@ -117,6 +103,13 @@ runSessions input output = go
         (Protocol.End {}, _) -> go states
         (Protocol.Done results, _) -> pure results
         _ -> error ("Unexpected: " <> show (msg, states))
+    unknownEvent =
+      Protocol.A
+        { Protocol.id = "unknown",
+          Protocol.isEvent = True,
+          Protocol.args = [],
+          Protocol.timeout = Nothing
+        }
 
 load :: Text -> IO [Syntax.TopLevel]
 load f = do
