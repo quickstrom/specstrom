@@ -1,0 +1,11 @@
+import control;
+import list;
+import ltl;
+
+action noop! = { id: "noop", event: false, args: [], timeout: 1 };
+
+action loaded? = { id: "loaded", event: true, args: [] };
+
+let ~prop = true until {100} false;
+
+check prop with noop! when loaded?;
