@@ -38,12 +38,12 @@ import Specstrom.Channel (Receive, Send, newChannel, receive, send, tryReceive)
 import Specstrom.Checker.Protocol
 import Specstrom.Dependency (Dep)
 import qualified Specstrom.Evaluator as Evaluator
+import Specstrom.Load
 import Specstrom.PrettyPrinter (prettyEvalError, prettyLoadError)
 import Specstrom.Syntax (Name, TopLevel, TopLevel' (..))
 import qualified Specstrom.Syntax as Syntax
 import System.IO (hPutStrLn, isEOF, stderr)
 import System.Random (randomRIO)
-import Specstrom.Load
 
 checkAllStdio :: Either LoadError [TopLevel] -> IO ()
 checkAllStdio loadResult = do

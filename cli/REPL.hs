@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+
 module REPL where
 
 import Control.Monad.Catch

@@ -15,11 +15,11 @@ import Prettyprinter
 import Prettyprinter.Render.Terminal
 import qualified Specstrom.Evaluator as Evaluator
 import Specstrom.Lexer
+import Specstrom.Load (LoadError (LoadParseError, LoadTypeInfError))
 import Specstrom.Parser
 import Specstrom.Syntax
 import Specstrom.TypeInf
 import Text.Earley.Mixfix (Associativity (..))
-import Specstrom.Load (LoadError (LoadParseError, LoadTypeInfError))
 
 prettyEvalError :: [Doc AnsiStyle] -> Evaluator.EvalError -> Doc AnsiStyle
 prettyEvalError bts (Evaluator.Backtrace p n r) = prettyEvalError ((pretty n <+> "@" <+> prettyPos p) : bts) r

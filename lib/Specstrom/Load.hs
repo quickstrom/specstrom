@@ -1,6 +1,6 @@
 module Specstrom.Load where
 
-import Control.Monad.Except (runExceptT, withExceptT, liftEither)
+import Control.Monad.Except (liftEither, runExceptT, withExceptT)
 import Data.Text (Text)
 import Specstrom.Parser
 import Specstrom.Syntax
