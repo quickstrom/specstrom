@@ -228,7 +228,7 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
             nextFormula <- liftIO (Evaluator.step r (toEvaluatorState (fromIntegral (succ stateVersion)) (Just [val]) nextState))
             tell [TraceAction [primact], TraceState nextState]
             ifResidual (fromIntegral (succ stateVersion)) [val] nextState nextFormula $ \r' ->
-               run
+              run
                 ReadingQueue
                   { formula = r',
                     stateVersion = succ stateVersion,
