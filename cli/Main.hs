@@ -3,17 +3,19 @@
 
 module Main where
 
+import Control.Exception (SomeException (..))
 import Control.Monad.Catch (catch)
 import Data.Text (Text)
 import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty, line)
 import Options.Applicative
 import Prettyprinter.Render.Terminal (renderIO)
 import REPL (repl)
+import Specstrom.Checker
 import qualified Specstrom.Checker as Checker
 import Specstrom.Load
 import Specstrom.PrettyPrinter
 import System.Exit (exitFailure)
-import System.IO (BufferMode (LineBuffering), hSetBuffering, stderr, stdout)
+import System.IO (BufferMode (LineBuffering), hPrint, hPutStrLn, hSetBuffering, stderr, stdout)
 
 data CliOptions = CliOptions
   { searchPaths :: [FilePath],
@@ -85,6 +87,11 @@ main = do
       hSetBuffering stderr LineBuffering
       hSetBuffering stdout LineBuffering
       Checker.checkAllStdio ts
-        `catch` \err -> do
-          renderIO stderr (layoutPretty defaultLayoutOptions (prettyEvalError [] err))
-          exitFailure
+        `catch` ( \err -> do
+                    renderIO stderr (layoutPretty defaultLayoutOptions (prettyEvalError [] err))
+                    exitFailure
+                )
+        `catch` ( \err@SomeException {} -> do
+                    hPrint stderr err
+                    exitFailure
+                )

@@ -10,7 +10,7 @@
 module Specstrom.Checker where
 
 import qualified Control.Concurrent.Async as Async
-import Control.Exception (BlockedIndefinitelyOnSTM (..))
+import Control.Exception (BlockedIndefinitelyOnSTM (..), Exception, SomeException (SomeException), throwIO)
 import Control.Monad (unless, void)
 import Control.Monad.Catch (MonadCatch, MonadThrow, catch)
 import Control.Monad.Error.Class (MonadError (throwError))
@@ -27,14 +27,18 @@ import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
+import Data.Text.Prettyprint.Doc.Render.Text (renderStrict)
 import Data.Traversable (for)
 import qualified Data.Vector as Vector
 import Numeric.Natural (Natural)
+import Prettyprinter (defaultLayoutOptions, layoutPretty)
+import Prettyprinter.Render.String (renderString)
 import qualified Specstrom.Analysis as Analysis
 import Specstrom.Channel (Receive, Send, newChannel, receive, send, tryReceive)
 import Specstrom.Checker.Protocol
 import Specstrom.Dependency (Dep)
 import qualified Specstrom.Evaluator as Evaluator
+import Specstrom.PrettyPrinter (prettyEvalError)
 import Specstrom.Syntax (Name, TopLevel, TopLevel' (..))
 import qualified Specstrom.Syntax as Syntax
 import System.IO (hPutStrLn, isEOF, stderr)
@@ -44,12 +48,26 @@ checkAllStdio :: [TopLevel] -> IO ()
 checkAllStdio ts = do
   (interpreterRecv, interpreterSend) <- newChannel
   (executorRecv, executorSend) <- newChannel
-  Async.withAsync (readStdinTo executorSend) $ \_inputDone ->
-    Async.withAsync (writeStdoutFrom interpreterRecv) $ \outputDone -> do
-      Async.withAsync (checkAll executorRecv interpreterSend ts) $ \checkerDone -> do
-        void (Async.waitBoth outputDone checkerDone)
-          `catch` \BlockedIndefinitelyOnSTM {} ->
-            fail "Checker failed due to premature end of input."
+  let run = do
+        Async.withAsync (readStdinTo executorSend) $ \_inputDone ->
+          Async.withAsync (writeStdoutFrom interpreterRecv) $ \outputDone -> do
+            Async.withAsync (checkAll executorRecv interpreterSend ts) $ \checkerDone -> do
+              void
+                ( Async.waitBoth outputDone checkerDone
+                    `catch` \BlockedIndefinitelyOnSTM {} ->
+                      fail "Checker failed due to premature end of input."
+                )
+
+  run
+    `catch` ( \err -> do
+                let t = renderStrict (layoutPretty defaultLayoutOptions (prettyEvalError [] err))
+                send interpreterSend (Aborted t)
+                throwIO err
+            )
+    `catch` ( \err@SomeException {} -> do
+                send interpreterSend (Aborted (T.pack (show err)))
+                throwIO err
+            )
 
 checkAll :: Receive ExecutorMessage -> Send InterpreterMessage -> [TopLevel] -> IO ()
 checkAll input output ts = do
