@@ -38,36 +38,41 @@ import Specstrom.Channel (Receive, Send, newChannel, receive, send, tryReceive)
 import Specstrom.Checker.Protocol
 import Specstrom.Dependency (Dep)
 import qualified Specstrom.Evaluator as Evaluator
-import Specstrom.PrettyPrinter (prettyEvalError)
+import Specstrom.PrettyPrinter (prettyEvalError, prettyLoadError)
 import Specstrom.Syntax (Name, TopLevel, TopLevel' (..))
 import qualified Specstrom.Syntax as Syntax
 import System.IO (hPutStrLn, isEOF, stderr)
 import System.Random (randomRIO)
+import Specstrom.Load
 
-checkAllStdio :: [TopLevel] -> IO ()
-checkAllStdio ts = do
+checkAllStdio :: Either LoadError [TopLevel] -> IO ()
+checkAllStdio loadResult = do
   (interpreterRecv, interpreterSend) <- newChannel
   (executorRecv, executorSend) <- newChannel
-  let run = do
-        Async.withAsync (readStdinTo executorSend) $ \_inputDone ->
-          Async.withAsync (writeStdoutFrom interpreterRecv) $ \outputDone -> do
-            Async.withAsync (checkAll executorRecv interpreterSend ts) $ \checkerDone -> do
-              void
-                ( Async.waitBoth outputDone checkerDone
-                    `catch` \BlockedIndefinitelyOnSTM {} ->
-                      fail "Checker failed due to premature end of input."
-                )
 
-  run
-    `catch` ( \err -> do
-                let t = renderStrict (layoutPretty defaultLayoutOptions (prettyEvalError [] err))
-                send interpreterSend (Aborted t)
-                throwIO err
-            )
-    `catch` ( \err@SomeException {} -> do
-                send interpreterSend (Aborted (T.pack (show err)))
-                throwIO err
-            )
+  let check = do
+        case loadResult of
+          Left err -> do
+            let t = renderStrict (layoutPretty defaultLayoutOptions (prettyLoadError err))
+            send interpreterSend (Aborted t)
+          Right ts ->
+            checkAll executorRecv interpreterSend ts
+              `catch` ( \err -> do
+                          let t = renderStrict (layoutPretty defaultLayoutOptions (prettyEvalError [] err))
+                          send interpreterSend (Aborted t)
+                      )
+              `catch` ( \err@SomeException {} -> do
+                          send interpreterSend (Aborted (T.pack (show err)))
+                      )
+
+  Async.withAsync (readStdinTo executorSend) $ \_inputDone ->
+    Async.withAsync (writeStdoutFrom interpreterRecv) $ \outputDone -> do
+      Async.withAsync check $ \checkerDone -> do
+        void
+          ( Async.waitBoth outputDone checkerDone
+              `catch` \BlockedIndefinitelyOnSTM {} ->
+                fail "Checker failed due to premature end of input."
+          )
 
 checkAll :: Receive ExecutorMessage -> Send InterpreterMessage -> [TopLevel] -> IO ()
 checkAll input output ts = do

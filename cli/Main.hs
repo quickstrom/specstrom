@@ -3,19 +3,16 @@
 
 module Main where
 
-import Control.Exception (SomeException (..))
-import Control.Monad.Catch (catch)
 import Data.Text (Text)
 import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty, line)
 import Options.Applicative
 import Prettyprinter.Render.Terminal (renderIO)
 import REPL (repl)
-import Specstrom.Checker
 import qualified Specstrom.Checker as Checker
 import Specstrom.Load
 import Specstrom.PrettyPrinter
 import System.Exit (exitFailure)
-import System.IO (BufferMode (LineBuffering), hPrint, hPutStrLn, hSetBuffering, stderr, stdout)
+import System.IO (BufferMode (LineBuffering), hSetBuffering, stderr, stdout)
 
 data CliOptions = CliOptions
   { searchPaths :: [FilePath],
@@ -78,20 +75,15 @@ main = do
   let allSearchPaths = searchPaths cliOpts <> ["."]
   case cliCommand cliOpts of
     Format (FormatOptions f) -> do
-      ts <- load allSearchPaths f
-      renderIO stdout (layoutPretty defaultLayoutOptions (prettyAll ts <> line))
+      load allSearchPaths f >>= \case
+        Left err -> do
+          renderIO stdout (layoutPretty defaultLayoutOptions (prettyLoadError err <> line))
+          exitFailure
+        Right ts -> renderIO stdout (layoutPretty defaultLayoutOptions (prettyAll ts <> line))
     Repl (ReplOptions f) -> do
       repl allSearchPaths f
     Check (CheckOptions f) -> do
-      ts <- load allSearchPaths f
       hSetBuffering stderr LineBuffering
       hSetBuffering stdout LineBuffering
-      Checker.checkAllStdio ts
-        `catch` ( \err -> do
-                    renderIO stderr (layoutPretty defaultLayoutOptions (prettyEvalError [] err))
-                    exitFailure
-                )
-        `catch` ( \err@SomeException {} -> do
-                    hPrint stderr err
-                    exitFailure
-                )
+      result <- load allSearchPaths f
+      Checker.checkAllStdio result
