@@ -19,6 +19,7 @@ import Specstrom.Parser
 import Specstrom.Syntax
 import Specstrom.TypeInf
 import Text.Earley.Mixfix (Associativity (..))
+import Specstrom.Load (LoadError (LoadParseError, LoadTypeInfError))
 
 prettyEvalError :: [Doc AnsiStyle] -> Evaluator.EvalError -> Doc AnsiStyle
 prettyEvalError bts (Evaluator.Backtrace p n r) = prettyEvalError ((pretty n <+> "@" <+> prettyPos p) : bts) r
@@ -49,9 +50,9 @@ errorMessageNoPos :: Doc AnsiStyle -> [Doc AnsiStyle] -> Doc AnsiStyle
 errorMessageNoPos s extra =
   annotate (bold <> color Red) s <> line <> indent 2 (vcat extra)
 
-prettyTypeError :: (Position, [TypeErrorBit]) -> Doc AnsiStyle
-prettyTypeError (p, (StrE s : rest)) = errorMessage p (pretty s) (map prettyTyBit rest)
-prettyTypeError (p, rest) = errorMessage p "Type error" (map prettyTyBit rest)
+prettyTypeError :: TypeInfError -> Doc AnsiStyle
+prettyTypeError (TypeInfError p (StrE s : rest)) = errorMessage p (pretty s) (map prettyTyBit rest)
+prettyTypeError (TypeInfError p rest) = errorMessage p "Type error" (map prettyTyBit rest)
 
 prettyTyBit :: TypeErrorBit -> Doc AnsiStyle
 prettyTyBit (StrE s) = pretty s
@@ -61,7 +62,7 @@ prettyTyBit (VarNameE s) = ident s
 
 prettyType :: Type -> Doc AnsiStyle
 prettyType (Arrow t1 t2) = parens (prettyType t1 <+> keyword "->" <+> prettyType t2)
-prettyType (Value) = keyword "@"
+prettyType Value = keyword "@"
 prettyType (TyVar n) = ident n
 
 prettyLexerError :: LexerError -> Doc AnsiStyle
@@ -90,6 +91,10 @@ prettyParseError (Ambiguous (e :| es)) =
 prettyParseError (DuplicatePatternBinding p [b]) = errorMessage p "duplicate bound variable in pattern:" [pretty b]
 prettyParseError (DuplicatePatternBinding p bs) =
   errorMessage p "duplicate bound variables in pattern:" [sep (punctuate comma (map pretty bs))]
+
+prettyLoadError :: LoadError -> Doc AnsiStyle
+prettyLoadError (LoadParseError e) = prettyParseError e
+prettyLoadError (LoadTypeInfError e) = prettyTypeError e
 
 prettyToken :: Token -> Doc AnsiStyle
 prettyToken (Ident s) = ident s

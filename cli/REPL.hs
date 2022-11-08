@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 module REPL where
 
 import Control.Monad.Catch
@@ -20,10 +21,12 @@ import System.IO (hPutStrLn, stderr, stdout)
 
 repl :: [FilePath] -> Text -> IO ()
 repl searchPaths' fp = do
-  (tls, tbl, g) <- load' searchPaths' False fp
-  (e, e', ae) <- liftIO $ checkTopLevels Evaluator.basicEnv mempty Analysis.builtIns tls
-  let opts = foldl' addSearchPath defaultOpts searchPaths'
-  runInputT defaultSettings (loop 1 opts tbl g e e' Evaluator.dummyState ae)
+  load' searchPaths' fp >>= \case
+    Left err -> renderIO stderr (layoutPretty defaultLayoutOptions (prettyLoadError err))
+    Right (tls, tbl, g) -> do
+      (e, e', ae) <- liftIO $ checkTopLevels Evaluator.basicEnv mempty Analysis.builtIns tls
+      let opts = foldl' addSearchPath defaultOpts searchPaths'
+      runInputT defaultSettings (loop 1 opts tbl g e e' Evaluator.dummyState ae)
 
 defaultOpts :: Options
 defaultOpts = Opts False False []

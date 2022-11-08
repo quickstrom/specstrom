@@ -1,30 +1,20 @@
 module Specstrom.Load where
 
-import Control.Monad.Except (runExceptT)
-import Data.Bifunctor (first)
+import Control.Monad.Except (runExceptT, withExceptT, liftEither)
 import Data.Text (Text)
-import Prettyprinter (defaultLayoutOptions, layoutPretty, line)
-import Prettyprinter.Render.Terminal (renderIO)
 import Specstrom.Parser
-import Specstrom.PrettyPrinter
 import Specstrom.Syntax
 import Specstrom.TypeInf
-import System.Exit
-import System.IO (stderr)
 
-load :: [FilePath] -> Text -> IO [TopLevel]
-load searchPaths = fmap (\(a, _, _) -> a) . load' searchPaths True
+data LoadError
+  = LoadParseError ParseError
+  | LoadTypeInfError TypeInfError
 
-load' :: [FilePath] -> Bool -> Text -> IO ([TopLevel], Table, Context)
-load' searchPaths exit f = do
-  result <- first prettyParseError <$> runExceptT (loadModule searchPaths ("Command line", 0, 0) f builtIns)
-  case result of
-    Left err -> do
-      renderIO stderr (layoutPretty defaultLayoutOptions (err <> line))
-      if exit then exitFailure else pure ([], builtIns, mempty)
-    Right (tbl, ts) ->
-      case inferTopLevels builtInTypes ts of
-        Left te ->
-          renderIO stderr (layoutPretty defaultLayoutOptions (prettyTypeError te <> line))
-            >> if exit then exitFailure else pure ([], builtIns, mempty)
-        Right g -> pure (ts, tbl, g)
+load :: [FilePath] -> Text -> IO (Either LoadError [TopLevel])
+load searchPaths f = fmap (\(a, _, _) -> a) <$> load' searchPaths f
+
+load' :: [FilePath] -> Text -> IO (Either LoadError ([TopLevel], Table, Context))
+load' searchPaths f = runExceptT $ do
+  (tbl, ts) <- withExceptT LoadParseError (loadModule searchPaths ("Command line", 0, 0) f builtIns)
+  g <- withExceptT LoadTypeInfError (liftEither (inferTopLevels builtInTypes ts))
+  pure (ts, tbl, g)

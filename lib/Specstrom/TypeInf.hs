@@ -102,13 +102,15 @@ data QType = Forall Name QType | Ty Type deriving (Show)
 
 data TypeErrorBit = StrE Text | VarNameE Name | TypeE Type | PtnE Pattern
 
-type TC = ExceptT (Position, [TypeErrorBit]) (Gen Integer)
+data TypeInfError = TypeInfError Position [TypeErrorBit]
 
-runTC :: TC a -> Either (Position, [TypeErrorBit]) a
+type TC = ExceptT TypeInfError (Gen Integer)
+
+runTC :: TC a -> Either TypeInfError a
 runTC tc = runGen (runExceptT tc)
 
 typeError :: Position -> [TypeErrorBit] -> TC a
-typeError p es = throwError (p, es)
+typeError p es = throwError (TypeInfError p es)
 
 fresh :: TC Type
 fresh = do
@@ -279,10 +281,10 @@ inferExpsValue g (e : es) = do
   s'' <- inferExpsValue (substGamma ss g) es
   pure (ss <> s'')
 
-inferExpImmediate :: Context -> Expr TopPattern -> Either (Position, [TypeErrorBit]) Type
+inferExpImmediate :: Context -> Expr TopPattern -> Either TypeInfError Type
 inferExpImmediate g e = runTC (fst <$> inferExp g e)
 
-inferTopLevels :: Context -> [TopLevel] -> Either (Position, [TypeErrorBit]) Context
+inferTopLevels :: Context -> [TopLevel] -> Either TypeInfError Context
 inferTopLevels g [] = pure g
 inferTopLevels g (MacroDecl {} : rest) = inferTopLevels g rest
 inferTopLevels g (DocBlock {} : rest) = inferTopLevels g rest

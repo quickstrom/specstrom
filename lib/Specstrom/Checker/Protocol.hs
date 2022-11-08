@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Specstrom.Checker.Protocol where
@@ -52,6 +53,7 @@ data InterpreterMessage
   | RequestAction {action :: PrimAction, version :: Natural}
   | AwaitEvents {awaitTimeout :: Int, version :: Natural}
   | Done {results :: [Result]}
+  | Aborted {errorMessage :: Text}
   deriving (Show, Generic, JSON.ToJSON, JSON.FromJSON)
 
 data ExecutorMessage

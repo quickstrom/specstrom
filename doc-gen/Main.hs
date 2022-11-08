@@ -13,13 +13,16 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Options.Applicative
 import qualified Prettyprinter as P
+import Prettyprinter.Render.Terminal (renderIO)
 import qualified Prettyprinter.Render.Text as P
 import Specstrom.Load
 import Specstrom.PrettyPrinter
 import Specstrom.Syntax
 import Specstrom.TypeInf
 import System.Directory
+import System.Exit (exitFailure)
 import System.FilePath
+import System.IO (stderr)
 import Text.DocLayout (render)
 import Text.DocTemplates hiding (Context)
 import Text.Pandoc
@@ -59,8 +62,12 @@ main = do
   cliOpts <- execParser parserInfo
   let allSearchPaths = searchPaths cliOpts <> ["."]
   let f = moduleName cliOpts
-  (ts, tbl, ctx) <- load' allSearchPaths True (T.pack f)
-  runIOorExplode $ generateDocs (baseUrl cliOpts) f (outputDirectory cliOpts) (docFormat cliOpts) ts ctx
+  load' allSearchPaths (T.pack f) >>= \case
+    Left err -> do
+      renderIO stderr (P.layoutPretty P.defaultLayoutOptions (prettyLoadError err))
+      exitFailure
+    Right (ts, tbl, ctx) ->
+      runIOorExplode $ generateDocs (baseUrl cliOpts) f (outputDirectory cliOpts) (docFormat cliOpts) ts ctx
 
 generateDocs :: Text -> FilePath -> FilePath -> Text -> [TopLevel] -> Context -> PandocIO ()
 generateDocs base path out reader ls ctx = do
