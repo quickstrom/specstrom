@@ -1,13 +1,15 @@
 {-# LANGUAGE LambdaCase #-}
+
 module REPL where
 
 import Control.Monad.Catch
 import Control.Monad.Except
+import Control.Monad.Trans
 import qualified Data.Aeson as JSON
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Foldable (foldl')
 import Data.Text (Text, pack)
-import Data.Text.Prettyprint.Doc (defaultLayoutOptions, layoutPretty, line)
+import Prettyprinter (defaultLayoutOptions, layoutPretty, line)
 import Prettyprinter.Render.Terminal (renderIO)
 import qualified Specstrom.Analysis as Analysis
 import qualified Specstrom.Evaluator as Evaluator
