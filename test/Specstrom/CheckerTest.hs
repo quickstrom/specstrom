@@ -13,8 +13,8 @@ import Control.Monad.IO.Class (MonadIO)
 import qualified Data.Aeson as JSON
 import Data.Aeson.Lens as JSON
 import Data.Text (Text)
-import qualified Data.Text.Prettyprint.Doc as Doc
-import Data.Text.Prettyprint.Doc.Render.String
+import qualified Prettyprinter as Doc
+import Prettyprinter.Render.String
 import Hedgehog (Property, annotateShow, checkParallel, discover, evalIO, forAll, property)
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
