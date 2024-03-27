@@ -1,30 +1,24 @@
-{ pkgs ? import ./nix/nixpkgs.nix { }, compiler ? "ghc902", enableProfiling ? false }:
+{ compiler ? "ghc96", enableProfiling ? false, haskell, haskellPackages
+, nix-gitignore, removeReferencesTo, symlinkJoin, makeWrapper }:
 let
-  src = pkgs.nix-gitignore.gitignoreSource [ "default.nix" ] ./.;
-  haskellPackages = pkgs.haskell.packages.${compiler}.override {
+  src =
+    nix-gitignore.gitignoreSource [ "default.nix" "flake.nix" "shell.nix" ] ./.;
+  haskellPackages = haskell.packages.${compiler}.override {
     overrides = self: super: {
-      haskeline =
-        pkgs.haskell.lib.dontCheck (self.callHackage "haskeline" "0.8.2" { });
+      # haskeline =
+      #   haskell.lib.dontCheck (super.haskeline);
+      ap-normalize = haskell.lib.dontCheck (super.ap-normalize);
     };
   };
   pkg = (haskellPackages.callCabal2nix "specstrom" "${src}" { });
   specstrom = (if enableProfiling then
-    pkgs.haskell.lib.enableExecutableProfiling pkg
+    haskell.lib.enableExecutableProfiling pkg
   else
-    pkgs.haskell.lib.justStaticExecutables pkg).overrideAttrs(drv: {
-      # Various hacks to get the closure size down, similar to how Pandoc is set up in nixpkgs:
-      # https://github.com/NixOS/nixpkgs/blob/40662d31b8e6f4abdb813d4d9c33d71f1b7a922c/pkgs/development/tools/pandoc/default.nix
-      disallowedReferences = [haskellPackages.pandoc haskellPackages.pandoc-types haskellPackages.HTTP];
-      postInstall = ''
-        ${pkgs.removeReferencesTo}/bin/remove-references-to -t ${haskellPackages.pandoc} $out/bin/docstrom
-        ${pkgs.removeReferencesTo}/bin/remove-references-to -t ${haskellPackages.pandoc-types} $out/bin/docstrom
-        ${pkgs.removeReferencesTo}/bin/remove-references-to -t ${haskellPackages.HTTP} $out/bin/docstrom
-      '';
-    });
-  specstrom-wrapped = pkgs.symlinkJoin {
+    haskell.lib.justStaticExecutables pkg);
+  specstrom-wrapped = symlinkJoin {
     name = "specstrom";
     paths = [ specstrom ];
-    buildInputs = [ pkgs.makeWrapper ];
+    buildInputs = [ makeWrapper ];
     postBuild = ''
       mkdir -p $out/share
       cp -r ${./ulib} $out/share/ulib

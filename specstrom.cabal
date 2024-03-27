@@ -31,7 +31,6 @@ common shared
                      , mtl
                      , filepath
                      , directory
-                     , monad-gen
                      , scientific
                      , stm
                      , transformers
@@ -62,15 +61,15 @@ library
                      , Specstrom.Load
 
 
-executable docstrom 
-  import:              shared
-  hs-source-dirs:      doc-gen
-  main-is:             Main.hs
-  data-files:          template.html
-  build-depends:       pandoc, specstrom, doctemplates, doclayout, file-embed,time
-                     , optparse-applicative
-                     , prettyprinter-ansi-terminal
-                     , prettyprinter
+-- executable docstrom 
+--   import:              shared
+--   hs-source-dirs:      doc-gen
+--   main-is:             Main.hs
+--   data-files:          template.html
+--   build-depends:       pandoc, specstrom, doctemplates, doclayout, file-embed,time
+--                      , optparse-applicative
+--                      , prettyprinter-ansi-terminal
+--                      , prettyprinter
 
 executable specstrom
   import:              shared

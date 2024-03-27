@@ -3,7 +3,7 @@
 module Specstrom.TypeInf where
 
 import Control.Monad.Except
-import Control.Monad.Gen
+import Control.Monad.State
 import Data.List (nub, (\\))
 import qualified Data.Map as M
 import Data.Text (Text)
@@ -104,17 +104,17 @@ data TypeErrorBit = StrE Text | VarNameE Name | TypeE Type | PtnE Pattern
 
 data TypeInfError = TypeInfError Position [TypeErrorBit]
 
-type TC = ExceptT TypeInfError (Gen Integer)
+type TC = ExceptT TypeInfError (State Integer)
 
 runTC :: TC a -> Either TypeInfError a
-runTC tc = runGen (runExceptT tc)
+runTC tc = evalState (runExceptT tc) 0
 
 typeError :: Position -> [TypeErrorBit] -> TC a
 typeError p es = throwError (TypeInfError p es)
 
 fresh :: TC Type
 fresh = do
-  x <- gen
+  x <- modify succ >> get
   pure (TyVar $ T.pack $ show x)
 
 instantiate :: Subst -> QType -> TC Type

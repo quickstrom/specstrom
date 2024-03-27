@@ -1,8 +1,7 @@
 {
-  description = "Quickstrom: an autonomous testing tool for the web";
+  description = "Specstrom: an autonomous testing tool for the web";
 
-  inputs.nixpkgs.url =
-    "github:NixOS/nixpkgs/ede02b4ccb13557b95058d66146640a2b0bb198f";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
   inputs.systems.url = "github:nix-systems/default";
 
   outputs = { self, systems, nixpkgs }:
@@ -11,12 +10,10 @@
       packages = eachSystem (system:
         let
           pkgs = (import nixpkgs { inherit system; });
-          specstrom = import ./. { inherit pkgs; };
+          specstrom = pkgs.callPackage ./. { };
         in { default = specstrom.specstrom; });
       devShells = eachSystem (system:
-        let
-          pkgs = (import nixpkgs { inherit system; });
-          specstrom = import ./. { inherit pkgs; };
-        in { default = specstrom.package; });
+        let pkgs = (import nixpkgs { inherit system; });
+        in { default = pkgs.callPackage ./shell.nix { }; });
     };
 }
