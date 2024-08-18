@@ -38,12 +38,12 @@ import Specstrom.Channel (Receive, Send, newChannel, receive, send, tryReceive)
 import Specstrom.Checker.Protocol
 import Specstrom.Dependency (Dep)
 import qualified Specstrom.Evaluator as Evaluator
+import Specstrom.Load
 import Specstrom.PrettyPrinter (prettyEvalError, prettyLoadError)
 import Specstrom.Syntax (Name, TopLevel, TopLevel' (..))
 import qualified Specstrom.Syntax as Syntax
 import System.IO (hPutStrLn, isEOF, stderr)
 import System.Random (randomRIO)
-import Specstrom.Load
 
 checkAllStdio :: Either LoadError [TopLevel] -> IO ()
 checkAllStdio loadResult = do
@@ -157,7 +157,7 @@ writeStdoutFrom output = do
     Done results -> write (Done results) $> results
     msg -> write msg >> writeStdoutFrom output
 
-data SentAction = None | Sent (PrimAction, (Name, [Evaluator.Value])) | WaitingTimeout
+data SentAction = None | Sent (PrimAction, (Name, [Evaluator.Value])) | WaitingTimeout deriving (Show)
 
 extractActions :: Maybe (Name, [Evaluator.Value]) -> Evaluator.Env -> Evaluator.State -> (Name, Evaluator.Value) -> IO [(PrimAction, (Name, [Evaluator.Value]))]
 extractActions act actionEnv s (nm, v) = do
@@ -264,14 +264,21 @@ checkProp input output actionEnv dep initialFormula actions expectedEvent = do
           case filter (actionMatchesAnyOf events . fst) expectedPrims of
             [] -> do
               logInfo ("None of the expected events (" <> show (map fst expectedPrims) <> ") matched the received events (" <> show events <> ")")
-              send output (AwaitEvents 1000 (succ stateVersion))
-              run
-                ReadingQueue
-                  { formula = r,
-                    stateVersion = succ stateVersion,
-                    lastState = lastState,
-                    sentAction = sentAction
-                  }
+              tell [TraceAction [], TraceState nextState]
+              -- the `happened` variable should be map snd as a list of action values..
+              nextFormula <- liftIO (Evaluator.step r (toEvaluatorState (fromIntegral (succ stateVersion)) (Just []) nextState))
+              ifResidual (fromIntegral (succ stateVersion)) [] nextState nextFormula $ \r' -> do
+                case Evaluator.stop r' of
+                  Just v -> pure (Probably v)
+                  Nothing -> do
+                    send output (AwaitEvents 1000 (succ stateVersion))
+                    run
+                      ReadingQueue
+                        { formula = r',
+                          stateVersion = succ stateVersion,
+                          lastState = nextState,
+                          sentAction = sentAction
+                        }
             matchingActions -> do
               tell [TraceAction (map fst matchingActions), TraceState nextState]
               let timeout = maximumTimeout (map fst matchingActions)
