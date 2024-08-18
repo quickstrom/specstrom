@@ -5,7 +5,9 @@
 module Specstrom.Parser (loadImmediate, ParseError (..), loadModule, Table, builtIns, parseTopLevel, GrammarResult) where
 
 import Control.Applicative
+import Control.Monad
 import Control.Monad.Except
+import Control.Monad.Trans (lift)
 import Data.Bifunctor (first)
 import Data.Bitraversable
 import qualified Data.HashMap.Strict as M

@@ -1,14 +1,13 @@
-{ pkgs ? import ./nix/nixpkgs.nix {}, compiler ? "ghc902" }:
-let
-  project = import ./. { inherit pkgs compiler; };
+{ compiler ? "ghc96", callPackage, cabal-install, nixfmt, ormolu, ghcid }:
+let project = callPackage ./. { inherit compiler; };
 in project.haskellPackages.shellFor {
-  withHoogle = true;
-  packages = (p: [project.package]);
-  buildInputs = (with pkgs; [
-    cabal-install
-    nixfmt
+  withHoogle = false;
+  packages = (p: [ project.package ]);
+  nativeBuildInputs = [
+    project.haskellPackages.cabal-install
     project.haskellPackages.haskell-language-server
-    ormolu
-    ghcid
-  ]);
+    # nixfmt
+    # ormolu
+    # ghcid
+  ];
 }

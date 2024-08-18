@@ -27,7 +27,7 @@ import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
-import Data.Text.Prettyprint.Doc.Render.Text (renderStrict)
+import Prettyprinter.Render.Text (renderStrict)
 import Data.Traversable (for)
 import qualified Data.Vector as Vector
 import Numeric.Natural (Natural)
